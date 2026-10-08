@@ -12,15 +12,17 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ### Added
 
-- **Islands in the plugin's window.** The slim bar became a window with one black island per file: its own
-  file first, then each file where agents are at work, until ten quiet minutes after their last script. Open
-  an island for its agents and the recent changes with their layers (a click on a layer of this file selects
-  it and zooms to it). Each agent has one row that says what it is doing: at work from its first script until
-  five quiet minutes pass or it says it is done, done with its note, stopped by you, or failed when its last
-  script failed. The window grows and shrinks with its islands, and its last line shows the Figaro version.
-- **Stop** on the row of an agent at work. Its running script ends and fails with a 409 that says the user
-  pressed Stop; pressed between its scripts, its next script in the file is refused with that 409 and runs
-  nothing. The other agents go on.
+- **Islands in the plugin's window.** The slim bar became a window with one island per file, black in
+  Figma's dark theme and white in its light one: its own file first, then each file where agents are at work,
+  until ten quiet minutes after their last script. Open an island for its agents and the recent changes with
+  their layers (a click on a layer of this file selects it and zooms to it); it unfolds and moves the islands
+  under it down. Each agent has one row that says what it is doing: at work from its first script until five
+  quiet minutes pass or it says it is done, done with its note, stopped by you, or failed when its last script
+  failed. The error of its last script stays under its name until a script of its succeeds. The window grows
+  and shrinks with its islands, and its last line shows the Figaro version.
+- **Stop** on the row of an agent at work, shown while you point at the row. Its running script ends and fails
+  with a 409 that says the user pressed Stop; pressed between its scripts, its next script in the file is
+  refused with that 409 and runs nothing. The other agents go on.
 - **`figaro done "<note>"`**: an agent says it is done in a file, for now. Its row shows the note until its
   next script there that can change the file: a last look with `shot` or `link` leaves it.
 - **Update.** When a new release is out, an **Update to X.Y.Z** button appears next to the version. Once no
@@ -33,7 +35,7 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 - The plugin's window is titled **Figaro Relay**. In Figma's menu the plugin is still **Figaro**.
 - A failed script no longer flashes the bar red for two seconds: the window lists it with the file's recent
-  changes, and an agent that goes quiet after one shows as failed, with the error.
+  changes and puts the error under the agent's name, and an agent that goes quiet after one shows as failed.
 
 ### Upgrading from 1.0.0
 

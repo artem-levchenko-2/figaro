@@ -96,8 +96,8 @@ do. Once, in Figma Desktop: **Plugins → Development → Import plugin from
 manifest…**, then pick `plugin/manifest.json` in Figaro's folder.
 
 **3. Run it in your file.** Choose **Plugins → Development → Figaro**. A small
-window, **Figaro Relay**, opens with a black island: your file's name, and next
-to it who is at work there. Keep it open while you work.
+window, **Figaro Relay**, opens with an island for your file: its name, and
+next to it who is at work there. Keep it open while you work.
 
 Your agent checks the connection with `figaro doctor`. That's all: give it its
 [first task](#your-first-task).
@@ -439,11 +439,13 @@ Three small pieces, all on your computer. When your agent runs `figaro shot sel`
    notes what changed and sends back the answer, usually in a fraction of a
    second.
 
-The plugin's window shows a black island for its file, and one more for each
-other file where agents are at work. Click an island for its agents and the
-recent changes. An agent's row says what it is doing: at work, done (with a
-note for you), stopped or failed; one at work has a **Stop** button. A click on
-a changed layer selects it in Figma. At the bottom of the window: Figaro's
+The plugin's window shows an island for its file, and one more for each other
+file where agents are at work: black in Figma's dark theme, white in its light
+one. Click an island for its agents and the recent changes. An agent's row says
+what it is doing: at work, done (with a note for you), stopped or failed, and
+the error of its last script stays under its name until a script of its
+succeeds. Point at an agent at work for its **Stop** button. A click on a
+changed layer selects it in Figma. At the bottom of the window: Figaro's
 version, and an **Update** button when a new one is out.
 
 <details>

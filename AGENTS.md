@@ -185,7 +185,12 @@ the check stays silent.
 - **The window is 320 px wide and as tall as its islands and its last line**: `ui.html` measures itself and
   `code.js` calls `figma.ui.resize`. The header above it (icon, title, close button) is Figma's: a plugin can
   put nothing there but the title, "Figaro Relay", which `figma.showUI` sets and only a new `showUI` changes,
-  restarting the window. The menu shows the manifest's name, "Figaro".
+  restarting the window. The menu shows the manifest's name, "Figaro". Figma applies a resize a frame or two
+  late, so while an island opens the window grows ahead of it (`fit`), or its bottom is cut off on the way.
+- **Figma's theme reaches the window** through `themeColors: true`: Figma sets the `--figma-color-*` variables
+  and marks `<html>` `figma-light` or `figma-dark`. The islands take their colours from the `--is-*` tokens in
+  `ui.html`, which `html.figma-light` redefines: black islands in the dark theme, white ones with a hairline
+  edge on a grey-blue ground in the light one.
 - **The keep-awake tone.** While scripts run, the window plays an inaudible tone (20 Hz, −66 dBFS); without it
   Chromium throttles a background Figma to up to a minute per step. Meanwhile macOS doesn't sleep
   (`pmset -g assertions` shows Figma "Playing audio"). The tone stops 3 minutes after the last script or

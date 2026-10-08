@@ -3,29 +3,37 @@
 <head>
 <meta charset="utf-8">
 <style>
-/* The plugin's window: one black island per file — this file first, then each
-   file where agents are at work, until ten quiet minutes after their last
-   script — and under them a line with the Figaro version. Figma draws the header above (40 px: the plugin's icon and name, the
-   close button) and a 1 px line under it; the islands keep 6 px from that line,
-   or it reads as their border. They line up with the header: indicators and
-   avatars on the icon's centre (x 24), names on the title's left edge (x 41),
-   chevrons and Stop buttons on the close button's centre (20 px from the
-   right). The window's corners are 13 px and the islands sit 6 px in, so
-   theirs are 13 − 6 = 7 px, and they are 6 px apart. */
+/* The plugin's window: one island per file — this file first, then each file
+   where agents are at work, until ten quiet minutes after their last script —
+   and under them a line with the Figaro version. Figma draws the
+   header above (40 px: the plugin's icon and name, the close button) and a
+   1 px line under it; the islands keep 6 px from that line, or it reads as
+   their border. They line up with the header: indicators and avatars on the
+   icon's centre (x 24), names on the title's left edge (x 41), chevrons on
+   the close button's centre (20 px from the right). Inside an island what
+   starts 9 px from its left edge ends 9 px from its right one (x 15 to 305).
+   The window's corners are 13 px and the islands sit 6 px in, so theirs are
+   13 − 6 = 7 px, and they are 6 px apart. */
 * { box-sizing: border-box; }
 :root {
   /* Figma's own window (themeColors), for what sits outside the islands */
   --win-bg: var(--figma-color-bg, #2c2c2c);
   --win-dim: var(--figma-color-text-secondary, rgba(255, 255, 255, .7));
   --win-faint: var(--figma-color-text-tertiary, rgba(255, 255, 255, .4));
-  /* the islands: one dark look in both Figma themes */
+  /* the islands: black in Figma's dark theme, white in its light one (below) */
   --is-bg: #0b0b0c;
+  --is-edge: transparent;
   --is-text: #f4f4f6;
   --is-dim: rgba(244, 244, 246, .6);
   --is-faint: rgba(244, 244, 246, .38);
   --is-line: rgba(255, 255, 255, .08);
   --is-fill: rgba(255, 255, 255, .1);
   --is-fill-2: rgba(255, 255, 255, .18);
+  --is-hover: rgba(255, 255, 255, .08);
+  --is-tint: 32%;                /* how much of its colour a hovered button takes */
+  --is-err: #ff8b74;
+  --is-comp: #b58cff;
+  --is-ink: #fff;                /* what a callout's code mixes its colour with */
   --ok: #14ae5c;
   --run: #0d99ff;
   --run-hover: #0b88e3;
@@ -35,6 +43,26 @@
   --idle: #8e8e93;
   --sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   --sys-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+/* Figma's light theme (themeColors marks the page figma-light): white islands
+   with a hairline edge on a grey-blue ground, the same layout. */
+html.figma-light {
+  --win-bg: #eef1f5;
+  --win-dim: rgba(26, 32, 44, .68);
+  --win-faint: rgba(26, 32, 44, .5);
+  --is-bg: #ffffff;
+  --is-edge: rgba(26, 32, 44, .12);
+  --is-text: #1b1d22;
+  --is-dim: rgba(26, 32, 44, .62);
+  --is-faint: rgba(26, 32, 44, .48);
+  --is-line: rgba(26, 32, 44, .09);
+  --is-fill: rgba(26, 32, 44, .06);
+  --is-fill-2: rgba(26, 32, 44, .1);
+  --is-hover: rgba(26, 32, 44, .05);
+  --is-tint: 16%;
+  --is-err: #d23a1d;
+  --is-comp: #8a55f5;
+  --is-ink: #000;
 }
 html, body { margin: 0; background: var(--win-bg); overflow: hidden; }
 body { font-family: var(--sys); -webkit-font-smoothing: antialiased; }
@@ -50,7 +78,7 @@ button { font: inherit; }
 @keyframes rise { from { grid-template-rows: 0fr; margin-top: 0; opacity: 0; } }
 @keyframes pop { from { transform: scale(.96); } }
 @keyframes sink { to { grid-template-rows: 0fr; margin-top: 0; opacity: 0; } }
-.island { --pad: 9px; --bpad: 4px; min-height: 0; overflow: hidden; border-radius: 7px; background: var(--is-bg); color: var(--is-text); font-size: 12px; line-height: 16px; }
+.island { --pad: 9px; --bpad: 4px; min-height: 0; overflow: hidden; border-radius: 7px; background: var(--is-bg); box-shadow: inset 0 0 0 1px var(--is-edge); color: var(--is-text); font-size: 12px; line-height: 16px; }
 .row { height: 30px; display: flex; align-items: center; gap: 4px; padding-right: var(--bpad); }
 .tg { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 8px; padding: 0 0 0 var(--pad); border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
 .tg:focus-visible, .chev:focus-visible { outline: 2px solid var(--run); outline-offset: -2px; border-radius: 7px; }
@@ -64,27 +92,48 @@ button { font: inherit; }
 .lbl b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .lbl .sub { flex: 0 4 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--is-dim); font-variant-numeric: tabular-nums; }
 .right { flex: none; display: flex; align-items: center; gap: 4px; }
-.ib { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 10px; background: var(--is-fill); color: var(--is-text); cursor: pointer; }
-.ib:hover { background: color-mix(in srgb, var(--err) 32%, transparent); color: #ff8b74; }
-.ib:disabled { opacity: .5; cursor: default; background: var(--is-fill); color: var(--is-text); }
+.ib { width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 9px; background: var(--is-fill); color: var(--is-text); cursor: pointer; }
+.ib:hover { background: color-mix(in srgb, var(--err) var(--is-tint), transparent); color: var(--is-err); }
+.ib:disabled { cursor: default; background: var(--is-fill); color: var(--is-faint); }
 .sq { width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
 .ind .sq { color: var(--idle); }
-.chev { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--is-faint); cursor: pointer; transition: transform .2s ease; }
+.chev { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--is-faint); cursor: pointer; }
 .chev svg { width: 10px; height: 10px; }
 .island.open .chev { transform: rotate(180deg); }
 
+/* An island opens by growing its panel from nothing, pushing the islands under
+   it down, and closes the same way back; the window follows it (fit). */
+.fold { display: grid; grid-template-rows: 1fr; }
+.fold > div { min-height: 0; overflow: hidden; }
 .panel { padding-bottom: 5px; border-top: 1px solid var(--is-line); }
-.panel.anim { animation: drop .22s cubic-bezier(.2, .8, .2, 1); }
-@keyframes drop { from { opacity: 0; transform: translateY(-6px); } }
+.island.opening .fold { animation: unfold .36s cubic-bezier(.45, 0, .2, 1) both; }
+.island.opening .panel { animation: drop .36s cubic-bezier(.2, .8, .2, 1) both; }
+.island.opening .chev { animation: chev-open .36s cubic-bezier(.45, 0, .2, 1); }
+.island.closing .fold { animation: refold .3s cubic-bezier(.4, 0, .2, 1) forwards; }
+.island.closing .panel { animation: lift .22s ease forwards; }
+.island.closing .chev { animation: chev-close .3s cubic-bezier(.4, 0, .2, 1); }
+.island.closing .sub { animation: appear .3s ease; }
+@keyframes unfold { from { grid-template-rows: 0fr; } }
+@keyframes refold { to { grid-template-rows: 0fr; } }
+@keyframes drop { from { opacity: 0; transform: translateY(-8px); } }
+@keyframes lift { to { opacity: 0; transform: translateY(-4px); } }
+@keyframes chev-open { from { transform: rotate(0deg); } }
+@keyframes chev-close { from { transform: rotate(180deg); } }
+@keyframes appear { from { opacity: 0; } }
 .sect { padding: 11px var(--pad) 3px; color: var(--is-faint); font-size: 10px; line-height: 12px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
-.callout { --c: var(--idle); display: grid; gap: 4px; margin: 6px calc(var(--pad) - 6px) 0; padding: 6px 6px 8px; border-radius: 5px; background: color-mix(in srgb, var(--c) 13%, var(--is-bg)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 32%, transparent); }
+.callout { --c: var(--idle); display: grid; gap: 4px; margin: 6px calc(var(--pad) - 6px) 0; padding: 6px 6px 8px; border-radius: 5px; background: color-mix(in srgb, var(--c) 13%, var(--is-bg)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) var(--is-tint), transparent); }
 .callout .h { min-height: 18px; display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .callout p, .callout code { margin: 0 0 0 26px; }
 .callout p { color: var(--is-dim); font-size: 11.5px; line-height: 16px; }
-.callout code { color: color-mix(in srgb, var(--c) 45%, #fff); font: 11px/15px var(--sys-mono); overflow-wrap: anywhere; }
-/* An agent: its name and what it is doing, its Stop while it works, and
-   under them the note it left (done) or the error it stopped at (failed). */
-.agent { padding: 0 var(--bpad) 0 var(--pad); }
+.callout code { color: color-mix(in srgb, var(--c) 45%, var(--is-ink)); font: 11px/15px var(--sys-mono); overflow-wrap: anywhere; }
+/* An agent: its name and what it is doing, and under them the note it left
+   (done) or the error its last script stopped at. An agent at work shows its
+   Stop while the pointer is on it, in a highlight 4 px in from the island's
+   edges, with the avatar and the Stop 5 px in from its ends. The Stop makes
+   room first and then appears; going, it fades first. */
+.agent { margin: 0 calc(var(--pad) - 5px); padding: 0 5px; border-radius: 14px; }
+.agent[data-agent] { transition: background-color .18s ease; }
+.agent.hot, .agent.held { background: var(--is-hover); }
 .ah { height: 28px; display: flex; align-items: center; gap: 8px; }
 .av { width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--av, #7b61ff); color: #fff; font-size: 10px; font-weight: 700; }
 .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -93,39 +142,44 @@ button { font: inherit; }
 .st .spin { width: 10px; height: 10px; border-width: 1.5px; }
 .st .chk svg { width: 10px; height: 10px; }
 .st .sq { width: 6px; height: 6px; color: var(--is-faint); }
-.act { flex: none; width: 20px; height: 20px; margin-left: -2px; }
-.msg { margin: -4px 0 0; padding: 0 26px 7px 26px; color: var(--is-text); font-size: 11.5px; line-height: 15px; overflow-wrap: anywhere; }
-.msg.err { color: #ff8b74; }
+.act { flex: none; width: 0; height: 18px; margin-left: -8px; display: flex; justify-content: flex-end;
+  transition: width .2s cubic-bezier(.4, 0, .2, 1) .05s, margin-left .2s cubic-bezier(.4, 0, .2, 1) .05s; }
+.act .ib { flex: none; opacity: 0; transform: scale(.6); pointer-events: none; transition: opacity .1s ease, transform .14s ease; }
+.hot .act, .held .act, .agent:focus-within .act { width: 18px; margin-left: -2px; transition-delay: 0s; transition-timing-function: cubic-bezier(.2, .8, .2, 1); }
+.hot .act .ib, .held .act .ib, .agent:focus-within .act .ib { opacity: 1; transform: none; pointer-events: auto;
+  transition: opacity .16s ease .06s, transform .22s cubic-bezier(.2, .8, .2, 1) .04s; }
+.msg { margin: -4px 0 0; padding: 0 0 7px 26px; color: var(--is-text); font-size: 11.5px; line-height: 15px; overflow-wrap: anywhere; }
+.msg.err { color: var(--is-err); }
 .feed { display: grid; padding-bottom: 2px; }
 .ev { display: grid; grid-template-columns: 26px minmax(0, 1fr); padding: 5px var(--pad); }
 .ev .t { color: var(--is-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
 .ev .s { min-width: 0; overflow-wrap: anywhere; }
 .ev .s em { color: var(--is-dim); font-style: normal; }
-.ev.err .s b { color: #ff8b74; }
+.ev.err .s b { color: var(--is-err); }
 .ev.stop .s b { color: var(--is-dim); }
 .layers { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 .layer { height: 20px; max-width: 100%; display: inline-flex; align-items: center; gap: 4px; padding: 0 7px 0 5px; border: 0; border-radius: 5px; background: var(--is-fill); color: var(--is-text); font: 500 11px/1 var(--sys); }
 button.layer { cursor: pointer; }
-button.layer:hover { background: color-mix(in srgb, var(--run) 32%, transparent); }
+button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), transparent); }
 .layer.gone { opacity: .45; }
 .layer.gone span { text-decoration: line-through; }
 .layer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer svg { width: 12px; height: 12px; flex: none; color: var(--is-dim); }
-.layer.comp svg { color: #b58cff; }
+.layer.comp svg { color: var(--is-comp); }
 .more { align-self: center; padding: 0 2px; color: var(--is-faint); font-size: 11px; }
 
 /* The window's last line, under the islands: the Figaro version, always, and on
    the right a newer release to update to, the update under way, or newer
-   plugin code to reload. It keeps the islands' inner edges: the text from x 15,
-   the button ending at x 310 like the Stop buttons above it. Why an update
-   failed takes a line of its own above it, its button staying on the last line. */
+   plugin code to reload. It keeps the islands' inner edges, x 15 to 305. Why
+   an update failed takes a line of its own above it, its button staying on
+   the last line. */
 .foot { margin-top: 6px; color: var(--win-faint); font-size: 11px; font-weight: 500; }
-.foot .line { height: 22px; display: flex; align-items: center; gap: 8px; padding: 0 4px 0 9px; white-space: nowrap; }
+.foot .line { height: 22px; display: flex; align-items: center; gap: 8px; padding: 0 9px; white-space: nowrap; }
 .foot .ver { flex: none; }
 .foot .what { margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--win-dim); }
 .foot .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .foot .spin { flex: none; width: 10px; height: 10px; border-width: 1.5px; }
-.foot .why { display: flex; gap: 6px; padding: 3px 4px 3px 9px; color: var(--win-dim); line-height: 16px; overflow-wrap: anywhere; }
+.foot .why { display: flex; gap: 6px; padding: 3px 9px; color: var(--win-dim); line-height: 16px; overflow-wrap: anywhere; }
 .foot .warn { flex: none; height: 16px; display: grid; place-items: center; color: var(--wait); }
 .foot .warn svg { width: 12px; height: 12px; }
 .go { flex: none; height: 22px; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; border: 0; border-radius: 11px; background: var(--run); color: #fff; font: 600 11px/1 var(--sys); cursor: pointer; }
@@ -135,9 +189,9 @@ button.layer:hover { background: color-mix(in srgb, var(--run) 32%, transparent)
 .go.build:hover { background: color-mix(in srgb, var(--build) 85%, #000); }
 
 @media (prefers-reduced-motion: reduce) {
-  .panel.anim, .slot.enter, .slot.enter > .island, .slot.leave { animation: none; }
+  .slot.enter, .slot.enter > .island, .slot.leave, .island.opening :is(.fold, .panel, .chev) { animation: none; }
+  .agent[data-agent], .act, .act .ib { transition: none; }
   .spin { animation-duration: 2.4s; }
-  .chev { transition: none; }
 }
 </style>
 </head>
@@ -260,6 +314,8 @@ let version = "";              // the bridge's Figaro version, kept while it rec
 let outdated = false;          // the bridge has newer plugin code than this window runs
 const local = new Map();       // exec id -> {agent, since}: for a bridge without boards
 const open = new Set();        // the islands that are open, by id
+const closing = new Map();     // id -> when it began to close: its panel folds away first
+let hot = "";                  // the agent row the pointer is on: island id + "\n" + agent
 const stopping = new Map();    // doc + "\n" + agent -> when the user pressed its Stop
 const goneLayers = new Set();  // Recent layers that are no longer in the file
 
@@ -421,16 +477,24 @@ function callout(f) {
   return "";
 }
 
-// An agent's row: what it is doing, and its Stop while it works. Another
-// file's agents can be stopped too: the bridge knows them all.
+// An agent's row: what it is doing. One at work has its Stop, shown while the
+// pointer is on the row (hot) and while the Stop is under way (held); another
+// file's agents can be stopped too, as the bridge knows them all. The error
+// of an agent's last script stays under its name, at work or not, until a
+// script of its succeeds: Recent says "Script failed" meanwhile.
 function agentRow(f, a) {
-  let st, act = "", msg = "";
+  let st, act = "", msg = "", cls = "agent", data = "";
+  const err = a.error ? `<p class="msg err">${a.error.line ? `Line ${a.error.line}: ` : ""}${esc(a.error.text)}</p>` : "";
   if (a.st === "working") {
     st = `<span class="spin"></span>working ${clockSpan(a.since)}`;
+    msg = err;
     if (f.doc) {
       const pressed = stopping.has(f.doc + "\n" + a.name);
       const tip = pressed ? "Stopping…" : "Stop " + a.name;
-      act = `<button type="button" class="ib" data-act="stop" data-agent="${esc(a.name)}" title="${esc(tip)}" aria-label="${esc(tip)}"${pressed ? " disabled" : ""}><span class="sq"></span></button>`;
+      act = `<span class="act"><button type="button" class="ib" data-act="stop" data-agent="${esc(a.name)}" title="${esc(tip)}" aria-label="${esc(tip)}"${pressed ? " disabled" : ""}><span class="sq"></span></button></span>`;
+      data = ` data-agent="${esc(a.name)}"`;
+      if (pressed) cls += " held";
+      if (hot === f.id + "\n" + a.name) cls += " hot";
     }
   } else if (a.st === "done") {
     st = `<span class="chk">${ICON.check}</span>done · ${agoShort(a.at)}`;
@@ -439,11 +503,11 @@ function agentRow(f, a) {
     st = '<span class="sq"></span>stopped by you';
   } else if (a.st === "failed") {
     st = `<span class="dot" style="--c: var(--err)"></span>failed · ${agoShort(a.at)}`;
-    msg = `<p class="msg err">${a.error.line ? `Line ${a.error.line}: ` : ""}${esc(a.error.text)}</p>`;
+    msg = err;
   } else {
     st = `idle · ${agoShort(a.at)}`;
   }
-  return `<div class="agent"><div class="ah">${av(a.name)}<span class="nm">${esc(a.name)}</span><span class="st">${st}</span><span class="act">${act}</span></div>${msg}</div>`;
+  return `<div class="${cls}"${data}><div class="ah">${av(a.name)}<span class="nm">${esc(a.name)}</span><span class="st">${st}</span>${act}</div>${msg}</div>`;
 }
 
 // Layers of this file are buttons that select and zoom; another file's are only names.
@@ -462,19 +526,24 @@ function event(e, here) {
     + (chips ? `<div class="layers">${chips}</div>` : "") + "</div>";
 }
 
-function panel(f, anim) {
+function panel(f) {
   const on = conn === "ok";
   const list = on ? agentsOf(f) : [];
   const feed = on ? f.recent.slice(0, 5) : [];
-  return `<div class="panel${anim ? " anim" : ""}">` + callout(f)
+  return '<div class="panel">' + callout(f)
     + (list.length ? '<div class="sect">Agents</div>' + list.map((a) => agentRow(f, a)).join("") : "")
     + (feed.length ? '<div class="sect">Recent</div><div class="feed">' + feed.map((e) => event(e, f.here)).join("") + "</div>" : "")
     + "</div>";
 }
 
+// An island that opens or closes keeps its panel in a fold that grows from
+// nothing or shrinks back to it (the CSS above).
 function island(f, cls, anim) {
   const isOpen = open.has(f.id);
-  return `<div class="slot${cls}" data-fid="${esc(f.id)}"><div class="island${isOpen ? " open" : ""}">${row(f)}${isOpen ? panel(f, anim) : ""}</div></div>`;
+  const shut = !isOpen && closing.has(f.id);
+  const state = isOpen ? " open" + (anim ? " opening" : "") : shut ? " closing" : "";
+  return `<div class="slot${cls}" data-fid="${esc(f.id)}"><div class="island${state}">${row(f)}`
+    + (isOpen || shut ? `<div class="fold"><div>${panel(f)}</div></div>` : "") + "</div></div>";
 }
 
 // The window's last line: the Figaro version, and what there is to do about a
@@ -520,6 +589,7 @@ let pressed = false;
 let dirty = false;
 let lastHtml = "";
 let lastSig = "";              // what the islands showed, apart from clocks: signature()
+const ANIM_MS = 400;           // the longest animation: an island coming, going, opening, closing
 
 function schedule() {
   if (pressed) { dirty = true; return; }
@@ -534,12 +604,15 @@ function schedule() {
 
 function render() {
   dirty = false;
-  for (const [key, at] of stopping) if (Date.now() - at > 3000) stopping.delete(key);  // the board says by then
+  const now = Date.now();
+  for (const [key, at] of stopping) if (now - at > 3000) stopping.delete(key);  // the board says by then
+  for (const [id, at] of closing) if (now - at >= ANIM_MS) closing.delete(id);
   lastSig = signature();
   const files = filesNow();
   const byId = new Map(files.map((f) => [f.id, f]));
+  const opening = animId;
   let html = "";
-  let moving = animId !== null;
+  let moving = animId !== null || closing.size > 0;
   for (const f of files) {
     if (shown(f)) {
       const enter = ready && !onScreen.has(f.id);
@@ -566,18 +639,41 @@ function render() {
     app.innerHTML = html;
     lastHtml = html;
   }
+  if (opening !== null) growAhead(opening);
   if (moving) {
-    animUntil = Date.now() + 360;
+    animUntil = Date.now() + ANIM_MS;
     clearTimeout(later);
-    later = setTimeout(schedule, 360);  // then without the animations' classes
+    later = setTimeout(schedule, ANIM_MS);  // then without the animations' classes
   }
   fit();
 }
 
 // The window follows its islands: Figma sizes it from the sandbox (code.js).
+// Figma resizes it a frame or two after it asks, so while an island opens the
+// window grows ahead of it by two frames of its growth (at most LEAD px), never
+// past where it ends and never back: the island and the line under it are
+// never cut off on the way.
+const LEAD = 64;
 let sentHeight = 0;
+let lastHeight = 0;
+let growTo = 0;
+let growUntil = 0;
+function growAhead(id) {
+  const slot = [...app.querySelectorAll(".slot")].find((el) => el.dataset.fid === id);
+  const inner = slot && slot.querySelector(".fold > div");
+  if (!inner || !app.getBoundingClientRect) return;
+  lastHeight = Math.ceil(app.getBoundingClientRect().height);
+  growTo = lastHeight + Math.ceil(inner.scrollHeight);
+  growUntil = Date.now() + ANIM_MS - 20;
+}
 function fit() {
-  const height = Math.ceil(app.getBoundingClientRect ? app.getBoundingClientRect().height : 0);
+  const content = Math.ceil(app.getBoundingClientRect ? app.getBoundingClientRect().height : 0);
+  let height = content;
+  if (content > 0 && Date.now() < growUntil) {
+    const lead = Math.min(LEAD, Math.max(0, 2 * (content - lastHeight)));
+    height = Math.max(content, Math.min(growTo, Math.max(sentHeight, content + lead)));
+  }
+  lastHeight = content;
   if (height > 0 && height !== sentHeight) {
     sentHeight = height;
     parent.postMessage({ pluginMessage: { type: "resize", height } }, "*");
@@ -589,8 +685,14 @@ if (typeof ResizeObserver === "function") new ResizeObserver(fit).observe(app);
 function act(name, fid, el) {
   const f = fid ? filesNow().find((x) => x.id === fid) : null;
   if (name === "toggle" && f) {
-    if (open.has(f.id)) open.delete(f.id);
-    else { open.add(f.id); animId = f.id; }
+    if (open.has(f.id)) {
+      open.delete(f.id);
+      if (!calm()) closing.set(f.id, Date.now());
+    } else {
+      open.add(f.id);
+      closing.delete(f.id);
+      animId = f.id;
+    }
     render();
   } else if (name === "stop" && f && f.doc && el.dataset.agent) {
     stopping.set(f.doc + "\n" + el.dataset.agent, Date.now());
@@ -606,6 +708,25 @@ function act(name, fid, el) {
     parent.postMessage({ pluginMessage: { type: "select", id: el.dataset.id } }, "*");
   }
 }
+
+// The pointer on an agent's row: the window is drawn anew from its state, so
+// the new rows take `hot` from here, and a redraw neither drops the highlight
+// nor plays its fade again.
+function point(key) {
+  if (key === hot) return;
+  hot = key;
+  for (const el of app.querySelectorAll(".agent[data-agent]")) {
+    const slot = el.closest("[data-fid]");
+    el.classList.toggle("hot", !!slot && slot.dataset.fid + "\n" + el.dataset.agent === key);
+  }
+}
+document.addEventListener("pointerover", (e) => {
+  const row = e.target && e.target.closest ? e.target.closest(".agent[data-agent]") : null;
+  const slot = row && row.closest("[data-fid]");
+  point(slot ? slot.dataset.fid + "\n" + row.dataset.agent : "");
+});
+document.addEventListener("pointerout", (e) => { if (!e.relatedTarget) point(""); });  // it left the window
+const calm = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
 document.addEventListener("click", (e) => {
   const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;

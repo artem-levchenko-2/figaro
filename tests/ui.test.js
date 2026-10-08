@@ -3,9 +3,11 @@
 // The keep-awake tone starts with a request from the bridge, stops 3 min after
 // the last one, and stops at once when the bridge goes away: it never plays
 // while the bridge is down. The islands show what the bridge's `board` says —
-// each agent at work, done, stopped or failed — the line under them the Figaro
-// version and a newer one, and their buttons send the bridge and the sandbox
-// what they should.
+// each agent at work, done, stopped or failed, and the error of its last script
+// until one succeeds — the line under them the Figaro version and a newer one,
+// and their buttons send the bridge and the sandbox what they should. An
+// agent's Stop shows while the pointer is on its row; an island's panel folds
+// open and shut, at once for those who ask for less motion.
 //
 //     node tests/ui.test.js
 const fs = require("fs");
@@ -48,8 +50,9 @@ function makeClock() {
 }
 
 // Load the window's script with a stub WebSocket (the test opens, feeds and
-// drops it) and a stub AudioContext whose state is the tone.
-function load() {
+// drops it) and a stub AudioContext whose state is the tone. `calm`: the
+// system asks for less motion.
+function load({ calm = false } = {}) {
   const clock = makeClock();
   const sockets = [];
   const contexts = [];
@@ -78,7 +81,7 @@ function load() {
     visibilityState: "hidden",
     addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
   };
-  const window = {};
+  const window = { matchMedia: (q) => ({ matches: calm && /reduce/.test(q) }) };
   const parent = { postMessage: (m) => posted.push(m.pluginMessage) };
   new Function("document", "window", "parent", "WebSocket", "AudioContext",
                "setTimeout", "clearTimeout", "setInterval", "Date", "console", script)(
@@ -100,6 +103,12 @@ function load() {
       const el = { dataset: Object.assign({ act }, data), disabled: false,
                    closest: (sel) => (sel === "[data-fid]" ? slot : null) };
       for (const fn of listeners.click || []) fn({ target: { closest: (sel) => (sel === "[data-act]" ? el : null) } });
+    },
+    // The pointer on an agent's row, or with no agent anywhere else in the window.
+    point(fid, name) {
+      const slot = { dataset: { fid } };
+      const row = name ? { dataset: { agent: name }, closest: (sel) => (sel === "[data-fid]" ? slot : null) } : null;
+      for (const fn of listeners.pointerover || []) fn({ target: { closest: (sel) => (sel === ".agent[data-agent]" ? row : null) } });
     },
   };
   return env;
@@ -191,17 +200,24 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
           [/<span class="ver">Figaro 1\.1\.0<\/span>/.test(closed), closed.indexOf('class="foot"') > closed.lastIndexOf('class="slot')], [true, true]);
     env.click("toggle", "here");
     const open = env.html();
-    check("open: the agent's own row says it works, and has its Stop",
-          [/working/.test(open), /data-act="stop" data-agent="designer"/.test(open)], [true, true]);
+    check("open: its panel grows from nothing", /class="island open opening"/.test(open), true);
+    check("…the agent's own row says it works, its Stop there but hidden",
+          [/working/.test(open), /data-act="stop" data-agent="designer"/.test(open), /class="agent hot"/.test(open)], [true, true, false]);
     check("…and the island's row keeps only the file's name", /class="sub"/.test(open), false);
+    env.point("here", "designer");
+    await env.clock.advance(400);
+    check("the pointer on the row shows its Stop, through the redraw after the opening",
+          [/class="agent hot" data-agent="designer"/.test(env.html()), /opening/.test(env.html())], [true, false]);
     env.click("stop", "here", { agent: "designer" });
     check("Stop asks the bridge to stop that agent", env.sent("stop"), [{ type: "stop", doc: "doc:KEY1", agent: "designer" }]);
     check("…and the button waits for it", /disabled/.test(env.html()), true);
 
+    env.point("here", null);
     env.board([file("KEY1", "Dashboard", {
       agents: [agent("designer", { since: ago(12), last: ago(1) })],
       recent: [{ agent: "designer", at: ago(1), kind: "ok", summary: "Created KPI card",
                  layers: [{ id: "5:6", name: "KPI card", type: "COMPONENT" }] }] })]);
+    check("…shown while it waits, the pointer gone", /class="agent held" data-agent="designer"/.test(env.html()), true);
     await env.clock.advance(MIN);
     check("between its scripts the agent is still at work", /working/.test(env.html()), true);
     check("open: the recent changes, and the version still under them",
@@ -209,8 +225,8 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.click("layer", "here", { id: "5:6" });
     check("a layer of this file: select it in Figma", env.posted.filter((m) => m.type === "select"), [{ type: "select", id: "5:6" }]);
     await env.clock.advance(4 * MIN);
-    check("five quiet minutes after its last script it is idle",
-          [/working/.test(env.html()), /idle · <span[^>]*>5m</.test(env.html())], [false, true]);
+    check("five quiet minutes after its last script it is idle, with no room kept for a Stop",
+          [/working/.test(env.html()), /idle · <span[^>]*>5m</.test(env.html()), /class="act"/.test(env.html())], [false, true, false]);
 
     env.board([file("KEY1", "Dashboard", { agents: [
       agent("designer", { since: ago(300), last: ago(200), done: { text: "Check the card", at: ago(1) } })] })]);
@@ -229,10 +245,29 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
       error: { text: "Cannot read properties of null", line: 14, at: ago(1) } })] })]);
     await env.clock.advance(400);
     check("a failed script while the agent works: it is still at work", /designer <span data-clock[^>]*>4:1/.test(env.html()), true);
+    env.click("toggle", "here");
+    check("…its row says so, with the error under its name",
+          /data-agent="designer">.*?working.*?<p class="msg err">Line 14: Cannot read properties of null<\/p>/.test(env.html()), true);
+    env.click("toggle", "here");
+    check("closing: the panel folds away first", [/class="island closing"/.test(env.html()), /class="fold"/.test(env.html())], [true, true]);
+    await env.clock.advance(400);
+    check("…then the island is its row alone", [/closing/.test(env.html()), /class="fold"/.test(env.html())], [false, false]);
     await env.clock.advance(5 * MIN);
     check("…and when it goes quiet after it: failed", /designer failed/.test(env.html()), true);
     env.click("toggle", "here");
     check("…with the error under its name", /Line 14: Cannot read properties of null/.test(env.html()), true);
+  }
+
+  // ─── less motion ────────────────────────────────────────────────────────
+  {
+    const env = load({ calm: true });
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard")]);
+    await env.clock.advance(400);
+    env.click("toggle", "here");
+    env.click("toggle", "here");
+    check("the system asks for less motion: an island closes at once", /closing|class="fold"/.test(env.html()), false);
   }
 
   // ─── other files ────────────────────────────────────────────────────────
