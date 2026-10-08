@@ -105,8 +105,8 @@ sometimes it never answers.
 - Text that wraps — `h.wrapText(text)`; a one-line label — HUG.
 - Neighbours of one size: cards in a row — FILL with the same gap, or GRID (`layoutMode = "GRID"`,
   `gridColumnCount`).
-- After building — `shot` and Read: cut-off text, spacing that collapsed and layers that stick out of their
-  frame show only in a picture.
+- After building — `shot`, and look at the picture: cut-off text, spacing that collapsed and layers that stick
+  out of their frame show only in a picture.
 
 ## A component with properties
 
@@ -182,7 +182,7 @@ return { id: set.id };
 
 ## Before the review
 
-- [ ] `figaro shot` of the new work, and Read: nothing cut off, collapsed or sticking out of its frame.
+- [ ] `figaro shot` of the new work, and look at it: nothing cut off, collapsed or sticking out of its frame.
 - [ ] `figaro inspect`: colours and texts use styles or variables wherever the file has them.
 - [ ] Neighbours are equal, the grid is even, no "TBC" or "Lorem".
 - [ ] Variants only along real axes, the rest are properties.

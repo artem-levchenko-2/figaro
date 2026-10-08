@@ -6,19 +6,18 @@
 
 ### Put your coding agent to work in Figma
 
-*Give Claude Code a link to a frame and a task. It reads the real file, builds
-with your components, styles and variables, checks a picture of what it made,
-and stops for your review. Everything runs on your Mac.*
+*Give Claude Code, Codex, Cursor or any other coding agent a link to a frame
+and a task. It reads the real file, builds with your components, styles and
+variables, checks a picture of what it made, and stops for your review.
+Everything runs on your computer.*
 
-**Figaro** is the barber of Seville, the fixer the whole town calls for at
-once: *Figaro here, Figaro there.* This one answers in every Figma file you
-open.
+**Figaro here, Figaro there** — in every Figma file you open.
 
 [![License](https://img.shields.io/badge/license-MIT-64748b?style=flat)](LICENSE)
 [![Figma Desktop](https://img.shields.io/badge/Figma-Desktop-a259ff?style=flat)](https://www.figma.com/downloads/)
-[![macOS](https://img.shields.io/badge/macOS-ready-0acf83?style=flat)](#install)
+[![OS](https://img.shields.io/badge/OS-macOS_%C2%B7_Windows-0acf83?style=flat)](#install)
 [![Python](https://img.shields.io/badge/python-3.9%2B-1abcfe?style=flat)](#install)
-[![Claude Code](https://img.shields.io/badge/Claude_Code-skill_included-f24e1e?style=flat)](#your-first-task)
+[![Agents](https://img.shields.io/badge/agents-Claude_Code_%C2%B7_Codex_%C2%B7_Cursor_%C2%B7_more-f24e1e?style=flat)](#works-with-your-agent)
 
 &nbsp;
 
@@ -40,6 +39,9 @@ auto-layout, styles and variables, and builds with them.
 
 - 🔗&nbsp; **Paste a link, get to work.** Copy a link to any layer and hand it
   to your agent. Every command takes Figma links.
+- 🤖&nbsp; **Bring your own agent.** Claude Code, Codex, Cursor, Gemini CLI or
+  anything else that runs terminal commands. The installer hands each of them
+  Figaro's skill.
 - 👀&nbsp; **It looks before and after.** The agent reads a layer down to its
   tokens and component keys, and takes a picture of what it built to check it.
 - 🧩&nbsp; **It builds the way your team does.** Real components and variants,
@@ -50,17 +52,17 @@ auto-layout, styles and variables, and builds with them.
   the last one can be undone.
 - 👯&nbsp; **Several agents, several files.** Each file has its own queue, so
   agents working side by side never mix up their changes.
-- 🏠&nbsp; **It stays on your Mac.** No Figma token, no account, no cloud: a
-  small local server and a plugin you import once.
+- 🏠&nbsp; **It stays on your computer.** No Figma token, no account, no cloud:
+  a small local server and a plugin you import once.
 
-Free and open source, for Figma Desktop on macOS. Windows works too, with less
-testing.
+Free and open source, for Figma Desktop on macOS and Windows.
 
 ---
 
 ## Contents
 
 - ⬇️&nbsp; [Install](#install)
+- 🤖&nbsp; [Works with your agent](#works-with-your-agent)
 - 💬&nbsp; [Your first task](#your-first-task)
 - 🧰&nbsp; [What it can do](#what-it-can-do)
 - 🛟&nbsp; [Safety net](#safety-net)
@@ -73,10 +75,9 @@ testing.
 
 ## Install
 
-You need a Mac with **[Figma Desktop](https://www.figma.com/downloads/)**. The
-browser version of Figma can't run development plugins. Figaro also uses Git
-and Python 3.9+, which come with Apple's developer tools: if `git --version`
-answers in Terminal, you're set, and if not, `xcode-select --install` adds them.
+You need [Figma Desktop](https://www.figma.com/downloads/), Git and Python
+3.9+. On a Mac, `xcode-select --install` adds Git and Python. The steps are for
+macOS; for Windows, open *Windows* below them.
 
 **1. Get Figaro.** Paste this into Terminal:
 
@@ -114,8 +115,9 @@ That's all. Now give your agent its [first task](#your-first-task).
   `Pillow`.
 - Writes the `figaro` command to `~/.local/bin`. It runs the code in
   `~/figaro` from any folder.
-- Links the agent skill into `~/.claude/skills/figaro`, so every Claude Code
-  session on your Mac has it.
+- Links the agent skill into `~/.claude/skills/figaro` for Claude Code and
+  `~/.agents/skills/figaro` for Codex and other agents. See
+  [which agent reads what](#works-with-your-agent).
 
 Running it again is safe: it fixes only what is missing, and it never
 overwrites a file it didn't make. If Terminal can't find `figaro`, put
@@ -152,9 +154,7 @@ delete `~/figaro`.
 
 <br>
 
-The bridge and the command are plain Python, and `start-bridge.ps1` starts the
-bridge on Windows. There is no installer, so set it up by hand in PowerShell,
-in the folder you cloned:
+There's no installer for Windows yet. In PowerShell, in the folder you cloned:
 
 ```powershell
 python -m venv venv; .\venv\Scripts\pip install -r requirements.txt
@@ -162,8 +162,42 @@ python -m venv venv; .\venv\Scripts\pip install -r requirements.txt
 .\venv\Scripts\python figaro.py doctor
 ```
 
-For Claude Code, copy `skill\figaro` to `%USERPROFILE%\.claude\skills\figaro`.
-Windows gets less testing than macOS.
+Then copy `skill\figaro` into `%USERPROFILE%\.claude\skills\` for Claude Code
+and into `%USERPROFILE%\.agents\skills\` for other agents. Windows gets less
+testing than macOS.
+
+</details>
+
+---
+
+## Works with your agent
+
+Figaro works with any coding agent that can run commands in a terminal. The
+installer hands your agents its [skill](skill/figaro/SKILL.md), a playbook for
+working in Figma, in the two folders they read:
+
+- `~/.claude/skills` for **Claude Code**;
+- `~/.agents/skills` for **Codex**, **Cursor**, **Gemini CLI**,
+  **GitHub Copilot**, **OpenCode**, **Cline** and others.
+
+Another agent? Run `bash ~/figaro/tools/install.sh --skills <its folder>`, or
+ask it to read `~/figaro/skill/figaro/SKILL.md` first.
+
+<details>
+<summary>🔐 <b>Let your agent run figaro</b></summary>
+
+<br>
+
+Every `figaro` call goes to the bridge at `127.0.0.1:8788`. Agents ask before
+they run a new command, and some run commands in a sandbox with no network.
+Allow `figaro` once, for good:
+
+| Agent | What to do |
+| :-- | :-- |
+| Claude&nbsp;Code | When it asks, choose *Yes, and don't ask again* for `figaro` |
+| Codex | Its sandbox blocks `127.0.0.1`, so it asks to run `figaro` outside. Allow that for good, or add `prefix_rule(pattern = ["figaro"])` to `~/.codex/rules/default.rules` |
+| Cursor | Add `figaro` to the allowlist in **Settings → Agents → Approvals & Execution**: allowlisted commands run outside the sandbox |
+| Others | Approve `figaro` when asked, for the session or for good |
 
 </details>
 
@@ -172,7 +206,7 @@ Windows gets less testing than macOS.
 ## Your first task
 
 In Figma, right-click a layer and choose **Copy link to selection** (⌘L). Then
-open Claude Code in any folder and ask for something with that link:
+open your agent in any folder and ask for something with that link:
 
 | You ask | The agent |
 | :-- | :-- |
@@ -194,18 +228,6 @@ Each file has a queue, so scripts from different agents run one at a time and
 never mix. Give each agent a name with `-A designer` or
 `FIGARO_AGENT=designer`: the name shows in the queue, and `figaro undo` takes
 back only that agent's work.
-
-</details>
-
-<details>
-<summary>🤖 <b>Other agents</b></summary>
-
-<br>
-
-Any agent that can run shell commands can use Figaro: Codex, Cursor, Gemini CLI
-or a script of your own. Point it at
-[`skill/figaro/SKILL.md`](skill/figaro/SKILL.md), the playbook Claude Code
-reads.
 
 </details>
 
@@ -409,7 +431,7 @@ roll them back, and `undo` refuses after a script that made them.
 
 ## How it works
 
-Three small pieces, all on your Mac. When your agent runs `figaro shot sel`:
+Three small pieces, all on your computer. When your agent runs `figaro shot sel`:
 
 1. **The `figaro` command** turns it into a few lines of JavaScript and sends
    them to the bridge.
@@ -461,7 +483,7 @@ at the first broken link it says what to do.
 | **504,&nbsp;out&nbsp;of&nbsp;time** | It may still be running, so look at the file before you retry. If the file stays blocked after the script has ended, run `figaro clear -T <file>` |
 | **"Older&nbsp;build"** | The plugin in that file runs older code. Run `figaro reload -T <file>`, or run the plugin again |
 | **zsh:&nbsp;no&nbsp;matches&nbsp;found** | Put the link in quotes |
-| **Mac&nbsp;won't&nbsp;sleep** | Figma "plays audio": the silent tone that keeps a background Figma quick. It stops three minutes after the last script, or as soon as the bridge stops |
+| **Computer&nbsp;won't&nbsp;sleep** | Figma "plays audio": the silent tone that keeps a background Figma quick. It stops three minutes after the last script, or as soon as the bridge stops |
 | **Port&nbsp;8788&nbsp;taken** | `lsof -nP -iTCP:8788 -sTCP:LISTEN` shows who listens. Stop only a `bridge.py` you started, with `bash start-bridge.sh --stop`. Never `kill` everything `lsof -ti` prints: Figma itself is on that list |
 
 More cases, each with its fix, are in
@@ -474,7 +496,7 @@ More cases, each with its fix, are in
 ## Privacy
 
 Figaro has no server of its own, no account and no telemetry. Your files, your
-scripts and the pictures it takes stay on your Mac and in Figma.
+scripts and the pictures it takes stay on your computer and in Figma.
 
 - The bridge listens on `127.0.0.1` only and turns away requests from web
   pages.

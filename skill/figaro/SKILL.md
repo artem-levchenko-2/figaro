@@ -43,9 +43,9 @@ The references next to this file — read each one when you reach its step:
 2. **Change it in one script** (`exec`, section 4). One script is one action on the file and one Cmd+Z step.
 3. **Check the report.** After a script the CLI prints `changed: +3 −1 ~14 (fills, characters)` and
    `created: "Card" <link>` — is that what you meant to change?
-4. **Look at the picture.** `figaro shot <layer>` after building and after every fix, then open the file with
-   Read: spacing, alignment, cut-off text and fonts show only in a picture. Numbers (sizes, spacing) come
-   from `inspect` or an `-R` script.
+4. **Look at the picture.** `figaro shot <layer>` after building and after every fix, then open the PNG it
+   prints: spacing, alignment, cut-off text and fonts show only in a picture. Numbers (sizes, spacing) come
+   from `inspect` or an `-R` script. If you can't open images, say so and ask the user to look.
 5. **Fix in place.** Don't rebuild what is already right.
 6. **Stop for review** after the first component or block: a link, a shot, what was done. Go on once the
    user answers.
@@ -55,7 +55,7 @@ The references next to this file — read each one when you reach its step:
 | Command | What it does |
 |---|---|
 | `figaro inspect <layer> [--depth N]` | everything about a layer: auto-layout, sizes, padding, radii, fills with style and variable names, texts with their styles and segments, instances with their component and properties; at the end, the keys of the components, styles and variables it uses. `--json` or `-o file.json` for data |
-| `figaro shot <layer>… [--width N] [--format svg]` | a picture in `/tmp/figaro/shots/<file key>/`; prints the path — open it with Read. A tall layer comes in parts `-p1`, `-p2`…; SVG turns text into outlines, `--svg-text` keeps it text |
+| `figaro shot <layer>… [--width N] [--format svg]` | a picture in `/tmp/figaro/shots/<file key>/`; prints the path — open the PNG to see it. A tall layer comes in parts `-p1`, `-p2`…; SVG turns text into outlines, `--svg-text` keeps it text |
 | `figaro tree <layer> [--depth 2] [--layout]` | the layer tree: name, type, id, size; `--layout` adds auto-layout |
 | `figaro find <layer> name=X` · `name~X` · `type=INSTANCE` · `text~X` | search inside a layer; `--hidden` includes layers hidden in instances |
 | `figaro sel` | what the user has selected, with links |
@@ -77,7 +77,7 @@ and `--raw` (the whole JSON answer).
 
 The readers `inspect`, `shot`, `tree`, `find`, `sel`, `link` and `doctor` change nothing and answer within
 milliseconds. `text`, `variant`, `clone`, `icomp` and `rm` write to the file, as `exec` does. Without `figaro`
-on PATH: `<Figaro folder>/venv/bin/python <Figaro folder>/figaro.py …`.
+on PATH: `<Figaro folder>/venv/bin/python <Figaro folder>/figaro.py …` (on Windows, `venv\Scripts\python`).
 
 ## 4. The script
 
@@ -95,7 +95,9 @@ JS
 - A script is the body of an async function. It gets `figma`, `h` (`helpers.md`), `print(...)` (`log:` lines
   in the answer) and `lib` (`--lib`). Its result is what `return` gives back: ids, names and numbers, not
   nodes or whole trees.
-- `<<'JS'` in quotes keeps the shell away from `$` and backticks in the code. Or use `-f script.js`.
+- `<<'JS'` in quotes keeps the shell away from `$` and backticks in the code. Or use `-f script.js`: when the
+  user allowed `figaro` by a command rule (Codex), a plain `figaro …` line runs without asking and a heredoc
+  doesn't.
 - One script is one transaction: read and change in the same call. Between two calls the user or another
   agent may change the file.
 - Keep a script under ~10 s: it holds the file, and everyone else waits. Bulk edits go in batches of ~25

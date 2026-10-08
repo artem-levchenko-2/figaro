@@ -6,8 +6,9 @@ Figaro lets AI agents work in Figma Desktop. `figaro.py` (the CLI) sends a scrip
 `new Function("figma", "print", "h", body)`. Each Figma file has its own queue: one script at a time per
 file, so parallel agents never interleave their edits.
 
-How agents *use* Figaro is the skill in `skill/figaro/` (`SKILL.md` and `references/`); `tools/install.sh`
-installs it for every Claude Code session on the machine, together with the `figaro` command.
+How agents *use* Figaro is the skill in `skill/figaro/` (`SKILL.md` and `references/`), in the open Agent
+Skills format. `tools/install.sh` installs the `figaro` command and links the skill into `~/.claude/skills`
+(Claude Code) and `~/.agents/skills` (Codex and other agents).
 
 ## Commands
 
@@ -28,8 +29,8 @@ venv/bin/python tests/live_exec.py       # the exec core against real Figma, ~15
 venv/bin/python tests/live_cli.py        # the CLI commands against real Figma, ~30 s
 venv/bin/python tests/live_stress.py 20  # the file queue under load, ~10 s
 
-bash tools/install.sh                    # `figaro` in ~/.local/bin and the skill in ~/.claude/skills
-bash tools/install.sh --uninstall        # remove both, only if they are ours
+bash tools/install.sh                    # `figaro` in ~/.local/bin, the skill in ~/.claude/skills and ~/.agents/skills
+bash tools/install.sh --uninstall        # remove them, only if they are ours
 bash start-bridge.sh                     # (re)start the bridge in the background; log in /tmp/figaro-bridge-8788.log
 bash start-bridge.sh --stop              # stop it
 figaro reload -T "<link>"                # load a changed plugin/ into the running plugin, no re-run by hand
@@ -64,7 +65,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   change tracking, undo), `ui.html` (the bar).
 - `skill/figaro/` — `SKILL.md` (the loop, the commands, safety, house rules) and `references/`:
   `helpers.md`, `craft.md`, `pitfalls.md`. The recipes in them were checked against real Figma.
-- `tools/install.sh` — the command and the skill link; never overwrites what it didn't make.
+- `tools/install.sh` — the command and the skill's links (`~/.claude/skills`, `~/.agents/skills`); never
+  overwrites what it didn't make.
   `start-bridge.sh` / `start-bridge.ps1` — start and stop the bridge (tmux or nohup; per-port session, log
   and pid file).
 - `tests/` — pytest (`test_*.py`), Node (`*.test.js`), live (`live_*.py`, with `live_file.py`), and
@@ -76,7 +78,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 
 - **Changed a command, a helper or a behaviour — update the skill in the same commit.** `tests/test_install.py`
   checks that the skill names every CLI command. The installed skill is a symlink to `skill/figaro/`, so an
-  uncommitted edit there is live in every Claude Code session at once: don't leave it half done.
+  uncommitted edit there is live in every agent's session at once: don't leave it half done.
+- **The skill is for any agent.** Claude Code, Codex, Cursor and others read the same `SKILL.md`, so it names
+  no agent's own tools: "open the PNG", not "open it with Read".
 - **Any change to `plugin/code.js` or `plugin/ui.html`** → bump `PLUGIN_VERSION` in `plugin/code.js` (date
   and counter, `2026-10-08.1`) and add its line to `tests/plugin_fingerprint.json` — the failing
   `pytest tests/test_plugin_version.py` prints it. Without that the bridge can't tell that Figma runs an

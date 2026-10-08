@@ -6,6 +6,7 @@ Read the `hint:` in the answer first: the bridge knows most of the cases below.
 
 | What you see | What it is | What to do |
 |---|---|---|
+| `connection: [Errno 1] Operation not permitted` | your own sandbox keeps commands off the network, 127.0.0.1 included (Codex, Cursor) | run `figaro` outside the sandbox: ask the user to approve that, and to allow `figaro` for good |
 | `plugin not connected` (503), "open … in Figma and run … Figaro there" | the plugin is not running in that file | tell the user: open the link in Figma and run Plugins → Development → Figaro (⌘⌥P repeats the last plugin). Don't poll in a loop |
 | `N files connected — specify a target` (409), "ambiguous" | several files, and no target or an ambiguous one | `-T` with a key or a link; `figaro targets` |
 | `file busy` (503) | another agent has held the file longer than `--queue-timeout` | nothing ran — retry later; the message says who holds it |

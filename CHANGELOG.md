@@ -20,8 +20,10 @@ The first release of Figaro.
   wherever a file or a layer is expected.
 - **The bridge**: one queue per Figma file, checkpoints in the file's version history, a change report for
   every script, read-only runs that roll back, a guarded `undo`, hints for known errors. The CLI starts it on
-  demand, and it exits after three idle hours.
+  demand (`start-bridge.sh`, or `start-bridge.ps1` on Windows), and it exits after three idle hours. When an
+  agent's sandbox keeps the CLI off the network, the error says so.
 - **The Figaro plugin** with thirty `h.*` helpers for auto-layout, text and fonts, variables, components and
   variants, and a deadline for every script.
-- **A Claude Code skill** (`skill/figaro`) and `tools/install.sh`, which installs the command and the skill
-  for every session.
+- **An agent skill** (`skill/figaro`) in the open Agent Skills format, for Claude Code, Codex, Cursor and
+  other agents, and `tools/install.sh`, which installs the command and links the skill into
+  `~/.claude/skills` and `~/.agents/skills`.

@@ -29,6 +29,7 @@ import figma_links
 
 HERE = Path(__file__).resolve().parent
 START = HERE / "start-bridge.sh"
+START_PS1 = HERE / "start-bridge.ps1"  # Windows has no bash
 SHOTS = Path(os.environ.get("FIGARO_SHOTS") or "/tmp/figaro/shots")
 TILE = 1600          # px: taller pictures are cut into parts about this high
 # After starting the bridge: how long to wait for the open plugin windows (each
@@ -100,13 +101,14 @@ def autostart(host, port):
     if _started or os.environ.get("FIGARO_AUTOSTART", "1") == "0":
         return False
     _started = True
-    if host not in LOCAL_HOSTS or not START.exists():
+    script, cmd = start_command(port)
+    if host not in LOCAL_HOSTS or not script.exists():
         return False
-    say(f"  no bridge answered on {port} — starting it: bash {START}")
+    say(f"  no bridge answered on {port} — starting it: {' '.join(cmd)}")
     try:
         # A session of its own: the bridge must outlive this call and whatever
         # process group the agent's shell kills when it is done.
-        r = subprocess.run(["bash", str(START)], env=dict(os.environ, FIGARO_PORT=str(port)),
+        r = subprocess.run(cmd, env=dict(os.environ, FIGARO_PORT=str(port)),
                            stdin=subprocess.DEVNULL, capture_output=True, text=True,
                            timeout=40, start_new_session=True)
     except (OSError, subprocess.SubprocessError) as e:
@@ -118,6 +120,15 @@ def autostart(host, port):
         return False
     _wait_for_plugins(host, port)
     return True
+
+
+def start_command(port, windows=os.name == "nt"):
+    """The script that starts the bridge and the command that runs it:
+    start-bridge.sh, or start-bridge.ps1 on Windows, which has no bash."""
+    if windows:
+        return START_PS1, ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                           str(START_PS1), "-Port", str(port)]
+    return START, ["bash", str(START)]
 
 
 def _wait_for_plugins(host, port):

@@ -20,6 +20,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -455,6 +456,30 @@ def test_a_failed_start_says_why(tmp_path, monkeypatch, capsys):
     fake_start(tmp_path, monkeypatch, body="echo 'port is taken by another program'; exit 1")
     assert cli_extras.autostart("127.0.0.1", 1) is False
     assert "port is taken by another program" in capsys.readouterr().err
+
+
+def test_windows_starts_the_bridge_with_powershell(monkeypatch):
+    script, cmd = cli_extras.start_command(8790, windows=True)
+    assert script.name == "start-bridge.ps1" and script.exists()
+    assert cmd[0] == "powershell" and cmd[cmd.index("-File") + 1] == str(script)
+    assert cmd[-2:] == ["-Port", "8790"]
+    script, cmd = cli_extras.start_command(8790, windows=False)
+    assert cmd == ["bash", str(script)] and script.name == "start-bridge.sh"
+
+
+def test_a_sandbox_that_blocks_localhost_is_named(monkeypatch, capsys):
+    """Codex's and Cursor's sandboxes refuse the connect itself: no autostart, a hint."""
+    def blocked(*a, **k):
+        raise urllib.error.URLError(PermissionError(1, "Operation not permitted"))
+
+    monkeypatch.setattr(urllib.request, "urlopen", blocked)
+    monkeypatch.setattr(cli_extras, "autostart", lambda *a: pytest.fail("no autostart"))
+    status, resp = figaro._request("GET", "/status")
+    assert status == 0 and resp["hint"] == figaro.SANDBOXED
+    assert figaro.cmd_doctor(None) == 1
+    assert figaro.SANDBOXED in capsys.readouterr().out
+    assert figaro.cmd_targets(None) == 1
+    assert "hint: a sandbox" in capsys.readouterr().err
 
 
 def free_port():

@@ -81,6 +81,11 @@ QUEUE_TIMEOUT = None  # max seconds to wait for a busy file; bridge default = --
 READ_ONLY = False  # the plugin rolls back whatever the script changed
 CHECKPOINT = None  # a label forces a checkpoint, False skips it, None = hourly rule
 
+# An agent's sandbox that keeps commands off the network (Codex, Cursor) blocks
+# 127.0.0.1 too: the call fails with "Operation not permitted", not "refused".
+SANDBOXED = ("a sandbox keeps this command off the network, 127.0.0.1 included. Run figaro "
+             "outside the sandbox: ask the user to approve that, or to allow figaro for good")
+
 KNOWN_CMDS = {
     "exec", "status", "targets", "clear", "doctor", "sel", "tree", "find", "text", "variant",
     "clone", "rm", "import-component", "icomp", "undo", "reload",
@@ -124,7 +129,10 @@ def _request(method, path, payload=None, timeout=65):
         # Nothing listens — start our bridge once and ask again.
         if isinstance(e.reason, ConnectionRefusedError) and cli_extras.autostart(HOST, PORT):
             return _request(method, path, payload, timeout)
-        return 0, {"ok": False, "error": f"connection: {e.reason}"}
+        resp = {"ok": False, "error": f"connection: {e.reason}"}
+        if isinstance(e.reason, PermissionError):
+            resp["hint"] = SANDBOXED
+        return 0, resp
     except TimeoutError:
         return 0, {"ok": False, "error": "request timed out"}
 
@@ -231,6 +239,8 @@ def cmd_status(args):
 
 def cmd_targets(args):
     status, resp = _request("GET", "/targets")
+    if status == 0:  # no bridge to ask
+        return _emit(resp)
     files = resp.get("files") or []
     if not files:
         print("no files connected — Run the Figaro plugin in each Figma file",
@@ -256,6 +266,8 @@ def cmd_clear(args):
     status, resp = _request("POST", "/clear", payload)
     if status != 200:
         print(resp.get("error", "clear failed"), file=sys.stderr)
+        if resp.get("hint"):
+            print(f"   hint: {resp['hint']}", file=sys.stderr)
         return 2
     cleared = resp.get("cleared") or []
     print(f"cleared {len(cleared)} abandoned script(s) on {resp.get('file')!r}"
@@ -279,6 +291,8 @@ def cmd_undo(args):
         return _emit(resp, raw=True)
     if not resp.get("ok"):
         print(f"figaro: {resp.get('error', 'undo failed')}", file=sys.stderr)
+        if resp.get("hint"):
+            print(f"   hint: {resp['hint']}", file=sys.stderr)
         return 1
     v = resp.get("value") or {}
     done = v.get("undone") or {}
@@ -299,6 +313,8 @@ def cmd_reload(args):
         return _emit(resp, raw=True)
     if not resp.get("ok"):
         print(f"figaro: {resp.get('error', 'reload failed')}", file=sys.stderr)
+        if resp.get("hint"):
+            print(f"   hint: {resp['hint']}", file=sys.stderr)
         return 1
     print(f"plugin {resp.get('plugin')} runs in \"{resp.get('file')}\" "
           f"({resp.get('elapsed_ms')} ms)")
@@ -316,8 +332,8 @@ def cmd_doctor(args):
 
     status, resp = _request("GET", "/status")
     if status == 0:
-        fail(f"bridge not answering on {HOST}:{PORT} — {resp.get('error')}",
-             f"start it:  bash {cli_extras.START}   (Windows: .\\start-bridge.ps1)")
+        start = f"start it:  bash {cli_extras.START}   (Windows: .\\start-bridge.ps1)"
+        fail(f"bridge not answering on {HOST}:{PORT} — {resp.get('error')}", resp.get("hint") or start)
         return 1
     if status == 403:
         fail(f"bridge refused the request: {resp.get('error')}",
