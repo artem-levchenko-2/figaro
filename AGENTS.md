@@ -154,6 +154,13 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 2. Set `VERSION` in `bridge.py` and `version` in `pyproject.toml` to `X.Y.Z` (`tests/test_bridge.py` checks
    both against the changelog).
 3. Commit, then tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+4. Publish the release on GitHub with its changelog section as the notes, each bullet on one line (release
+   notes turn every line break into a break on the page):
+
+   ```sh
+   awk '/^## \[X.Y.Z\]/ {f = 1; next} /^## \[/ {f = 0} f' CHANGELOG.md | perl -0pe 's/\n +(?=[^\s-])/ /g' |
+     gh release create vX.Y.Z --title "Figaro X.Y.Z" --notes-file -
+   ```
 
 Every six hours a running bridge reads this repository's `vX.Y.Z` tags from GitHub (`REPO` in `bridge.py`)
 and, when there is a newer one, the plugin bar offers an Update button that opens the release. A private
