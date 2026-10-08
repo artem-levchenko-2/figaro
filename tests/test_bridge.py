@@ -466,7 +466,7 @@ def test_find_hint(error_text, expected):
     ({"value": 42}, "42"),
     ({"value": True}, "true"),
     ({"value": None}, "null"),
-    ({"value": {"a": [1, "Привіт"]}}, '{\n  "a": [\n    1,\n    "Привіт"\n  ]\n}'),
+    ({"value": {"a": [1, "Done — ✓"]}}, '{\n  "a": [\n    1,\n    "Done — ✓"\n  ]\n}'),
     ({"value": None, "text": "Done"}, "Done"),          # no return value
     ({"value": None, "text": "NaN"}, "NaN"),            # value can't say it
     ({"value": 1, "text": "from an older plugin"}, "from an older plugin"),

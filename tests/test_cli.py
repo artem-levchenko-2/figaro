@@ -589,12 +589,12 @@ def test_exec_reads_stdin_as_utf8(monkeypatch):
         def __init__(self, data):
             self.buffer = io.BytesIO(data)
 
-    script = "return 'Grüße ✓ 日本'"
+    script = "return 'Total: €5 — paid ✓ 🎨'"
     for data in (script.encode("utf-8"), b"\xef\xbb\xbf" + script.encode("utf-8")):
         monkeypatch.setattr(sys, "stdin", Stdin(data))
         assert figaro.read_stdin() == script
-    monkeypatch.setattr(sys, "stdin", Stdin("return 'café'".encode("cp1252")))
-    assert figaro.read_stdin().startswith("return 'caf")  # not UTF-8: no crash
+    monkeypatch.setattr(sys, "stdin", Stdin("return '© 2026 — €5'".encode("cp1252")))
+    assert figaro.read_stdin().startswith("return '")  # not UTF-8: no crash
 
 
 def test_start_hint_names_this_computers_script():

@@ -380,11 +380,11 @@ def test_big_script_and_big_result():
 def test_unicode_names_and_agents():
     async def go():
         c = await make_client()
-        async with SandboxPlugin(c, "Макет 🎨 — фінал", "docUNICODE1"):
-            r = await call(c, {"op": "rmw"}, target="фінал", agent="дизайнер 👩‍🎨")
+        async with SandboxPlugin(c, "Checkout 🎨 — final", "docUNICODE1"):
+            r = await call(c, {"op": "rmw"}, target="🎨 — final", agent="designer 👩‍🎨")
             assert r.status == 200
             files = (await (await c.get("/targets")).json())["files"]
-            assert files[0]["name"] == "Макет 🎨 — фінал"
+            assert files[0]["name"] == "Checkout 🎨 — final"
         await c.close()
     run(go())
 

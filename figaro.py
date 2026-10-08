@@ -112,8 +112,8 @@ def force_utf8_output():
 
 def read_stdin():
     """The script on stdin, read as UTF-8: on Windows Python reads a pipe in the
-    ANSI code page, which would turn the Cyrillic in a script's texts into
-    mojibake, and Figma would get that."""
+    ANSI code page, which garbles every character outside ASCII in a script's
+    texts, and Figma would get them garbled."""
     data = sys.stdin.buffer.read()
     try:
         return data.decode("utf-8-sig")
