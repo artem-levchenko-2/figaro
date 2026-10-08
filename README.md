@@ -28,6 +28,8 @@ Everything runs on your computer.*
 
 </div>
 
+![The Figaro window in Figma: an agent at work in this file with another one next in the queue, what they changed, and agents in two other files](assets/hero.png)
+
 ## Why
 
 ### Screenshots show an agent the design. Figaro hands it the file.

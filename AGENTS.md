@@ -120,6 +120,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   `plugin_fingerprint.json`.
 - `assets/banner.svg` — the README's banner, drawn by `assets/banner.py` (run it after changing the
   letters or the colours).
+- `assets/hero.png` — the README's picture: the plugin's real window (`plugin/ui.html` with a made-up board)
+  and notes pointing at it, shot at 2x; its corners match the banner's. Redo it when the window changes.
 
 ## Rules
 
