@@ -210,7 +210,7 @@ def test_timed_out_script_interlocks_the_file_until_it_finishes():
 
 def test_outdated_plugin_is_told_to_rerun():
     """A plugin running an older build than plugin/code.js gets an `outdated`
-    message (the bar asks for a re-Run), /status flags it, and every exec reply
+    message (the window offers Reload), /status flags it, and every exec reply
     carries a notice so an agent sees it too. A current build gets none."""
     async def go():
         c = await make_client()
@@ -244,7 +244,7 @@ def test_outdated_plugin_is_told_to_rerun():
 
 def test_new_release_is_offered_to_plugins():
     """When a newer vX.Y.Z is released, connected plugins get an `update`
-    message (the bar shows "New version X.Y.Z" + Update to the release page),
+    message (the window offers "Update to X.Y.Z"),
     a plugin connecting later gets it at hello, /status reports it and exec
     replies carry a notice. The same or an older release offers nothing."""
     async def go():
@@ -510,7 +510,7 @@ def test_loopback_listens_on_ipv4_and_ipv6():
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows restarts through start-bridge.ps1")
 def test_ipv6_survives_a_restart_in_place():
-    """Update and Reload restarts the bridge in place, right after it closed the
+    """Update or Reload restarts the bridge in place, right after it closed the
     plugins' sockets: their [::1] ends wait in TIME_WAIT, which once made the
     ::1 check fail, and the new bridge listened on 127.0.0.1 alone."""
     import socket

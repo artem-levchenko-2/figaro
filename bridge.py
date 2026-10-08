@@ -477,7 +477,7 @@ async def plugin_ws_handler(request: web.Request):
                     fut.set_result(True)
                 continue
 
-            # A button in the window: Stop, Update and Reload, Reload.
+            # A button in the window: Stop, Update, Reload.
             if await bridge_board.handle(conn_id, m):
                 continue
 
@@ -1148,7 +1148,7 @@ def main():
                     help="exit after this long with no plugin connected and no requests "
                          "(seconds, or 30m / 3h; 0 = never)")
     args = ap.parse_args()
-    # Update and Reload starts this same command again
+    # Update or Reload in the window starts this same command again
     bridge_update.RESTART.update(argv=sys.argv[1:], port=args.port)
 
     if args.host in ("127.0.0.1", "localhost", "::1"):
@@ -1191,7 +1191,7 @@ def _bind_hosts(host, port):
     Skipped quietly where IPv6 is unavailable.
 
     The check binds the way the server will: with SO_REUSEADDR off Windows, as
-    asyncio does. Without it, after a restart in place (Update and Reload) the
+    asyncio does. Without it, after a restart in place (Update or Reload) the
     plugins' just-closed sockets, waiting in TIME_WAIT, made the check fail.
     """
     if host != "127.0.0.1":

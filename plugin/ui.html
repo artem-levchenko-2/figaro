@@ -5,7 +5,7 @@
 <style>
 /* The plugin's window: one black island per file — this file first, then each
    file where agents are at work, until ten quiet minutes after their last
-   script. Figma draws the header above (40 px: the plugin's icon and name, the
+   script — and under them a line with the Figaro version. Figma draws the header above (40 px: the plugin's icon and name, the
    close button) and a 1 px line under it; the islands keep 6 px from that line,
    or it reads as their border. They line up with the header: indicators and
    avatars on the icon's centre (x 24), names on the title's left edge (x 41),
@@ -17,6 +17,7 @@
   /* Figma's own window (themeColors), for what sits outside the islands */
   --win-bg: var(--figma-color-bg, #2c2c2c);
   --win-dim: var(--figma-color-text-secondary, rgba(255, 255, 255, .7));
+  --win-faint: var(--figma-color-text-tertiary, rgba(255, 255, 255, .4));
   /* the islands: one dark look in both Figma themes */
   --is-bg: #0b0b0c;
   --is-text: #f4f4f6;
@@ -39,16 +40,6 @@ html, body { margin: 0; background: var(--win-bg); overflow: hidden; }
 body { font-family: var(--sys); -webkit-font-smoothing: antialiased; }
 button { font: inherit; }
 #app { padding: 6px; }
-
-/* A newer Figaro: the closest a plugin gets to Figma's header, which it can't
-   touch — the arrow under the icon, the version under the title, the button
-   ending under the cross. */
-.uprow { height: 22px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; padding: 0 4px 0 9px; color: var(--win-dim); font-size: 11px; font-weight: 500; }
-.uprow .ind svg { width: 14px; height: 14px; color: var(--run); }
-.uprow .ind.warn svg { color: var(--wait); }
-.uprow .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.uprow .go { margin-left: auto; flex: none; height: 22px; padding: 0 11px; border: 0; border-radius: 11px; background: var(--run); color: #fff; font: 600 11px/1 var(--sys); cursor: pointer; }
-.uprow .go:hover { background: var(--run-hover); }
 
 /* A slot grows and shrinks around its island as it comes and goes. */
 .slot { display: grid; grid-template-rows: 1fr; }
@@ -78,24 +69,19 @@ button { font: inherit; }
 .ib:disabled { opacity: .5; cursor: default; background: var(--is-fill); color: var(--is-text); }
 .sq { width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
 .ind .sq { color: var(--idle); }
-.chip { height: 20px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 0; border-radius: 10px; background: var(--is-fill); color: var(--is-text); font: 600 11px/1 var(--sys); white-space: nowrap; cursor: pointer; }
-.chip:hover { background: var(--is-fill-2); }
-.chip.build { background: var(--build); color: #fff; }
 .chev { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--is-faint); cursor: pointer; transition: transform .2s ease; }
 .chev svg { width: 10px; height: 10px; }
 .island.open .chev { transform: rotate(180deg); }
 
-.panel { padding-bottom: 2px; border-top: 1px solid var(--is-line); }
-.panel.bare { padding-bottom: 5px; }
+.panel { padding-bottom: 5px; border-top: 1px solid var(--is-line); }
 .panel.anim { animation: drop .22s cubic-bezier(.2, .8, .2, 1); }
 @keyframes drop { from { opacity: 0; transform: translateY(-6px); } }
 .sect { padding: 11px var(--pad) 3px; color: var(--is-faint); font-size: 10px; line-height: 12px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
 .callout { --c: var(--idle); display: grid; gap: 4px; margin: 6px calc(var(--pad) - 6px) 0; padding: 6px 6px 8px; border-radius: 5px; background: color-mix(in srgb, var(--c) 13%, var(--is-bg)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 32%, transparent); }
 .callout .h { min-height: 18px; display: flex; align-items: center; gap: 8px; font-weight: 600; }
-.callout p, .callout code, .callout .acts { margin: 0 0 0 26px; }
+.callout p, .callout code { margin: 0 0 0 26px; }
 .callout p { color: var(--is-dim); font-size: 11.5px; line-height: 16px; }
 .callout code { color: color-mix(in srgb, var(--c) 45%, #fff); font: 11px/15px var(--sys-mono); overflow-wrap: anywhere; }
-.callout .acts { display: flex; gap: 6px; margin-top: 4px; }
 /* An agent: its name and what it is doing, its Stop while it works, and
    under them the note it left (done) or the error it stopped at (failed). */
 .agent { padding: 0 var(--bpad) 0 var(--pad); }
@@ -127,7 +113,26 @@ button.layer:hover { background: color-mix(in srgb, var(--run) 32%, transparent)
 .layer svg { width: 12px; height: 12px; flex: none; color: var(--is-dim); }
 .layer.comp svg { color: #b58cff; }
 .more { align-self: center; padding: 0 2px; color: var(--is-faint); font-size: 11px; }
-.foot { margin-top: 6px; padding: 8px var(--pad) 9px; border-top: 1px solid var(--is-line); color: var(--is-faint); font-size: 11px; }
+
+/* The window's last line, under the islands: the Figaro version, always, and on
+   the right a newer release to update to, the update under way, or newer
+   plugin code to reload. It keeps the islands' inner edges: the text from x 15,
+   the button ending at x 310 like the Stop buttons above it. Why an update
+   failed takes a line of its own above it, its button staying on the last line. */
+.foot { margin-top: 6px; color: var(--win-faint); font-size: 11px; font-weight: 500; }
+.foot .line { height: 22px; display: flex; align-items: center; gap: 8px; padding: 0 4px 0 9px; white-space: nowrap; }
+.foot .ver { flex: none; }
+.foot .what { margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--win-dim); }
+.foot .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.foot .spin { flex: none; width: 10px; height: 10px; border-width: 1.5px; }
+.foot .why { display: flex; gap: 6px; padding: 3px 4px 3px 9px; color: var(--win-dim); line-height: 16px; overflow-wrap: anywhere; }
+.foot .warn { flex: none; height: 16px; display: grid; place-items: center; color: var(--wait); }
+.foot .warn svg { width: 12px; height: 12px; }
+.go { flex: none; height: 22px; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; border: 0; border-radius: 11px; background: var(--run); color: #fff; font: 600 11px/1 var(--sys); cursor: pointer; }
+.go:hover { background: var(--run-hover); }
+.go svg { width: 10px; height: 10px; margin-left: -1px; }
+.go.build { background: var(--build); }
+.go.build:hover { background: color-mix(in srgb, var(--build) 85%, #000); }
 
 @media (prefers-reduced-motion: reduce) {
   .panel.anim, .slot.enter, .slot.enter > .island, .slot.leave { animation: none; }
@@ -251,6 +256,7 @@ let board = null;              // the bridge's last `board`, its times on this w
 let shift = null;              // this window's clock minus the bridge's, in ms
 let activeFor = 300 * 1000;    // an agent is at work this long after its last script; the board says
 let update = null;             // a newer release, from a bridge without boards
+let version = "";              // the bridge's Figaro version, kept while it reconnects
 let outdated = false;          // the bridge has newer plugin code than this window runs
 const local = new Map();       // exec id -> {agent, since}: for a bridge without boards
 const open = new Set();        // the islands that are open, by id
@@ -262,6 +268,7 @@ function takeBoard(m) {
   if (shift === null) shift = Date.now() - m.now * 1000;
   const t = (s) => (typeof s === "number" ? s * 1000 + shift : 0);
   if (typeof m.active_for === "number") activeFor = m.active_for * 1000;
+  if (m.version) version = m.version;
   board = {
     version: m.version || "", update: m.update || null, stale: !!m.stale,
     updating: m.updating || null, failed: m.failed || null,
@@ -345,7 +352,7 @@ const PALETTE = ["#7b61ff", "#f2711c", "#12a594", "#e5489b", "#3e7bfa", "#b7791f
 const ICON = {
   check: '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="M3.5 6.2 5.2 7.9 8.5 4.4" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   chev: '<svg viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  up: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M8 11.5v-7M5 7.5l3-3 3 3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  up: '<svg viewBox="0 0 10 10"><path d="M5 8.6V1.6M1.9 4.6 5 1.5l3.1 3.1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   warn: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M8 4.5v4.2" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.3" r=".95" fill="#fff"/></svg>',
   FRAME: '<svg viewBox="0 0 12 12"><path d="M4 1.5v9M8 1.5v9M1.5 4h9M1.5 8h9" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>',
   COMPONENT: '<svg viewBox="0 0 12 12"><path fill="currentColor" d="M6 .9 7.7 2.6 6 4.3 4.3 2.6zM6 7.7l1.7 1.7L6 11.1 4.3 9.4zM2.6 4.3 4.3 6 2.6 7.7.9 6zM9.4 4.3 11.1 6 9.4 7.7 7.7 6z"/></svg>',
@@ -387,7 +394,6 @@ function headline(f) {
   }
   const failed = list.find((a) => a.st === "failed");
   if (failed) return { kind: "failed", ind: '<span class="dot" style="--c: var(--err)"></span>', sub: esc(failed.name) + " failed" };
-  if (f.here && stale()) return { kind: "outdated", ind: '<span class="dot" style="--c: var(--build)"></span>', sub: "new build" };
   const done = list.find((a) => a.st === "done");
   if (done) return { kind: "done", ind: `<span class="chk">${ICON.check}</span>`, sub: esc(done.name) + " is done" };
   const stopped = list.find((a) => a.st === "stopped");
@@ -401,8 +407,7 @@ function headline(f) {
 function row(f) {
   const h = headline(f);
   const isOpen = open.has(f.id);
-  let right = h.kind === "outdated" && !isOpen ? '<button type="button" class="chip build" data-act="reload">Reload</button>' : "";
-  right += `<button type="button" class="chev" data-act="toggle" aria-label="${isOpen ? "Collapse" : "Expand"}" tabindex="-1">${ICON.chev}</button>`;
+  const right = `<button type="button" class="chev" data-act="toggle" aria-label="${isOpen ? "Collapse" : "Expand"}" tabindex="-1">${ICON.chev}</button>`;
   const sub = h.sub && !isOpen ? `<span class="sub">${h.sub}</span>` : "";
   return `<div class="row"><button type="button" class="tg" data-act="toggle" aria-expanded="${isOpen}">`
     + `<span class="ind">${h.ind}</span><span class="lbl"><b title="${esc(f.name)}">${esc(f.name)}</b>${sub}</span></button>`
@@ -413,8 +418,6 @@ function callout(f) {
   const h = headline(f);
   if (h.kind === "connecting") return `<div class="callout"><div class="h"><span class="ind">${h.ind}</span>Looking for the bridge</div><p>It runs on this computer and answers in a second or two.</p></div>`;
   if (h.kind === "nobridge") return `<div class="callout"><div class="h"><span class="ind">${h.ind}</span>Waiting for the bridge</div><p>It starts with your agent's first figaro command. To start it now, run <code>figaro doctor</code> in a terminal.</p></div>`;
-  if (h.kind === "outdated") return `<div class="callout" style="--c: var(--build)"><div class="h"><span class="ind">${h.ind}</span>Figaro has a new build</div>`
-    + '<p>Reload the plugin to use it. Scripts in the queue wait.</p><div class="acts"><button type="button" class="chip build" data-act="reload">Reload</button></div></div>';
   return "";
 }
 
@@ -463,12 +466,10 @@ function panel(f, anim) {
   const on = conn === "ok";
   const list = on ? agentsOf(f) : [];
   const feed = on ? f.recent.slice(0, 5) : [];
-  const version = board && board.version;
-  const foot = f.here ? `<div class="foot">Figaro${version ? " " + esc(version) : ""}</div>` : "";
-  return `<div class="panel${anim ? " anim" : ""}${foot ? "" : " bare"}">` + callout(f)
+  return `<div class="panel${anim ? " anim" : ""}">` + callout(f)
     + (list.length ? '<div class="sect">Agents</div>' + list.map((a) => agentRow(f, a)).join("") : "")
     + (feed.length ? '<div class="sect">Recent</div><div class="feed">' + feed.map((e) => event(e, f.here)).join("") + "</div>" : "")
-    + foot + "</div>";
+    + "</div>";
 }
 
 function island(f, cls, anim) {
@@ -476,27 +477,32 @@ function island(f, cls, anim) {
   return `<div class="slot${cls}" data-fid="${esc(f.id)}"><div class="island${isOpen ? " open" : ""}">${row(f)}${isOpen ? panel(f, anim) : ""}</div></div>`;
 }
 
-// A newer release, the update under way, or why it failed.
-function updateRow() {
-  if (conn !== "ok") return "";
-  const doing = board && board.updating;
-  const failed = board && board.failed;
-  const latest = (board && board.update && board.update.latest) || (update && update.latest);
+// The window's last line: the Figaro version, and what there is to do about a
+// newer one — update to a release, or reload newer plugin code from disk. Why
+// an update or a reload failed goes on a line above it.
+function footer() {
+  const on = conn === "ok";
+  const latest = on && ((board && board.update && board.update.latest) || (update && update.latest));
+  const doing = on && board && board.updating;
+  const failed = on && !doing && board && board.failed;
+  let why = "", right = "";
   if (doing) {
     const reload = doing.what === "reload";
     const text = doing.step === "wait" ? (reload ? "Reloads once the scripts finish" : "Updates once the scripts finish")
       : doing.step === "pull" ? `Updating to ${esc(doing.to || latest || "the new version")}…`
       : reload ? "Reloading Figaro…" : "Restarting Figaro…";
-    return `<div class="uprow"><span class="ind"><span class="spin"></span></span><span class="txt">${text}</span></div>`;
+    right = `<span class="spin"></span><span class="txt">${text}</span>`;
+  } else if (failed) {
+    const what = failed.what === "reload" ? "reload" : "update" + (latest ? " to " + esc(latest) : "");
+    why = `<div class="why"><span class="warn">${ICON.warn}</span><span title="${esc(failed.detail || failed.error)}">Couldn't ${what}: ${esc(failed.error)}</span></div>`;
+    if (failed.url) right = `<button type="button" class="go" data-act="release" data-url="${esc(failed.url)}">Open release</button>`;
+  } else if (latest) {
+    right = `<button type="button" class="go" data-act="update" title="Download it, restart the bridge and reload the plugin, once the scripts finish">${ICON.up}Update to ${esc(latest)}</button>`;
+  } else if (on && stale()) {
+    right = '<span class="txt">New build</span><button type="button" class="go build" data-act="reload" title="Reload the plugin with the code on disk, once the scripts finish">Reload</button>';
   }
-  if (failed) {
-    const text = `Couldn't ${failed.what === "reload" ? "reload" : "update"}: ${esc(failed.error)}`;
-    return `<div class="uprow"><span class="ind warn">${ICON.warn}</span><span class="txt" title="${esc(failed.detail || failed.error)}">${text}</span>`
-      + (failed.url ? `<button type="button" class="go" data-act="release" data-url="${esc(failed.url)}">Open release</button>` : "") + "</div>";
-  }
-  if (!latest) return "";
-  return `<div class="uprow"><span class="ind">${ICON.up}</span><span class="txt">${esc(latest)} is out</span>`
-    + '<button type="button" class="go" data-act="update">Update and Reload</button></div>';
+  return `<div class="foot">${why}<div class="line"><span class="ver">Figaro${version ? " " + esc(version) : ""}</span>`
+    + (right ? `<span class="what">${right}</span>` : "") + "</div></div>";
 }
 
 // ─── rendering ───────────────────────────────────────────────────────────
@@ -532,7 +538,7 @@ function render() {
   lastSig = signature();
   const files = filesNow();
   const byId = new Map(files.map((f) => [f.id, f]));
-  let html = updateRow();
+  let html = "";
   let moving = animId !== null;
   for (const f of files) {
     if (shown(f)) {
@@ -552,6 +558,7 @@ function render() {
     const f = lastFiles.get(id);
     if (f) { html += island(f, " leave", false); moving = true; }
   }
+  html += footer();
   lastFiles = byId;
   animId = null;
   ready = true;

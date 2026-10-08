@@ -1,6 +1,6 @@
 """Update and Reload, from the plugin's window.
 
-`update-now` (Update and Reload, when a newer release is out) and `reload-all`
+`update-now` (Update, when a newer release is out) and `reload-all`
 (Reload, when this folder has newer code than what runs) come from any window.
 Both wait until no file runs a script. Then an update pulls the release:
 `git pull --ff-only` in the Figaro folder, and pip when requirements.txt

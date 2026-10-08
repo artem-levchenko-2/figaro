@@ -2,7 +2,7 @@
 
 Figaro lets AI agents work in Figma Desktop. `figaro.py` (the CLI) sends a script over HTTP to `bridge.py`
 (aiohttp on 127.0.0.1:8788), and the bridge passes it over a WebSocket to the Figma development plugin in
-`plugin/` (`code.js` runs in Figma's sandbox, `ui.html` is the plugin's bar). The plugin runs the script as
+`plugin/` (`code.js` runs in Figma's sandbox, `ui.html` is the plugin's window). The plugin runs the script as
 `new Function("figma", "print", "h", body)`. Each Figma file has its own queue: one script at a time per
 file, so parallel agents never interleave their edits.
 
@@ -97,8 +97,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - `bridge_board.py` — what every plugin window shows (the `board`: each file's agents — at work from their
   first script until five quiet minutes or `figaro done`, its note, a failed last script, the user's Stop —
   and recent changes; a read leaves a done or a Stop on show, and `figaro doctor`'s checks (`probe`) stay
-  off it), its buttons (Stop for one agent, Update and Reload, Reload) and `POST /done`.
-- `bridge_update.py` — Update and Reload from the window: waits until no file runs a script,
+  off it), its buttons (Stop for one agent, Update, Reload) and `POST /done`.
+- `bridge_update.py` — the window's Update and Reload: waits until no file runs a script,
   `git pull --ff-only`, reloads the plugins that run older code, restarts the bridge (`os.execv`; on Windows
   `start-bridge.ps1 -Restart`). Scripts sent meanwhile get a 503 and run nothing.
 - `bridge_exec.py` — the bridge's side of exec: the fields it sends (`readOnly`, `checkpoint`, `quick`,
@@ -108,7 +108,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   closes the plugins' connections at once.
 - `figma_links.py` — Figma links: the file key and node id in a link, links to layers for reports.
 - `plugin/` — `manifest.json`, `code.js` (the `HELPERS` object behind `h.*`, running scripts with a deadline,
-  change tracking, undo, selecting a layer from the window), `ui.html` (the window: one island per file).
+  change tracking, undo, selecting a layer from the window), `ui.html` (the window: one island per file,
+  and under them a line with the version, Update and Reload).
 - `skill/figaro/` — `SKILL.md` (the loop, the commands, safety, house rules) and `references/`:
   `helpers.md`, `craft.md`, `pitfalls.md`. The recipes in them were checked against real Figma.
 - `tools/install.sh` — the command and the skill's links (`~/.claude/skills`, `~/.agents/skills`); never
@@ -180,9 +181,10 @@ repository answers 404, and the check stays silent.
 - **Hot reload.** With Figma's *Plugins → Development → Hot reload plugin* on, any write to `plugin/code.js`
   or `ui.html` (even `touch`) restarts the plugin in every file within a second. A running script is cut off
   ("plugin disconnected mid-request") and `undo` forgets everything. Don't touch `plugin/` while agents work.
-- **The window is 320 px wide and as tall as its islands**: `ui.html` measures itself and `code.js` calls
-  `figma.ui.resize`. The header above it (icon, title, close button) is Figma's: a plugin can put nothing
-  there, and its title changes only with a new `figma.showUI`, which restarts the window.
+- **The window is 320 px wide and as tall as its islands and its last line**: `ui.html` measures itself and
+  `code.js` calls `figma.ui.resize`. The header above it (icon, title, close button) is Figma's: a plugin can
+  put nothing there but the title, "Figaro Relay", which `figma.showUI` sets and only a new `showUI` changes,
+  restarting the window. The menu shows the manifest's name, "Figaro".
 - **The keep-awake tone.** While scripts run, the window plays an inaudible tone (20 Hz, −66 dBFS); without it
   Chromium throttles a background Figma to up to a minute per step. Meanwhile macOS doesn't sleep
   (`pmset -g assertions` shows Figma "Playing audio"). The tone stops 3 minutes after the last script or

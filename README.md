@@ -96,8 +96,8 @@ do. Once, in Figma Desktop: **Plugins → Development → Import plugin from
 manifest…**, then pick `plugin/manifest.json` in Figaro's folder.
 
 **3. Run it in your file.** Choose **Plugins → Development → Figaro**. A small
-window opens with a black island: your file's name, and next to it who is at
-work there. Keep it open while you work.
+window, **Figaro Relay**, opens with a black island: your file's name, and next
+to it who is at work there. Keep it open while you work.
 
 Your agent checks the connection with `figaro doctor`. That's all: give it its
 [first task](#your-first-task).
@@ -153,8 +153,8 @@ overwrites a file it didn't make.
 Run `git pull` in Figaro's folder, or ask your agent to update Figaro. Then
 `figaro doctor` says what to restart. If `plugin/manifest.json` changed, import
 the plugin again (step 2). When a new release is out, the plugin's window says
-so: **Update and Reload** pulls it, restarts the bridge and reloads the plugin
-as soon as no script is running.
+so at the bottom, next to the version: **Update** pulls it, restarts the bridge
+and reloads the plugin as soon as no script is running.
 
 To remove Figaro, run the installer with `--uninstall` (`-Uninstall` on
 Windows), remove the plugin under **Plugins → Development → Manage plugins in
@@ -443,7 +443,8 @@ The plugin's window shows a black island for its file, and one more for each
 other file where agents are at work. Click an island for its agents and the
 recent changes. An agent's row says what it is doing: at work, done (with a
 note for you), stopped or failed; one at work has a **Stop** button. A click on
-a changed layer selects it in Figma.
+a changed layer selects it in Figma. At the bottom of the window: Figaro's
+version, and an **Update** button when a new one is out.
 
 <details>
 <summary>🔌 <b>Under the hood</b></summary>
@@ -483,7 +484,7 @@ at the first broken link it says what to do.
 | **"Specify&nbsp;a&nbsp;target"** | The plugin runs in several files, so add `-T "<link>"`. `figaro targets` lists them |
 | **First&nbsp;call&nbsp;fails** | The plugin hasn't connected yet: a Figma window in the background can take up to a minute. Run the command again |
 | **504,&nbsp;out&nbsp;of&nbsp;time** | It may still be running, so look at the file before you retry. If the file stays blocked after the script has ended, run `figaro clear -T <file>` |
-| **"Older&nbsp;build"** | The plugin in that file runs older code. Press **Reload** in its window, or run `figaro reload -T <file>` |
+| **"Older&nbsp;build"** | The plugin in that file runs older code. Press **Reload** at the bottom of its window, or run `figaro reload -T <file>` |
 | **zsh:&nbsp;no&nbsp;matches&nbsp;found** | Put the link in quotes |
 | **Computer&nbsp;won't&nbsp;sleep** | Figma "plays audio": the silent tone that keeps a background Figma quick. It stops three minutes after the last script, or as soon as the bridge stops |
 | **Port&nbsp;8788&nbsp;taken** | `lsof -nP -iTCP:8788 -sTCP:LISTEN` shows who listens. Stop a bridge with `bash start-bridge.sh --stop`, or `start-bridge.ps1 -Stop` on Windows: they stop nothing else. Never `kill` everything `lsof -ti` prints: Figma itself is on that list |

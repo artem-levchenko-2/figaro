@@ -3,8 +3,9 @@
 // The keep-awake tone starts with a request from the bridge, stops 3 min after
 // the last one, and stops at once when the bridge goes away: it never plays
 // while the bridge is down. The islands show what the bridge's `board` says —
-// each agent at work, done, stopped or failed — and their buttons send the
-// bridge and the sandbox what they should.
+// each agent at work, done, stopped or failed — the line under them the Figaro
+// version and a newer one, and their buttons send the bridge and the sandbox
+// what they should.
 //
 //     node tests/ui.test.js
 const fs = require("fs");
@@ -171,6 +172,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("no bridge: the window keeps knocking every 2 s", env.sockets.length, 6);
     check("…and never plays", env.tone(), "none");
     check("…and says there is no bridge yet", /no bridge yet/.test(env.html()), true);
+    check("…and its last line is Figaro, with no version yet", /<span class="ver">Figaro<\/span>/.test(env.html()), true);
   }
 
   // ─── this file's island ─────────────────────────────────────────────────
@@ -185,6 +187,8 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     const closed = env.html();
     check("an agent at work: the file, the agent and its clock",
           [/Dashboard/.test(closed), /designer/.test(closed), /data-clock/.test(closed)], [true, true, true]);
+    check("under the islands: the Figaro version",
+          [/<span class="ver">Figaro 1\.1\.0<\/span>/.test(closed), closed.indexOf('class="foot"') > closed.lastIndexOf('class="slot')], [true, true]);
     env.click("toggle", "here");
     const open = env.html();
     check("open: the agent's own row says it works, and has its Stop",
@@ -200,8 +204,8 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
                  layers: [{ id: "5:6", name: "KPI card", type: "COMPONENT" }] }] })]);
     await env.clock.advance(MIN);
     check("between its scripts the agent is still at work", /working/.test(env.html()), true);
-    check("open: the recent changes and the version",
-          [/Created KPI card/.test(env.html()), /Figaro 1\.1\.0/.test(env.html())], [true, true]);
+    check("open: the recent changes, and the version still under them",
+          [/Created KPI card/.test(env.html()), /<span class="ver">Figaro 1\.1\.0<\/span>/.test(env.html())], [true, true]);
     env.click("layer", "here", { id: "5:6" });
     check("a layer of this file: select it in Figma", env.posted.filter((m) => m.type === "select"), [{ type: "select", id: "5:6" }]);
     await env.clock.advance(4 * MIN);
@@ -269,23 +273,25 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     const files = [file("KEY1", "Dashboard")];
     env.board(files, { update: { latest: "1.2.0", current: "1.1.0", url: RELEASE } });
     await env.clock.advance(400);
-    check("a new release: a row under the header", [/1\.2\.0 is out/.test(env.html()), /Update and Reload/.test(env.html())], [true, true]);
+    check("a new release: Update on the last line, next to the version",
+          /<span class="ver">Figaro 1\.1\.0<\/span><span class="what"><button[^>]*data-act="update"[^>]*>.*Update to 1\.2\.0</.test(env.html()), true);
     env.click("update");
-    check("Update and Reload asks the bridge", env.sent("update-now").length, 1);
+    check("Update asks the bridge", env.sent("update-now").length, 1);
     env.board(files, { update: { latest: "1.2.0" }, updating: { step: "wait", what: "update", to: "1.2.0" } });
     await env.clock.advance(400);
     check("…which waits for the scripts first", /Updates once the scripts finish/.test(env.html()), true);
     env.board(files, { update: { latest: "1.2.0" }, failed: { what: "update", error: "local changes", url: RELEASE } });
     await env.clock.advance(400);
-    check("a failed update says why and offers the release page",
-          [/local changes/.test(env.html()), /Open release/.test(env.html())], [true, true]);
+    check("a failed update says why on a line of its own, the release page on the last line",
+          [/<div class="why">.*Couldn't update to 1\.2\.0: local changes<\/span><\/div><div class="line">/.test(env.html()),
+           /<div class="line">.*data-act="release"[^>]*>Open release</.test(env.html())], [true, true]);
     env.click("release", null, { url: RELEASE });
     check("…in the browser", env.posted.filter((m) => m.type === "open-url").map((m) => m.url), [RELEASE]);
 
     env.ws().receive({ type: "outdated", running: "2026-10-08.6", expected: "2026-10-08.7" });
     env.board(files);
     await env.clock.advance(400);
-    check("newer plugin code on disk: Reload", [/new build/.test(env.html()), /data-act="reload"/.test(env.html())], [true, true]);
+    check("newer plugin code on disk: Reload, on the last line", /<div class="line">.*New build<\/span><button[^>]*data-act="reload"/.test(env.html()), true);
     env.click("reload", "here");
     check("Reload asks the bridge", env.sent("reload-all").length, 1);
   }

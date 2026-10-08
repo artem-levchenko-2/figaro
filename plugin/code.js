@@ -1,13 +1,13 @@
 // The window: one island per file (ui.html). It grows and shrinks with them —
 // the UI measures itself and asks for its height (`resize` below).
 const UI_WIDTH = 320;
-figma.showUI(__html__, { width: UI_WIDTH, height: 36, title: "Figaro", themeColors: true });
+figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", themeColors: true });
 
 // Build id of this plugin code. The bridge compares it with plugin/code.js on
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-08.7";
+const PLUGIN_VERSION = "2026-10-08.8";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).

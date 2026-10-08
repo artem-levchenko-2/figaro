@@ -10,7 +10,7 @@ Read the `hint:` in the answer first: the bridge knows most of the cases below.
 | `plugin not connected` (503), "open … in Figma and run … Figaro there" | the plugin is not running in that file | tell the user: open the link in Figma and run Plugins → Development → Figaro (⌘⌥P repeats the last plugin). Don't poll in a loop |
 | `N files connected — specify a target` (409), "ambiguous" | several files, and no target or an ambiguous one | `-T` with a key or a link; `figaro targets` |
 | `file busy` (503) | another agent has held the file longer than `--queue-timeout` | nothing ran — retry later; the message says who holds it |
-| `Figaro is updating` (503) | the user pressed Update and Reload: the bridge pulls the new version and restarts | nothing ran — run the command again in ~10 s |
+| `Figaro is updating` (503) | the user pressed Update in the plugin's window: the bridge pulls the new version and restarts | nothing ran — run the command again in ~10 s |
 | `stopped: the user pressed Stop` (409) | the user stopped you from the plugin's window | what your script changed before the Stop stays (`changed:`); with "did not run", nothing ran. Don't run it again: ask the user what to do |
 | `(waited 4.2s in the file's queue)` | you waited in the queue | normal; keep your scripts short so others don't wait for you |
 | 504 timeout | the script didn't finish within `--timeout` — most often a long loop without `h.ck()` | it may still be running and writing. Don't retry blindly: look at the result with `inspect` or `shot`. Until the abandoned script ends, the file answers 409; once you are sure it has ended — `figaro clear -T …`. Then use smaller batches |

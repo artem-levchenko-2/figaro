@@ -17,20 +17,21 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
   an island for its agents and the recent changes with their layers (a click on a layer of this file selects
   it and zooms to it). Each agent has one row that says what it is doing: at work from its first script until
   five quiet minutes pass or it says it is done, done with its note, stopped by you, or failed when its last
-  script failed. The window grows and shrinks with its islands.
+  script failed. The window grows and shrinks with its islands, and its last line shows the Figaro version.
 - **Stop** on the row of an agent at work. Its running script ends and fails with a 409 that says the user
   pressed Stop; pressed between its scripts, its next script in the file is refused with that 409 and runs
   nothing. The other agents go on.
 - **`figaro done "<note>"`**: an agent says it is done in a file, for now. Its row shows the note until its
   next script there that can change the file: a last look with `shot` or `link` leaves it.
-- **Update and Reload.** When a new release is out, the window offers it under its header. Once no file runs
-  a script, the bridge pulls the release (`git pull --ff-only`), reloads the plugins and restarts itself;
-  scripts sent meanwhile get a 503 and run nothing. When it can't pull (local changes, local commits, no
-  connection), the window says why and links to the release. **Reload** does the same without the pull,
-  when the code on disk is newer than what runs.
+- **Update.** When a new release is out, an **Update to X.Y.Z** button appears next to the version. Once no
+  file runs a script, the bridge pulls the release (`git pull --ff-only`), reloads the plugins and restarts
+  itself; scripts sent meanwhile get a 503 and run nothing. When it can't pull (local changes, local commits,
+  no connection), the window says why and links to the release. **Reload** in the same place does the same
+  without the pull, when the code on disk is newer than what runs.
 
 ### Changed
 
+- The plugin's window is titled **Figaro Relay**. In Figma's menu the plugin is still **Figaro**.
 - A failed script no longer flashes the bar red for two seconds: the window lists it with the file's recent
   changes, and an agent that goes quiet after one shows as failed, with the error.
 
@@ -38,7 +39,7 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 - Run `git pull` in the Figaro folder, restart the bridge (`bash start-bridge.sh`, on Windows
   `.\start-bridge.ps1 -Restart`) and run the plugin again in each open file, or `figaro reload -T <file>`.
-  From now on the window's **Update and Reload** does it for you.
+  From now on the window's **Update** button does it for you.
 
 ## [1.0.0] — 2026-10-08
 
