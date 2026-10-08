@@ -506,3 +506,27 @@ def test_loopback_listens_on_ipv4_and_ipv6():
     if socket.has_ipv6:
         assert "::1" in hosts or len(hosts) == 1  # IPv6 may be disabled on a box
     assert bridge._bind_hosts("0.0.0.0", 0) == ["0.0.0.0"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows restarts through start-bridge.ps1")
+def test_ipv6_survives_a_restart_in_place():
+    """Update and Reload restarts the bridge in place, right after it closed the
+    plugins' sockets: their [::1] ends wait in TIME_WAIT, which once made the
+    ::1 check fail, and the new bridge listened on 127.0.0.1 alone."""
+    import socket
+    import time
+    try:
+        server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        server.bind(("::1", 0))
+    except OSError:
+        pytest.skip("no IPv6 here")
+    server.listen()
+    port = server.getsockname()[1]
+    client = socket.create_connection(("::1", port))
+    conn, _ = server.accept()
+    conn.close()  # the bridge closes first, so its end waits in TIME_WAIT
+    client.recv(1)
+    client.close()
+    server.close()
+    time.sleep(0.1)
+    assert bridge._bind_hosts("127.0.0.1", port) == ["127.0.0.1", "::1"]

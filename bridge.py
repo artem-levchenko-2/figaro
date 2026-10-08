@@ -1166,12 +1166,18 @@ def _bind_hosts(host, port):
     curl, an agent's own script — waits ~2 s for the IPv6 attempt to be refused
     before falling back, on EVERY request. Listening on ::1 too removes that.
     Skipped quietly where IPv6 is unavailable.
+
+    The check binds the way the server will: with SO_REUSEADDR off Windows, as
+    asyncio does. Without it, after a restart in place (Update and Reload) the
+    plugins' just-closed sockets, waiting in TIME_WAIT, made the check fail.
     """
     if host != "127.0.0.1":
         return [host]
     import socket
     try:
         with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as probe:
+            if os.name != "nt":
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             probe.bind(("::1", port))
     except OSError:
         return [host]
