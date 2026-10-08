@@ -96,7 +96,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   release check, `ERROR_HINTS`.
 - `bridge_board.py` — what every plugin window shows (the `board`: each file's agents — at work from their
   first script until five quiet minutes or `figaro done`, its note, a failed last script, the user's Stop —
-  and recent changes), its buttons (Stop for one agent, Update and Reload, Reload) and `POST /done`.
+  and recent changes; a read leaves a done or a Stop on show, and `figaro doctor`'s checks (`probe`) stay
+  off it), its buttons (Stop for one agent, Update and Reload, Reload) and `POST /done`.
 - `bridge_update.py` — Update and Reload from the window: waits until no file runs a script,
   `git pull --ff-only`, reloads the plugins that run older code, restarts the bridge (`os.execv`; on Windows
   `start-bridge.ps1 -Restart`). Scripts sent meanwhile get a 503 and run nothing.

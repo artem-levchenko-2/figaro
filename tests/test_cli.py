@@ -299,6 +299,14 @@ def test_done_says_so_in_the_plugin_window(monkeypatch, capsys):
     assert rc == 1 and "older build" in err
 
 
+def test_doctors_checks_dont_show_in_the_plugin_window(monkeypatch, capsys):
+    status = {"ok": True, "version": "1.1.0", "plugin_connected": True, "files": []}
+    trip = lambda p: {"ok": True, "value": 2 if "1 + 1" in p["code"] else {"file": "Draft"}}  # noqa: E731
+    rc, out, _, calls = cli(monkeypatch, capsys, "doctor", bridge_reply=FakeBridge(status, trip))
+    assert rc == 0 and "round trip works" in out
+    assert [(c["quick"], c["probe"]) for c in calls[1:]] == [(True, True), (True, True)]
+
+
 def test_created_names_the_outermost_new_layers():
     url = "https://www.figma.com/design/K/F?node-id="
     items = [{"op": "+", "id": "5:2", "name": "Icon", "url": url + "5-2"}]

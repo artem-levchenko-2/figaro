@@ -41,9 +41,11 @@ async def settle():
 
 
 class Stoppable(FakePlugin):
-    """A script that runs until the bridge aborts it, then fails the way h.ck() makes it."""
+    """The script "loop" runs until the bridge aborts it, then fails the way h.ck() makes it."""
 
     async def _answer(self, m):
+        if m.get("code") != "loop":
+            return await super()._answer(m)
         for _ in range(60):
             if any(x.get("type") == "abort" and x.get("id") == m["id"] for x in self.received):
                 await self.ws.send_str(json.dumps({
@@ -181,6 +183,59 @@ def test_done_shows_the_note_until_the_agent_runs_again():
         async with FakePlugin(c, name="Old", key="KEY2", caps=OLD_CAPS):
             r = await c.post("/done", json={"text": "hi", "target": "Old"})
             assert r.status == 409 and "figaro reload" in (await r.json())["error"]
+        await c.close()
+    run(go())
+
+
+def test_a_look_after_done_or_a_stop_leaves_it_on_show():
+    looks = ({"read_only": True}, {"quick": True}, {"parallel": True})  # -R; shot, link…; --parallel
+
+    async def go():
+        c = await make_client()
+        async with Stoppable(c, name="Draft", key="KEY1", caps=CAPS) as p:
+            async def look():
+                for extra in looks:
+                    r = await c.post("/exec", json=dict({"code": "look", "agent": "designer"}, **extra))
+                    assert r.status == 200
+                await settle()
+                return agents(p, "Draft")["designer"]
+
+            await c.post("/exec", json={"code": "a", "agent": "designer"})
+            await c.post("/done", json={"agent": "designer", "text": "Check the card"})
+            await settle()
+            last = agents(p, "Draft")["designer"]["last"]
+            designer = await look()  # a last shot or link for its report
+            assert designer["done"]["text"] == "Check the card" and designer["last"] > last
+            await c.post("/exec", json={"code": "b", "agent": "designer"})
+            await settle()
+            assert agents(p, "Draft")["designer"]["done"] is None  # it can change the file: at work
+            req = asyncio.ensure_future(c.post("/exec", json={"code": "loop", "agent": "designer"}))
+            await asyncio.sleep(0.2)
+            await stop(p, "doc:KEY1", "designer")
+            assert (await req).status == 409
+            assert (await look())["stopped"]  # it looks at what the stopped script left
+            await c.post("/exec", json={"code": "c", "agent": "designer"})
+            await settle()
+            assert agents(p, "Draft")["designer"]["stopped"] is None
+        await c.close()
+    run(go())
+
+
+def test_doctors_checks_are_no_agents_work():
+    check = {"code": "return 1 + 1;", "quick": True, "probe": True}
+
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, name="Draft", key="KEY1", caps=CAPS) as p:
+            for parallel in (False, True):
+                assert (await c.post("/exec", json=dict(check, parallel=parallel))).status == 200
+            await settle()
+            assert island(p, "Draft")["agents"] == []  # no "agent" at work in the window
+            await c.post("/exec", json={"code": "a", "agent": "designer"})
+            await stop(p, "doc:KEY1", "designer")  # between its scripts: its next one is refused
+            assert (await c.post("/exec", json=dict(check, agent="designer"))).status == 200
+            r = await c.post("/exec", json={"code": "b", "agent": "designer"})
+            assert r.status == 409 and "did not run" in (await r.json())["error"]  # the Stop waited for it
         await c.close()
     run(go())
 

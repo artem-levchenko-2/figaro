@@ -22,7 +22,7 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
   pressed Stop; pressed between its scripts, its next script in the file is refused with that 409 and runs
   nothing. The other agents go on.
 - **`figaro done "<note>"`**: an agent says it is done in a file, for now. Its row shows the note until its
-  next script there.
+  next script there that can change the file: a last look with `shot` or `link` leaves it.
 - **Update and Reload.** When a new release is out, the window offers it under its header. Once no file runs
   a script, the bridge pulls the release (`git pull --ff-only`), reloads the plugins and restarts itself;
   scripts sent meanwhile get a 503 and run nothing. When it can't pull (local changes, local commits, no

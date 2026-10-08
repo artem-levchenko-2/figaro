@@ -153,7 +153,7 @@ def _request(method, path, payload=None, timeout=65):
         return 0, {"ok": False, "error": "request timed out"}
 
 
-def _exec(code, timeout=60, read_only=False, quick=False, libs=None):
+def _exec(code, timeout=60, read_only=False, quick=False, libs=None, probe=False):
     payload = {"code": code, "timeout": timeout}
     if TARGET:
         payload["target"] = TARGET
@@ -167,6 +167,8 @@ def _exec(code, timeout=60, read_only=False, quick=False, libs=None):
         payload["checkpoint"] = CHECKPOINT
     if quick:  # a built-in reader — no undo step, change list or wait for Figma's events
         payload["quick"] = True
+    if probe:  # doctor's check of the connection: the plugin's window doesn't show it
+        payload["probe"] = True
     if libs:
         payload["libs"] = libs
     queue = timeout if QUEUE_TIMEOUT is None else QUEUE_TIMEOUT
@@ -339,7 +341,8 @@ def cmd_reload(args):
 
 def cmd_done(args):
     """Say this agent is done in the file, for now: the plugin's window shows
-    it done, with the note for the user, until its next script there."""
+    it done, with the note for the user, until its next script there that can
+    change the file."""
     payload = {"text": args.text} if args.text else {}
     if TARGET:
         payload["target"] = TARGET
@@ -359,7 +362,7 @@ def cmd_done(args):
         return 1
     note = f", with your note: {resp['text']}" if resp.get("text") else ""
     print(f"the Figaro window in \"{resp.get('file')}\" shows you done{note}")
-    print("  until your next script in this file", file=sys.stderr)
+    print("  until your next script in this file that can change it", file=sys.stderr)
     return 0
 
 
@@ -412,7 +415,7 @@ def cmd_doctor(args):
         print(f"  !  Figaro {update.get('latest')} is released (this is {update.get('current')})")
         print(f"     → git pull, restart the bridge, re-run the plugin   ({update.get('url')})")
 
-    status, r = _exec("return 1 + 1;", 10, quick=True)
+    status, r = _exec("return 1 + 1;", 10, quick=True, probe=True)
     if status == 409 and r.get("abandoned"):
         fail(f"file is interlocked: {r.get('error')}",
              "wait for that script to finish, or:  figaro clear -T <file>")
@@ -432,7 +435,7 @@ def cmd_doctor(args):
 
     status, r = _exec(
         "return {file: figma.root.name, page: figma.currentPage.name, "
-        "pages: figma.root.children.length};", 10, quick=True)
+        "pages: figma.root.children.length};", 10, quick=True, probe=True)
     if r.get("ok"):
         v = r.get("value") or {}
         ok(f"editing \"{v.get('file')}\" — page \"{v.get('page')}\" "
@@ -720,7 +723,8 @@ def build_parser():
     _add_common_flags(p_reload)
 
     p_done = sub.add_parser("done", help="you are done in the file, for now: the plugin's window "
-                                         "says so, with a note for the user, until your next script")
+                                         "says so, with a note for the user, until your next script "
+                                         "that can change the file")
     _add_common_flags(p_done)
     p_done.add_argument("text", nargs="?", default="",
                         help="what the user should look at or answer, in their language")

@@ -72,9 +72,14 @@ def _agent(f, name):
     return a
 
 
-def _touch(a, now):
+def _touch(a, now, read=False):
     """A script of the agent began or ended: it is at work, in a new run of
-    scripts if it was done, stopped or quiet."""
+    scripts if it was done, stopped or quiet. A script that can't change the
+    file (a reader, -R) leaves its done or the user's Stop on show: agents
+    take one more look after they say done, or at what a stopped script left."""
+    if read and (a["done"] or a["stopped"]):
+        a["last"] = now
+        return
     if a["since"] is None or a["done"] or a["stopped"] or now - a["last"] > ACTIVE_FOR:
         a["since"] = now
     a.update(last=now, done=None, stopped=None)
@@ -169,7 +174,7 @@ def _busy(key):
     q = bridge.QUEUE.get(key) or {}
     names = {_who(w.get("agent")) for w in q.get("waiting", []) if w.get("script", True)}
     names.update(_who(e.get("agent")) for e in bridge.PENDING.values()
-                 if e.get("doc") == key and not e.get("finished"))
+                 if e.get("doc") == key and not e.get("finished") and e.get("board", True))
     return names
 
 
@@ -197,17 +202,17 @@ def refusal(key, agent):
     return web.json_response({"ok": False, "error": HELD, "stopped": True}, status=409)
 
 
-def started(key, agent):
+def started(key, agent, read=False):
     """A script came for the file: its agent is at work."""
-    _touch(_agent(_file(key), _who(agent)), time.time())
+    _touch(_agent(_file(key), _who(agent)), time.time(), read)
     changed()
 
 
 def finished(entry, mtype, fields, result):
     """A script ended: what it changed, or its error. A script the user
-    stopped was noted by stop()."""
+    stopped was noted by stop(); figaro doctor's checks are no agent's work."""
     key = entry.get("doc")
-    if not key:
+    if not key or not entry.get("board", True):
         return
     fields = fields or {}
     name = _who(fields.get("agent"))
@@ -217,7 +222,7 @@ def finished(entry, mtype, fields, result):
     if entry.get("stopped"):
         changed()
         return
-    _touch(a, now)
+    _touch(a, now, bool(fields.get("readOnly")))
     if result.get("type") == "error":
         # Not the script's fault: the plugin restarted, or it asks for a --lib again.
         if (mtype == "exec" and not result.get("libMissing")
@@ -240,13 +245,13 @@ def finished(entry, mtype, fields, result):
 
 def timed_out(entry, mtype, fields, timeout):
     key = entry.get("doc")
-    if not key or mtype != "exec":
+    if not key or mtype != "exec" or not entry.get("board", True):
         return
     name = _who((fields or {}).get("agent"))
     now = time.time()
     f = _file(key)
     a = _agent(f, name)
-    _touch(a, now)
+    _touch(a, now, bool((fields or {}).get("readOnly")))
     a["error"] = {"text": f"timed out after {timeout:g} s: it may still be running", "line": None,
                   "at": now}
     _add(f, {"agent": name, "at": now, "kind": "err", "summary": "Script timed out"})
@@ -308,7 +313,7 @@ def stop(doc, agent=None):
     hit = set()
     for rid, entry in list(bridge.PENDING.items()):
         name = _who(entry.get("agent"))
-        if (entry.get("doc") == doc and entry.get("mtype") == "exec"
+        if (entry.get("doc") == doc and entry.get("mtype") == "exec" and entry.get("board", True)
                 and not entry.get("finished") and not entry.get("stopped")
                 and agent in (None, name)):
             entry["stopped"] = True
@@ -319,7 +324,8 @@ def stop(doc, agent=None):
     names = hit | ({agent} if agent else set())
     if not names:
         return False
-    queued = {_who(w.get("agent")) for w in (bridge.QUEUE.get(doc) or {}).get("waiting", [])}
+    queued = {_who(w.get("agent")) for w in (bridge.QUEUE.get(doc) or {}).get("waiting", [])
+              if w.get("script", True)}
     f = _file(doc)
     for name in sorted(names):
         a = _agent(f, name)
@@ -352,7 +358,8 @@ async def handle(conn_id, m):
 
 async def done_handler(request: web.Request) -> web.Response:
     """An agent is done in a file, for now: its row in the window says so, with
-    the note it leaves the user, until its next script there."""
+    the note it leaves the user, until its next script there that can change
+    the file."""
     blocked = bridge._guard(request)
     if blocked is not None:
         return blocked

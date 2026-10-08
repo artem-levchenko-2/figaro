@@ -644,6 +644,9 @@ async def exec_handler(request: web.Request) -> web.Response:
         return bad(str(e))
     parallel = body.get("parallel", False) is True
     force = body.get("force", False) is True
+    # figaro doctor's check of the connection: no agent's work, so the plugin's
+    # window doesn't show it and a Stop doesn't refuse it
+    probe = body.get("probe", False) is True
     agent = body.get("agent")
     agent = agent.strip()[:40] or None if isinstance(agent, str) else None
     try:
@@ -668,25 +671,28 @@ async def exec_handler(request: web.Request) -> web.Response:
         updating = bridge_update.refusal()
         if updating is not None:
             return updating
-        held = bridge_board.refusal(_doc_key(conn_id), agent)  # the user pressed Stop for it
-        if held is not None:
-            return held
-        bridge_board.started(_doc_key(conn_id), agent)
-        return await _dispatch(target_ws, conn_id, code, timeout, force,
+        if not probe:
+            held = bridge_board.refusal(_doc_key(conn_id), agent)  # the user pressed Stop for it
+            if held is not None:
+                return held
+            bridge_board.started(_doc_key(conn_id), agent, read=True)
+        return await _dispatch(target_ws, conn_id, code, timeout, force, board=not probe,
                                fields=bridge_exec.exec_fields(conn_id, agent, opts, parallel=True))
 
     # The fields are made inside the lock, where the checkpoint is decided.
     return await _queued(request, conn_id, agent, queue_timeout, lambda meta: _dispatch(
-        target_ws, conn_id, code, timeout, force, meta=meta,
-        fields=bridge_exec.exec_fields(conn_id, agent, opts)))
+        target_ws, conn_id, code, timeout, force, meta=meta, board=not probe,
+        fields=bridge_exec.exec_fields(conn_id, agent, opts)),
+        script=not probe, read=opts.read_only)
 
 
-async def _queued(request, conn_id, agent, queue_timeout, dispatch, script=True):
+async def _queued(request, conn_id, agent, queue_timeout, dispatch, script=True, read=False):
     """Run `dispatch(meta)` under the file's lock, waiting in its queue.
 
     Split out of exec_handler, so /undo and /reload wait their turn too.
     `script`: an agent's script (exec, undo), which the plugin's window shows
-    and the user's Stop refuses; a /reload is none.
+    and the user's Stop refuses; a /reload is none. `read`: a script that
+    can't change the file, which leaves the agent's done on show.
     """
     updating = bridge_update.refusal()  # the bridge is about to restart
     if updating is not None:
@@ -696,7 +702,7 @@ async def _queued(request, conn_id, agent, queue_timeout, dispatch, script=True)
         held = bridge_board.refusal(key, agent)  # the user pressed Stop for this agent
         if held is not None:
             return held
-        bridge_board.started(key, agent)
+        bridge_board.started(key, agent, read)
     lock = _lock_for(key)
     q = QUEUE.setdefault(key, {"waiting": [], "running": None})
     me = {"agent": agent, "since": time.time(), "script": script}
@@ -823,11 +829,12 @@ def _abandon(rid, conn_id, timeout, target_ws):
 
 
 async def _dispatch(target_ws, conn_id, code, timeout, force, meta=None,
-                    fields=None, mtype="exec") -> web.Response:
+                    fields=None, mtype="exec", board=True) -> web.Response:
     """Send one exec to a plugin and await its reply. Caller holds the lock.
 
     `fields` ride along in the message (agent, readOnly, checkpoint), and
-    `mtype` "undo" sends an undo the same way.
+    `mtype` "undo" sends an undo the same way. `board`: False for figaro
+    doctor's checks, which the plugin's window doesn't show.
     """
     # Per document, not per connection: a timed-out script in one tab still
     # runs in the document a caller routed through another tab would write to.
@@ -847,7 +854,8 @@ async def _dispatch(target_ws, conn_id, code, timeout, force, meta=None,
     fut: asyncio.Future = asyncio.get_running_loop().create_future()
     # doc, mtype and agent: the window's Stop finds an agent's running script by them
     PENDING[rid] = {"future": fut, "logs": [], "t0": time.time(), "conn": conn_id,
-                    "doc": doc, "mtype": mtype, "agent": (fields or {}).get("agent")}
+                    "doc": doc, "mtype": mtype, "agent": (fields or {}).get("agent"),
+                    "board": board}
 
     try:
         try:
@@ -1090,8 +1098,8 @@ async def root_handler(request: web.Request) -> web.Response:
         "service": "figaro-bridge",
         "version": VERSION,
         "endpoints": {
-            "POST /exec": ("{code, target?, timeout?, parallel?, force?, read_only?, "
-                           "checkpoint?, quick?, libs?} -> "
+            "POST /exec": ("{code, target?, agent?, timeout?, parallel?, force?, read_only?, "
+                           "checkpoint?, quick?, libs?, probe?} -> "
                            "{ok, result, value, logs, elapsed_ms}. Serialized per file "
                            "unless parallel:true (reads only)."),
             "GET /status": "{plugin_connected, files, pending, abandoned}",
@@ -1100,7 +1108,8 @@ async def root_handler(request: web.Request) -> web.Response:
             "POST /undo": "{target, agent?, force?} -> revert the file's last script",
             "POST /reload": "{target} -> run plugin/code.js from disk in the open plugin",
             "POST /done": ("{target, agent?, text?} -> the agent is done in the file: the plugin's "
-                           "window says so, with the note, until its next script there"),
+                           "window says so, with the note, until its next script there that "
+                           "can change the file"),
             "WS /plugin": "Figma plugin connects here (one per open file)",
         },
     })

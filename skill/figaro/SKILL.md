@@ -69,7 +69,7 @@ The references next to this file — read each one when you reach its step:
 | `figaro rm <layer>…` | delete; finds every id first, so one wrong id deletes nothing |
 | `figaro undo` | undo the file's last script, when that is safe (section 5) |
 | `figaro reload` | restart the plugin in a file with the code on disk, after an update |
-| `figaro done "<what to check>"` | you are done in this file, for now. The plugin's window shows you at work from your first script, and done, with the note, from this command until your next script there. It doesn't wait for an answer: ask in the chat too, then end your turn |
+| `figaro done "<what to check>"` | you are done in this file, for now. The plugin's window shows you at work from your first script, and done, with the note, from this command until your next script there that can change the file: the readers and `-R` scripts leave it. It doesn't wait for an answer: ask in the chat too, then end your turn |
 | `figaro targets` · `doctor` · `status` | the connected files · a connection check with advice · the bridge's raw state |
 | `figaro clear` | unblock a file after a 504 (`pitfalls.md`) |
 
