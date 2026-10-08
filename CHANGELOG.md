@@ -8,6 +8,8 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-10-08
+
 ### Added
 
 - **Islands in the plugin's window.** The slim bar became a window with one black island per file: its own
@@ -28,6 +30,12 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 - A failed script keeps its file's island red until the same agent's next script succeeds, or until the user
   dismisses it, instead of a two-second flash.
 - A script stopped from the window fails with a 409 that says the user pressed Stop.
+
+### Upgrading from 1.0.0
+
+- Run `git pull` in the Figaro folder, restart the bridge (`bash start-bridge.sh`, on Windows
+  `.\start-bridge.ps1 -Restart`) and run the plugin again in each open file, or `figaro reload -T <file>`.
+  From now on the window's **Update and Reload** does it for you.
 
 ## [1.0.0] — 2026-10-08
 

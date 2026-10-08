@@ -112,7 +112,7 @@ def bridge_outdated() -> bool:
 # Releasing (see AGENTS.md → Releasing): bump VERSION here, move CHANGELOG's
 # "Unreleased" under the new version, tag vX.Y.Z and push the tag.
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 REPO = "artem-levchenko-2/figaro"
 UPDATE_EVERY = 6 * 60 * 60   # seconds between checks
 UPDATE: dict | None = None   # {"latest", "current", "url"} once a newer release exists
