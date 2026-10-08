@@ -17,7 +17,7 @@ Commands:
     figaro import-component <key>   # import library component, instantiate (--focus: show it)
     figaro undo                     # undo the file's last script, when that is safe
     figaro reload                   # load plugin/code.js from disk into the open plugin
-    figaro wait "<text>"            # ask the user in the plugin's window; the island turns amber
+    figaro done "<note>"            # you are done in the file: the plugin's window says so, with the note
     figaro inspect <id> [--json | -o f.json]   # layout, styles, text, keys of what it uses
     figaro shot <id> ...            # picture(s) saved to files; tall ones cut in parts
     figaro link <id|sel> ...        # clickable links to layers, for reports
@@ -93,7 +93,7 @@ SANDBOXED = ("a sandbox keeps this command off the network, 127.0.0.1 included. 
 
 KNOWN_CMDS = {
     "exec", "status", "targets", "clear", "doctor", "sel", "tree", "find", "text", "variant",
-    "clone", "rm", "import-component", "icomp", "undo", "reload", "wait",
+    "clone", "rm", "import-component", "icomp", "undo", "reload", "done",
     "inspect", "shot", "link",
 }
 
@@ -337,25 +337,29 @@ def cmd_reload(args):
     return 0
 
 
-def cmd_wait(args):
-    """Ask the user for something: the file's island in the plugin's window
-    turns amber with the text, until this agent's next script in the file."""
-    payload = {"text": args.text}
+def cmd_done(args):
+    """Say this agent is done in the file, for now: the plugin's window shows
+    it done, with the note for the user, until its next script there."""
+    payload = {"text": args.text} if args.text else {}
     if TARGET:
         payload["target"] = TARGET
     if AGENT:
         payload["agent"] = AGENT
-    status, resp = _request("POST", "/wait", payload)
+    status, resp = _request("POST", "/done", payload)
+    if status == 404:
+        resp = {"ok": False, "error": "the bridge runs code older than `figaro done`",
+                "hint": ("restart it when no other agent is using it:  "
+                         + cli_extras.start_hint(restart=True))}
     if args.raw:
         return _emit(resp, raw=True)
     if not resp.get("ok"):
-        print(f"figaro: {resp.get('error', 'wait failed')}", file=sys.stderr)
+        print(f"figaro: {resp.get('error', 'done failed')}", file=sys.stderr)
         if resp.get("hint"):
             print(f"   hint: {resp['hint']}", file=sys.stderr)
         return 1
-    print(f"the Figaro window in \"{resp.get('file')}\" asks: {resp.get('text')}")
-    print("  it stays until your next script in this file, or until the user dismisses it",
-          file=sys.stderr)
+    note = f", with your note: {resp['text']}" if resp.get("text") else ""
+    print(f"the Figaro window in \"{resp.get('file')}\" shows you done{note}")
+    print("  until your next script in this file", file=sys.stderr)
     return 0
 
 
@@ -612,7 +616,7 @@ def _add_common_flags(p):
                    help="bypass the per-file lock so reads can fan out. "
                         "READ-ONLY scripts only — a parallel writer interleaves.")
     p.add_argument("--agent", "-A", default=None,
-                   help="name shown in the file's queue (env FIGARO_AGENT)")
+                   help="your name in the plugin's window and the file's queue (env FIGARO_AGENT)")
     p.add_argument("--queue-timeout", type=float, default=None,
                    help="seconds to wait while another caller holds the file "
                         "(default: same as --timeout); gives up with 'file busy' "
@@ -715,10 +719,11 @@ def build_parser():
                               help="load plugin/code.js and ui.html from disk into the open plugin")
     _add_common_flags(p_reload)
 
-    p_wait = sub.add_parser("wait", help="ask the user for something in the plugin's window: the "
-                                         "file's island turns amber until your next script")
-    _add_common_flags(p_wait)
-    p_wait.add_argument("text", help="what the user should check or do, in their language")
+    p_done = sub.add_parser("done", help="you are done in the file, for now: the plugin's window "
+                                         "says so, with a note for the user, until your next script")
+    _add_common_flags(p_done)
+    p_done.add_argument("text", nargs="?", default="",
+                        help="what the user should look at or answer, in their language")
 
     cli_extras.add_parsers(sub, _add_common_flags)
 
@@ -728,6 +733,8 @@ def build_parser():
 def main():
     force_utf8_output()
 
+    if len(sys.argv) >= 2 and sys.argv[1] == "wait":
+        sys.argv[1] = "done"  # its name before 1.1.0 came out, still in some agents' context
     # Backward-compat shorthand: `figaro "<js>"` → `figaro exec "<js>"`
     if (
         len(sys.argv) >= 2
@@ -773,7 +780,7 @@ def main():
         "icomp": cmd_import_component,
         "undo": cmd_undo,
         "reload": cmd_reload,
-        "wait": cmd_wait,
+        "done": cmd_done,
         "inspect": cli_extras.cmd_inspect,
         "shot": cli_extras.cmd_shot,
         "link": cli_extras.cmd_link,

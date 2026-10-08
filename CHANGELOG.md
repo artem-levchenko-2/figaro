@@ -13,12 +13,16 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 ### Added
 
 - **Islands in the plugin's window.** The slim bar became a window with one black island per file: its own
-  file first, then each file where agents are at work, until ten quiet minutes after their last script. An
-  island names the agent running a script, its time and the queue; open it for the agents, the recent changes
-  with their layers (a click on a layer of this file selects it and zooms to it) and **Stop**, which ends the
-  running script in that file. The window grows and shrinks with its islands.
-- **`figaro wait "<text>"`**: an agent leaves the user a note in the window. The file's island turns amber
-  with it until the agent's next script there, or until the user dismisses it.
+  file first, then each file where agents are at work, until ten quiet minutes after their last script. Open
+  an island for its agents and the recent changes with their layers (a click on a layer of this file selects
+  it and zooms to it). Each agent has one row that says what it is doing: at work from its first script until
+  five quiet minutes pass or it says it is done, done with its note, stopped by you, or failed when its last
+  script failed. The window grows and shrinks with its islands.
+- **Stop** on the row of an agent at work. Its running script ends and fails with a 409 that says the user
+  pressed Stop; pressed between its scripts, its next script in the file is refused with that 409 and runs
+  nothing. The other agents go on.
+- **`figaro done "<note>"`**: an agent says it is done in a file, for now. Its row shows the note until its
+  next script there.
 - **Update and Reload.** When a new release is out, the window offers it under its header. Once no file runs
   a script, the bridge pulls the release (`git pull --ff-only`), reloads the plugins and restarts itself;
   scripts sent meanwhile get a 503 and run nothing. When it can't pull (local changes, local commits, no
@@ -27,9 +31,8 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ### Changed
 
-- A failed script keeps its file's island red until the same agent's next script succeeds, or until the user
-  dismisses it, instead of a two-second flash.
-- A script stopped from the window fails with a 409 that says the user pressed Stop.
+- A failed script no longer flashes the bar red for two seconds: the window lists it with the file's recent
+  changes, and an agent that goes quiet after one shows as failed, with the error.
 
 ### Upgrading from 1.0.0
 

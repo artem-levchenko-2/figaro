@@ -6,11 +6,12 @@
 /* The plugin's window: one black island per file — this file first, then each
    file where agents are at work, until ten quiet minutes after their last
    script. Figma draws the header above (40 px: the plugin's icon and name, the
-   close button), and the islands line up with it: indicators and avatars on
-   the icon's centre (x 24), names on the title's left edge (x 41), chevrons on
-   the close button's centre (20 px from the right). The window's corners are
-   13 px and the islands sit 6 px in, so theirs are 13 − 6 = 7 px, and they are
-   6 px apart. */
+   close button) and a 1 px line under it; the islands keep 6 px from that line,
+   or it reads as their border. They line up with the header: indicators and
+   avatars on the icon's centre (x 24), names on the title's left edge (x 41),
+   chevrons and Stop buttons on the close button's centre (20 px from the
+   right). The window's corners are 13 px and the islands sit 6 px in, so
+   theirs are 13 − 6 = 7 px, and they are 6 px apart. */
 * { box-sizing: border-box; }
 :root {
   /* Figma's own window (themeColors), for what sits outside the islands */
@@ -37,7 +38,7 @@
 html, body { margin: 0; background: var(--win-bg); overflow: hidden; }
 body { font-family: var(--sys); -webkit-font-smoothing: antialiased; }
 button { font: inherit; }
-#app { padding: 0 6px 6px; }
+#app { padding: 6px; }
 
 /* A newer Figaro: the closest a plugin gets to Figma's header, which it can't
    touch — the arrow under the icon, the version under the title, the button
@@ -64,27 +65,22 @@ button { font: inherit; }
 .tg:focus-visible, .chev:focus-visible { outline: 2px solid var(--run); outline-offset: -2px; border-radius: 7px; }
 .ind { width: 18px; height: 18px; flex: none; display: grid; place-items: center; }
 .dot { --c: var(--ok); width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 24%, transparent); }
-.dot.pulse { animation: pulse 1.6s ease-out infinite; }
 .spin { --c: var(--run); width: 12px; height: 12px; border: 2px solid color-mix(in srgb, var(--c) 24%, transparent); border-top-color: var(--c); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-@keyframes pulse {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 65%, transparent); }
-  75%, 100% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--c) 0%, transparent); }
-}
+.chk { display: grid; color: var(--ok); }
+.chk svg { width: 12px; height: 12px; }
 .lbl { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.lbl b { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
-.lbl .sub { flex: none; color: var(--is-dim); font-variant-numeric: tabular-nums; }
+.lbl b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.lbl .sub { flex: 0 4 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--is-dim); font-variant-numeric: tabular-nums; }
 .right { flex: none; display: flex; align-items: center; gap: 4px; }
-.badge { height: 18px; min-width: 18px; padding: 0 6px; display: grid; place-items: center; border-radius: 9px; background: var(--is-fill); color: var(--is-dim); font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .ib { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 10px; background: var(--is-fill); color: var(--is-text); cursor: pointer; }
-.ib:hover { background: var(--is-fill-2); }
-.ib:disabled, .chip:disabled { opacity: .5; cursor: default; }
+.ib:hover { background: color-mix(in srgb, var(--err) 32%, transparent); color: #ff8b74; }
+.ib:disabled { opacity: .5; cursor: default; background: var(--is-fill); color: var(--is-text); }
 .sq { width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
+.ind .sq { color: var(--idle); }
 .chip { height: 20px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 0; border-radius: 10px; background: var(--is-fill); color: var(--is-text); font: 600 11px/1 var(--sys); white-space: nowrap; cursor: pointer; }
 .chip:hover { background: var(--is-fill-2); }
 .chip.build { background: var(--build); color: #fff; }
-.chip.stop { background: color-mix(in srgb, var(--err) 20%, transparent); color: #ff8b74; }
-.chip.stop:hover { background: color-mix(in srgb, var(--err) 32%, transparent); }
 .chev { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--is-faint); cursor: pointer; transition: transform .2s ease; }
 .chev svg { width: 10px; height: 10px; }
 .island.open .chev { transform: rotate(180deg); }
@@ -98,20 +94,22 @@ button { font: inherit; }
 .callout .h { min-height: 18px; display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .callout p, .callout code, .callout .acts { margin: 0 0 0 26px; }
 .callout p { color: var(--is-dim); font-size: 11.5px; line-height: 16px; }
-.callout p.msg { color: var(--is-text); overflow-wrap: anywhere; }
 .callout code { color: color-mix(in srgb, var(--c) 45%, #fff); font: 11px/15px var(--sys-mono); overflow-wrap: anywhere; }
 .callout .acts { display: flex; gap: 6px; margin-top: 4px; }
-.now { display: flex; align-items: center; gap: 8px; padding: 8px var(--bpad) 2px var(--pad); }
-.now .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
-.now .who b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.now .who [data-clock] { color: var(--is-dim); font-variant-numeric: tabular-nums; }
-.next { padding: 0 var(--pad) 4px calc(var(--pad) + 26px); color: var(--is-faint); font-size: 11px; }
+/* An agent: its name and what it is doing, its Stop while it works, and
+   under them the note it left (done) or the error it stopped at (failed). */
+.agent { padding: 0 var(--bpad) 0 var(--pad); }
+.ah { height: 28px; display: flex; align-items: center; gap: 8px; }
 .av { width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--av, #7b61ff); color: #fff; font-size: 10px; font-weight: 700; }
-.agent { height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 var(--pad); }
-.agent > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.st { margin-left: auto; flex: none; display: flex; align-items: center; gap: 6px; color: var(--is-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+.nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st { flex: none; display: flex; align-items: center; gap: 6px; color: var(--is-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
 .st .dot { width: 6px; height: 6px; box-shadow: none; }
 .st .spin { width: 10px; height: 10px; border-width: 1.5px; }
+.st .chk svg { width: 10px; height: 10px; }
+.st .sq { width: 6px; height: 6px; color: var(--is-faint); }
+.act { flex: none; width: 20px; height: 20px; margin-left: -2px; }
+.msg { margin: -4px 0 0; padding: 0 26px 7px 26px; color: var(--is-text); font-size: 11.5px; line-height: 15px; overflow-wrap: anywhere; }
+.msg.err { color: #ff8b74; }
 .feed { display: grid; padding-bottom: 2px; }
 .ev { display: grid; grid-template-columns: 26px minmax(0, 1fr); padding: 5px var(--pad); }
 .ev .t { color: var(--is-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -132,7 +130,7 @@ button.layer:hover { background: color-mix(in srgb, var(--run) 32%, transparent)
 .foot { margin-top: 6px; padding: 8px var(--pad) 9px; border-top: 1px solid var(--is-line); color: var(--is-faint); font-size: 11px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .panel.anim, .dot.pulse, .slot.enter, .slot.enter > .island, .slot.leave { animation: none; }
+  .panel.anim, .slot.enter, .slot.enter > .island, .slot.leave { animation: none; }
   .spin { animation-duration: 2.4s; }
   .chev { transition: none; }
 }
@@ -159,7 +157,7 @@ function sendHello() {
   } catch (e) {}
 }
 
-// A button's message to the bridge: stop, dismiss, update-now, reload-all.
+// A button's message to the bridge: stop, update-now, reload-all.
 function send(msg) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   try { ws.send(JSON.stringify(msg)); } catch (e) {}
@@ -243,45 +241,53 @@ function shortId(id) {
 }
 
 // ─── what the window knows ───────────────────────────────────────────────
-const QUIET = 10 * 60 * 1000;  // another file's island goes away after ten quiet minutes
-const NO_BRIDGE_AFTER = 3;     // failed connects in a row before "no bridge yet"
+const QUIET = 10 * 60 * 1000;     // another file's island goes away after ten quiet minutes
+const SHOW_FOR = 60 * 60 * 1000;  // an agent's row goes an hour after it was last at work
+const NO_BRIDGE_AFTER = 3;        // failed connects in a row before "no bridge yet"
 
 let conn = "connecting";       // connecting | ok | nobridge
 let failures = 0;
 let board = null;              // the bridge's last `board`, its times on this window's clock
 let shift = null;              // this window's clock minus the bridge's, in ms
+let activeFor = 300 * 1000;    // an agent is at work this long after its last script; the board says
 let update = null;             // a newer release, from a bridge without boards
 let outdated = false;          // the bridge has newer plugin code than this window runs
 const local = new Map();       // exec id -> {agent, since}: for a bridge without boards
 const open = new Set();        // the islands that are open, by id
-const stopping = new Map();    // doc -> since of the script the user stopped
+const stopping = new Map();    // doc + "\n" + agent -> when the user pressed its Stop
 const goneLayers = new Set();  // Recent layers that are no longer in the file
 
 // The board's times are the bridge's clock in seconds; the window counts in its own.
 function takeBoard(m) {
   if (shift === null) shift = Date.now() - m.now * 1000;
   const t = (s) => (typeof s === "number" ? s * 1000 + shift : 0);
+  if (typeof m.active_for === "number") activeFor = m.active_for * 1000;
   board = {
     version: m.version || "", update: m.update || null, stale: !!m.stale,
     updating: m.updating || null, failed: m.failed || null,
     files: (m.files || []).map((f) => ({
       id: f.doc, doc: f.doc, sig: f.sig, name: f.name || "Untitled", here: false,
-      running: f.running ? { agent: f.running.agent, since: t(f.running.since) } : null,
-      queue: f.queue || [],
-      waiting: f.waiting ? { agent: f.waiting.agent, text: f.waiting.text, since: t(f.waiting.since) } : null,
-      error: f.error ? { agent: f.error.agent, text: f.error.text, line: f.error.line, at: t(f.error.at) } : null,
+      agents: (Array.isArray(f.agents) ? f.agents : []).map((a) => ({
+        name: a.name, since: t(a.since), last: t(a.last), busy: !!a.busy,
+        done: a.done ? { text: a.done.text || "", at: t(a.done.at) } : null,
+        stopped: typeof a.stopped === "number" ? t(a.stopped) : null,
+        error: a.error ? { text: a.error.text || "", line: a.error.line, at: t(a.error.at) } : null,
+      })),
       recent: (f.recent || []).map((e) => Object.assign({}, e, { at: t(e.at) })),
-      seen: Object.keys(f.seen || {}).reduce((o, a) => { o[a] = t(f.seen[a]); return o; }, {}),
     })),
   };
 }
 
 // This file first, under the id "here", then the others as the bridge lists them.
 function filesNow() {
-  const here = { id: "here", doc: null, name: identity.name || "This file", here: true,
-                 running: null, queue: [], waiting: null, error: null, recent: [], seen: {} };
+  const here = { id: "here", doc: null, name: identity.name || "This file", here: true, agents: [], recent: [] };
   if (conn !== "ok" || !board) {
-    if (conn === "ok" && local.size) here.running = local.values().next().value;
+    // A bridge without boards: the scripts this window runs, while they run.
+    const byName = new Map();
+    if (conn === "ok") for (const x of local.values()) {
+      if (!byName.has(x.agent)) byName.set(x.agent, { name: x.agent, since: x.since, last: x.since, busy: true, done: null, stopped: null, error: null });
+    }
+    here.agents = [...byName.values()];
     return [here];
   }
   let mine = null;
@@ -295,24 +301,49 @@ function filesNow() {
 }
 
 const stale = () => outdated || !!(board && board.stale);
-const busy = (f) => !!(f.running || f.queue.length || f.waiting || f.error);
-function lastAt(f) {  // null: no agent has run anything there
-  const times = f.recent.map((e) => e.at).concat(Object.values(f.seen));
-  if (f.waiting) times.push(f.waiting.since);
-  if (f.error) times.push(f.error.at);
+
+// What an agent is doing: stopped by the user; done, as it said; at work while
+// a script of its runs or waits, and for activeFor after its last one; then
+// quiet — failed, if its last script failed.
+function stateOf(a) {
+  if (a.stopped !== null) return "stopped";
+  if (a.done) return "done";
+  if (a.busy || Date.now() - a.last < activeFor) return "working";
+  return a.error ? "failed" : "idle";
+}
+const RANK = { working: 0, failed: 1, stopped: 2, done: 3, idle: 4 };
+// A file's agents: those at work first, in the order they began, then the
+// others, the latest first, for an hour.
+function agentsOf(f) {
+  const now = Date.now();
+  return f.agents.map((a) => {
+    const st = stateOf(a);
+    return Object.assign({}, a, { st, at: st === "done" ? a.done.at : st === "stopped" ? a.stopped : a.last });
+  }).filter((a) => a.st === "working" || now - a.at < SHOW_FOR)
+    .sort((x, y) => RANK[x.st] - RANK[y.st] || (x.st === "working" ? x.since - y.since : y.at - x.at));
+}
+function lastAt(f) {  // null: no agent has done anything there
+  const times = f.recent.map((e) => e.at);
+  for (const a of f.agents) {
+    times.push(a.last);
+    if (a.stopped !== null) times.push(a.stopped);
+    if (a.done) times.push(a.done.at);
+  }
   return times.length ? Math.max(...times) : null;
 }
-// This file always has its island; another file has one while its agents are busy and for ten minutes after.
+// This file always has its island; another file has one while its agents work and for ten minutes after.
 function shown(f) {
   if (f.here) return true;
   if (conn !== "ok") return false;
+  if (agentsOf(f).some((a) => a.st === "working")) return true;
   const last = lastAt(f);
-  return busy(f) || (last !== null && Date.now() - last < QUIET);
+  return last !== null && Date.now() - last < QUIET;
 }
 
 // ─── drawing it ──────────────────────────────────────────────────────────
 const PALETTE = ["#7b61ff", "#f2711c", "#12a594", "#e5489b", "#3e7bfa", "#b7791f"];
 const ICON = {
+  check: '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="M3.5 6.2 5.2 7.9 8.5 4.4" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   chev: '<svg viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   up: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M8 11.5v-7M5 7.5l3-3 3 3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   warn: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M8 4.5v4.2" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.3" r=".95" fill="#fff"/></svg>',
@@ -341,37 +372,40 @@ function clock(ts) {
 }
 const clockSpan = (ts) => `<span data-clock="${ts}">${clock(ts)}</span>`;
 const agoSpan = (ts) => `<span data-ago="${ts}" data-long="1">${agoLong(ts)}</span>`;
+const agoShort = (ts) => `<span data-ago="${ts}">${ago(ts)}</span>`;
 const av = (name) => `<span class="av" style="--av: ${color(name)}">${esc(String(name)[0].toUpperCase())}</span>`;
 
-// What a closed island shows: the file, then the most urgent thing in it.
+// What a closed island shows: the file, then what matters most in it.
 function headline(f) {
   if (f.here && conn === "connecting") return { kind: "connecting", ind: '<span class="spin" style="--c: var(--idle)"></span>', sub: "connecting…" };
   if (f.here && conn === "nobridge") return { kind: "nobridge", ind: '<span class="dot" style="--c: var(--idle)"></span>', sub: "no bridge yet" };
-  if (f.running) return { kind: "running", ind: '<span class="spin"></span>', sub: esc(f.running.agent) + " " + clockSpan(f.running.since) };
-  if (f.waiting) return { kind: "waiting", ind: '<span class="dot pulse" style="--c: var(--wait)"></span>', sub: esc(f.waiting.agent) + " is waiting" };
-  if (f.error) return { kind: "error", ind: '<span class="dot" style="--c: var(--err)"></span>', sub: esc(f.error.agent) + " failed" };
+  const list = agentsOf(f);
+  const working = list.filter((a) => a.st === "working");
+  if (working.length) {
+    const sub = working.length > 1 ? working.map((a) => esc(a.name)).join(", ") : esc(working[0].name) + " " + clockSpan(working[0].since);
+    return { kind: "working", ind: '<span class="spin"></span>', sub };
+  }
+  const failed = list.find((a) => a.st === "failed");
+  if (failed) return { kind: "failed", ind: '<span class="dot" style="--c: var(--err)"></span>', sub: esc(failed.name) + " failed" };
   if (f.here && stale()) return { kind: "outdated", ind: '<span class="dot" style="--c: var(--build)"></span>', sub: "new build" };
+  const done = list.find((a) => a.st === "done");
+  if (done) return { kind: "done", ind: `<span class="chk">${ICON.check}</span>`, sub: esc(done.name) + " is done" };
+  const stopped = list.find((a) => a.st === "stopped");
+  if (stopped) return { kind: "stopped", ind: '<span class="sq"></span>', sub: esc(stopped.name) + " stopped" };
   const last = f.recent[0];
   if (!last) return { kind: "ok", ind: '<span class="dot"></span>', sub: "" };
   return { kind: "ok", ind: '<span class="dot"></span>', sub: esc(last.agent) + " · " + agoSpan(last.at) };
 }
 
-const isStopping = (f) => !!(f.running && stopping.has(f.doc));
-
+// An open island lists everything below its row, so the row keeps only the file's name.
 function row(f) {
   const h = headline(f);
-  let right = "";
-  if (h.kind === "running") {
-    if (f.queue.length) right += `<span class="badge" title="${f.queue.length} more in the queue">+${f.queue.length}</span>`;
-    const tip = isStopping(f) ? "Stopping…" : f.here ? "Stop this script" : "Stop the script in " + f.name;
-    right += `<button type="button" class="ib" data-act="stop" title="${esc(tip)}" aria-label="${esc(tip)}"${isStopping(f) ? " disabled" : ""}><span class="sq"></span></button>`;
-  } else if (h.kind === "outdated") {
-    right += '<button type="button" class="chip build" data-act="reload">Reload</button>';
-  }
   const isOpen = open.has(f.id);
+  let right = h.kind === "outdated" && !isOpen ? '<button type="button" class="chip build" data-act="reload">Reload</button>' : "";
   right += `<button type="button" class="chev" data-act="toggle" aria-label="${isOpen ? "Collapse" : "Expand"}" tabindex="-1">${ICON.chev}</button>`;
+  const sub = h.sub && !isOpen ? `<span class="sub">${h.sub}</span>` : "";
   return `<div class="row"><button type="button" class="tg" data-act="toggle" aria-expanded="${isOpen}">`
-    + `<span class="ind">${h.ind}</span><span class="lbl"><b title="${esc(f.name)}">${esc(f.name)}</b>${h.sub ? `<span class="sub">${h.sub}</span>` : ""}</span></button>`
+    + `<span class="ind">${h.ind}</span><span class="lbl"><b title="${esc(f.name)}">${esc(f.name)}</b>${sub}</span></button>`
     + `<div class="right">${right}</div></div>`;
 }
 
@@ -379,44 +413,34 @@ function callout(f) {
   const h = headline(f);
   if (h.kind === "connecting") return `<div class="callout"><div class="h"><span class="ind">${h.ind}</span>Looking for the bridge</div><p>It runs on this computer and answers in a second or two.</p></div>`;
   if (h.kind === "nobridge") return `<div class="callout"><div class="h"><span class="ind">${h.ind}</span>Waiting for the bridge</div><p>It starts with your agent's first figaro command. To start it now, run <code>figaro doctor</code> in a terminal.</p></div>`;
-  if (h.kind === "running") {
-    const next = f.queue.length ? `<div class="next">Next: ${f.queue.map(esc).join(", ")}</div>` : "";
-    const stop = isStopping(f) ? '<button type="button" class="chip stop" disabled>Stopping…</button>'
-      : '<button type="button" class="chip stop" data-act="stop"><span class="sq"></span>Stop</button>';
-    return `<div class="now"><span class="who">${av(f.running.agent)}<b>${esc(f.running.agent)}</b>${clockSpan(f.running.since)}</span>${stop}</div>${next}`;
-  }
-  if (h.kind === "waiting") return `<div class="callout" style="--c: var(--wait)"><div class="h">${av(f.waiting.agent)}${esc(f.waiting.agent)} is waiting for you</div>`
-    + `<p class="msg">${esc(f.waiting.text)}</p><div class="acts"><button type="button" class="chip" data-act="dismiss" data-what="waiting">Dismiss</button></div></div>`;
-  if (h.kind === "error") return `<div class="callout" style="--c: var(--err)"><div class="h">${av(f.error.agent)}${esc(f.error.agent)}’s script failed</div>`
-    + `<code>${esc(f.error.text)}</code><p>${f.error.line ? `Line ${f.error.line}. ` : ""}The agent got this error too and usually fixes it.</p>`
-    + '<div class="acts"><button type="button" class="chip" data-act="dismiss" data-what="error">Dismiss</button></div></div>';
   if (h.kind === "outdated") return `<div class="callout" style="--c: var(--build)"><div class="h"><span class="ind">${h.ind}</span>Figaro has a new build</div>`
     + '<p>Reload the plugin to use it. Scripts in the queue wait.</p><div class="acts"><button type="button" class="chip build" data-act="reload">Reload</button></div></div>';
   return "";
 }
 
-function agents(f) {
-  const m = new Map();
-  const put = (name, st, rank, extra) => {
-    const cur = m.get(name);
-    if (!cur || cur.rank > rank) m.set(name, Object.assign({ name, st, rank }, extra));
-  };
-  if (f.running) put(f.running.agent, "running", 0, { since: f.running.since });
-  if (f.waiting) put(f.waiting.agent, "waiting", 1, {});
-  if (f.error) put(f.error.agent, "failed", 2, { at: f.error.at });
-  f.queue.forEach((a, i) => put(a, "queued", 3, { pos: i }));
-  for (const a of Object.keys(f.seen)) put(a, "idle", 4, { at: f.seen[a] });
-  return [...m.values()].sort((x, y) => x.rank - y.rank || (y.at || 0) - (x.at || 0));
-}
-
-function agentRow(a) {
-  let st;
-  if (a.st === "running") st = `<span class="spin"></span>running ${clockSpan(a.since)}`;
-  else if (a.st === "waiting") st = '<span class="dot" style="--c: var(--wait)"></span>waiting for you';
-  else if (a.st === "failed") st = '<span class="dot" style="--c: var(--err)"></span>failed';
-  else if (a.st === "queued") st = a.pos === 0 ? "next in queue" : `in queue · ${a.pos + 1}`;
-  else st = `done · <span data-ago="${a.at}">${ago(a.at)}</span>`;
-  return `<div class="agent">${av(a.name)}<span>${esc(a.name)}</span><span class="st">${st}</span></div>`;
+// An agent's row: what it is doing, and its Stop while it works. Another
+// file's agents can be stopped too: the bridge knows them all.
+function agentRow(f, a) {
+  let st, act = "", msg = "";
+  if (a.st === "working") {
+    st = `<span class="spin"></span>working ${clockSpan(a.since)}`;
+    if (f.doc) {
+      const pressed = stopping.has(f.doc + "\n" + a.name);
+      const tip = pressed ? "Stopping…" : "Stop " + a.name;
+      act = `<button type="button" class="ib" data-act="stop" data-agent="${esc(a.name)}" title="${esc(tip)}" aria-label="${esc(tip)}"${pressed ? " disabled" : ""}><span class="sq"></span></button>`;
+    }
+  } else if (a.st === "done") {
+    st = `<span class="chk">${ICON.check}</span>done · ${agoShort(a.at)}`;
+    if (a.done.text) msg = `<p class="msg">${esc(a.done.text)}</p>`;
+  } else if (a.st === "stopped") {
+    st = '<span class="sq"></span>stopped by you';
+  } else if (a.st === "failed") {
+    st = `<span class="dot" style="--c: var(--err)"></span>failed · ${agoShort(a.at)}`;
+    msg = `<p class="msg err">${a.error.line ? `Line ${a.error.line}: ` : ""}${esc(a.error.text)}</p>`;
+  } else {
+    st = `idle · ${agoShort(a.at)}`;
+  }
+  return `<div class="agent"><div class="ah">${av(a.name)}<span class="nm">${esc(a.name)}</span><span class="st">${st}</span><span class="act">${act}</span></div>${msg}</div>`;
 }
 
 // Layers of this file are buttons that select and zoom; another file's are only names.
@@ -437,12 +461,12 @@ function event(e, here) {
 
 function panel(f, anim) {
   const on = conn === "ok";
-  const list = on ? agents(f) : [];
+  const list = on ? agentsOf(f) : [];
   const feed = on ? f.recent.slice(0, 5) : [];
   const version = board && board.version;
   const foot = f.here ? `<div class="foot">Figaro${version ? " " + esc(version) : ""}</div>` : "";
   return `<div class="panel${anim ? " anim" : ""}${foot ? "" : " bare"}">` + callout(f)
-    + (list.length ? '<div class="sect">Agents</div>' + list.map(agentRow).join("") : "")
+    + (list.length ? '<div class="sect">Agents</div>' + list.map((a) => agentRow(f, a)).join("") : "")
     + (feed.length ? '<div class="sect">Recent</div><div class="feed">' + feed.map((e) => event(e, f.here)).join("") + "</div>" : "")
     + foot + "</div>";
 }
@@ -489,6 +513,7 @@ let later = null;
 let pressed = false;
 let dirty = false;
 let lastHtml = "";
+let lastSig = "";              // what the islands showed, apart from clocks: signature()
 
 function schedule() {
   if (pressed) { dirty = true; return; }
@@ -503,10 +528,8 @@ function schedule() {
 
 function render() {
   dirty = false;
-  for (const [doc, since] of stopping) {
-    const f = board && board.files.find((x) => x.doc === doc);
-    if (!f || !f.running || Math.abs(f.running.since - since) > 1000) stopping.delete(doc);
-  }
+  for (const [key, at] of stopping) if (Date.now() - at > 3000) stopping.delete(key);  // the board says by then
+  lastSig = signature();
   const files = filesNow();
   const byId = new Map(files.map((f) => [f.id, f]));
   let html = updateRow();
@@ -562,12 +585,10 @@ function act(name, fid, el) {
     if (open.has(f.id)) open.delete(f.id);
     else { open.add(f.id); animId = f.id; }
     render();
-  } else if (name === "stop" && f && f.doc && f.running) {
-    stopping.set(f.doc, f.running.since);
-    send({ type: "stop", doc: f.doc });
+  } else if (name === "stop" && f && f.doc && el.dataset.agent) {
+    stopping.set(f.doc + "\n" + el.dataset.agent, Date.now());
+    send({ type: "stop", doc: f.doc, agent: el.dataset.agent });
     render();
-  } else if (name === "dismiss" && f && f.doc) {
-    send({ type: "dismiss", doc: f.doc, what: el.dataset.what });
   } else if (name === "update") {
     send({ type: "update-now" });
   } else if (name === "reload") {
@@ -600,12 +621,17 @@ document.addEventListener("pointerdown", () => {
 document.addEventListener("pointerup", release);
 document.addEventListener("pointercancel", release);
 
-// Live clocks, "2m ago", and another file's island leaving after ten quiet minutes.
+// Live clocks and "2m ago", and what changes with time alone: an agent quiet
+// for activeFor is no longer at work, another file's island leaves after ten
+// quiet minutes.
+function signature() {
+  return filesNow().map((f) => [f.id, shown(f), headline(f).kind,
+    agentsOf(f).map((a) => a.name + ":" + a.st).join()].join("|")).join("\n");
+}
 setInterval(() => {
   for (const el of app.querySelectorAll("[data-clock]")) el.textContent = clock(+el.dataset.clock);
   for (const el of app.querySelectorAll("[data-ago]")) el.textContent = el.dataset.long ? agoLong(+el.dataset.ago) : ago(+el.dataset.ago);
-  const want = filesNow().filter(shown).map((f) => f.id).sort().join();
-  if (want !== [...onScreen].sort().join()) schedule();
+  if (signature() !== lastSig) schedule();
 }, 1000);
 
 // ─── the bridge ──────────────────────────────────────────────────────────

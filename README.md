@@ -28,7 +28,7 @@ Everything runs on your computer.*
 
 </div>
 
-![The Figaro window in Figma: an agent at work in this file with another one next in the queue, what they changed, and agents in two other files](assets/hero.png)
+![The Figaro window in Figma: two agents at work in this file, each with its Stop, one that is done with a note, what they changed, and agents in two other files](assets/hero.png)
 
 ## Why
 
@@ -218,10 +218,11 @@ for your review. Try your first tasks in a draft.
 
 <br>
 
-Each file has a queue, so scripts from different agents run one at a time and
-never mix. Give each agent a name with `-A designer` or
-`FIGARO_AGENT=designer`: the name shows in the queue, and `figaro undo` takes
-back only that agent's work.
+Agents work side by side, and each file has a queue: their scripts take turns,
+a fraction of a second each, so their changes never mix. Give each agent a name
+with `-A designer` or `FIGARO_AGENT=designer`: the plugin's window shows what
+each one is doing, with its own **Stop**, and `figaro undo` takes back only
+that agent's work.
 
 </details>
 
@@ -312,7 +313,7 @@ Keep it running
   figaro targets                  the files where the plugin runs
   figaro status                   the bridge's raw state, as JSON
   figaro reload                   load new plugin code into a running plugin
-  figaro wait "Check the card"    a note for you in the plugin's window
+  figaro done "Check the card"    done for now, with a note for you
   figaro clear                    free a file after a script ran out of time
 ```
 
@@ -439,10 +440,10 @@ Three small pieces, all on your computer. When your agent runs `figaro shot sel`
    second.
 
 The plugin's window shows a black island for its file, and one more for each
-other file where agents are at work. An island names the agent running a
-script and who waits in the queue. Click it for the recent changes (a click on
-a layer selects it in Figma) and a **Stop** button that ends the running
-script.
+other file where agents are at work. Click an island for its agents and the
+recent changes. An agent's row says what it is doing: at work, done (with a
+note for you), stopped or failed; one at work has a **Stop** button. A click on
+a changed layer selects it in Figma.
 
 <details>
 <summary>🔌 <b>Under the hood</b></summary>

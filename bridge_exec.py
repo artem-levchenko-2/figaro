@@ -341,7 +341,7 @@ async def reload_handler(request: web.Request) -> web.Response:
         return web.json_response({"ok": True, "file": new.get("name"), "plugin": expected,
                                   "elapsed_ms": int((time.time() - t0) * 1000), **meta})
 
-    return await bridge._queued(request, conn_id, None, 30.0, run)
+    return await bridge._queued(request, conn_id, None, 30.0, run, script=False)
 
 
 async def _send(info, conn_id, message, timeout):

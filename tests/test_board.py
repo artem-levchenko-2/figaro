@@ -1,5 +1,5 @@
 """The board every plugin window draws its islands from, the window's buttons,
-`POST /wait`, and Update and Reload.
+`POST /done`, and Update and Reload.
 
 A fake plugin plays each window; what the window does with the board is
 tests/ui.test.js.
@@ -31,6 +31,11 @@ def island(p, name):
     return next(f for f in boards(p)[-1]["files"] if f["name"] == name)
 
 
+def agents(p, name):
+    """The file's agents in the last board, by name."""
+    return {a["name"]: a for a in island(p, name)["agents"]}
+
+
 async def settle():
     await asyncio.sleep(0.15)  # a board goes out 50 ms after a change
 
@@ -49,6 +54,11 @@ class Stoppable(FakePlugin):
         await self.ws.send_str(json.dumps({"type": "result", "id": m["id"], "value": 1}))
 
 
+def stop(p, doc, agent=None):
+    """The Stop button of an agent's row; without `agent`, an older window's Stop."""
+    return p.ws.send_str(json.dumps(dict({"type": "stop", "doc": doc}, **({"agent": agent} if agent else {}))))
+
+
 # ─── what the islands show ────────────────────────────────────────────────
 
 def test_every_window_sees_what_scripts_did_in_every_file():
@@ -63,19 +73,22 @@ def test_every_window_sees_what_scripts_did_in_every_file():
             assert r.status == 200
             await settle()
             f = island(b, "Dashboard")
-            assert (f["doc"], f["sig"], f["running"], f["queue"]) == ("doc:KEY1", "KEY1", None, [])
+            assert (f["doc"], f["sig"]) == ("doc:KEY1", "KEY1")
             assert f["recent"][0]["agent"] == "designer" and f["recent"][0]["kind"] == "ok"
             assert f["recent"][0]["summary"] == "Created KPI card"
             assert f["recent"][0]["layers"] == [{"id": "5:6", "name": "KPI card", "type": "COMPONENT"}]
-            assert set(f["seen"]) == {"designer"}
-            assert island(a, "UI kit")["recent"] == []
+            designer = agents(b, "Dashboard")["designer"]
+            assert designer["busy"] is False and designer["since"] <= designer["last"]
+            assert (designer["done"], designer["stopped"], designer["error"]) == (None, None, None)
+            assert island(a, "UI kit")["agents"] == [] and island(a, "UI kit")["recent"] == []
             board = boards(a)[-1]
             assert board["version"] == bridge.VERSION and board["updating"] is None
+            assert board["active_for"] == bridge_board.ACTIVE_FOR
         await c.close()
     run(go())
 
 
-def test_the_running_script_and_the_queue_show_while_they_last():
+def test_agents_are_busy_while_their_scripts_run_or_wait():
     async def go():
         c = await make_client()
         async with FakePlugin(c, name="Draft", key="KEY1", caps=CAPS, delay=0.4) as p:
@@ -83,17 +96,41 @@ def test_the_running_script_and_the_queue_show_while_they_last():
             await asyncio.sleep(0.1)
             second = asyncio.ensure_future(c.post("/exec", json={"code": "b"}))
             await settle()
-            f = island(p, "Draft")
-            assert f["running"]["agent"] == "designer" and f["queue"] == ["agent"]  # no -A: "agent"
+            busy = {n: a["busy"] for n, a in agents(p, "Draft").items()}
+            assert busy == {"designer": True, "agent": True}  # running, and waiting in the queue; no -A: "agent"
             assert (await first).status == 200 and (await second).status == 200
             await settle()
-            f = island(p, "Draft")
-            assert f["running"] is None and f["queue"] == []
+            assert not any(a["busy"] for a in agents(p, "Draft").values())
         await c.close()
     run(go())
 
 
-def test_a_failed_script_stays_until_its_agent_succeeds():
+def test_an_agent_at_work_keeps_its_run_of_scripts(monkeypatch):
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, name="Draft", key="KEY1", caps=CAPS) as p:
+            await c.post("/exec", json={"code": "a", "agent": "designer"})
+            await settle()
+            since = agents(p, "Draft")["designer"]["since"]
+            await c.post("/exec", json={"code": "b", "agent": "designer"})
+            await settle()
+            a = agents(p, "Draft")["designer"]
+            assert a["since"] == since and a["last"] > since  # one run: the window's clock goes on
+            await c.post("/done", json={"agent": "designer"})
+            await c.post("/exec", json={"code": "c", "agent": "designer"})
+            await settle()
+            assert agents(p, "Draft")["designer"]["since"] > since  # done, then a new run
+            since = agents(p, "Draft")["designer"]["since"]
+            monkeypatch.setattr(bridge_board, "ACTIVE_FOR", 0.1)
+            await asyncio.sleep(0.2)
+            await c.post("/exec", json={"code": "d", "agent": "designer"})
+            await settle()
+            assert agents(p, "Draft")["designer"]["since"] > since  # quiet for longer: a new run too
+        await c.close()
+    run(go())
+
+
+def test_a_failed_script_stays_until_its_agent_gets_past_it():
     fail = {"type": "error", "text": "Cannot read properties of null (reading 'fills')", "line": 14}
 
     async def go():
@@ -102,43 +139,47 @@ def test_a_failed_script_stays_until_its_agent_succeeds():
         async with FakePlugin(c, name="Draft", key="KEY1", caps=CAPS, reply=reply) as p:
             await c.post("/exec", json={"code": "bad", "agent": "designer"})
             await settle()
-            f = island(p, "Draft")
-            assert f["error"]["agent"] == "designer" and f["error"]["line"] == 14
-            assert {k: f["recent"][0][k] for k in ("kind", "summary", "note")} == \
+            error = agents(p, "Draft")["designer"]["error"]
+            assert (error["line"], error["text"]) == (14, fail["text"])
+            assert {k: island(p, "Draft")["recent"][0][k] for k in ("kind", "summary", "note")} == \
                 {"kind": "err", "summary": "Script failed", "note": "line 14"}
             await c.post("/exec", json={"code": "ok", "agent": "icons"})
             await settle()
-            assert island(p, "Draft")["error"]["agent"] == "designer"  # another agent can't fix it
+            assert agents(p, "Draft")["designer"]["error"] is not None  # another agent can't fix it
             await c.post("/exec", json={"code": "ok", "agent": "designer"})
             await settle()
-            assert island(p, "Draft")["error"] is None
+            assert agents(p, "Draft")["designer"]["error"] is None
             await c.post("/exec", json={"code": "bad", "agent": "designer"})
-            await p.ws.send_str(json.dumps({"type": "dismiss", "doc": "doc:KEY1", "what": "error"}))
+            await c.post("/done", json={"agent": "designer", "text": "Gave up on the fills"})
             await settle()
-            assert island(p, "Draft")["error"] is None  # the user dismissed it
+            assert agents(p, "Draft")["designer"]["error"] is None  # it said it is done
         await c.close()
     run(go())
 
 
-def test_wait_shows_a_note_until_the_agent_runs_again():
+def test_done_shows_the_note_until_the_agent_runs_again():
     async def go():
         c = await make_client()
         async with FakePlugin(c, name="Draft", key="KEY1", caps=CAPS) as p:
-            r = await c.post("/wait", json={"text": "  Check the card\n and say go ", "agent": "designer"})
+            r = await c.post("/done", json={"text": "  Check the card\n and say go ", "agent": "designer"})
             assert r.status == 200
             assert await r.json() == {"ok": True, "file": "Draft", "text": "Check the card and say go"}
             await settle()
-            assert island(p, "Draft")["waiting"]["text"] == "Check the card and say go"
+            assert agents(p, "Draft")["designer"]["done"]["text"] == "Check the card and say go"
             await c.post("/exec", json={"code": "x", "agent": "icons"})
             await settle()
-            assert island(p, "Draft")["waiting"] is not None  # someone else's script
+            assert agents(p, "Draft")["designer"]["done"] is not None  # someone else's script
             await c.post("/exec", json={"code": "x", "agent": "designer"})
             await settle()
-            assert island(p, "Draft")["waiting"] is None  # the agent is back: answered
-            r = await c.post("/wait", json={"text": " "})
+            assert agents(p, "Draft")["designer"]["done"] is None  # the agent is back at work
+            r = await c.post("/done", json={"text": " "})
+            assert r.status == 200 and (await r.json())["text"] is None  # done without a note
+            await settle()
+            assert agents(p, "Draft")["agent"]["done"]["text"] is None
+            r = await c.post("/done", json={"text": 5})
             assert r.status == 400
         async with FakePlugin(c, name="Old", key="KEY2", caps=OLD_CAPS):
-            r = await c.post("/wait", json={"text": "hi", "target": "Old"})
+            r = await c.post("/done", json={"text": "hi", "target": "Old"})
             assert r.status == 409 and "figaro reload" in (await r.json())["error"]
         await c.close()
     run(go())
@@ -169,7 +210,7 @@ def test_what_a_script_did_in_a_few_words(changes, expected):
 
 # ─── Stop ─────────────────────────────────────────────────────────────────
 
-def test_stop_from_any_window_ends_the_script_with_a_409():
+def test_stop_from_any_window_ends_the_agents_script_with_a_409():
     async def go():
         c = await make_client()
         async with Stoppable(c, name="Draft", key="KEY1", caps=CAPS) as p, \
@@ -177,28 +218,95 @@ def test_stop_from_any_window_ends_the_script_with_a_409():
             req = asyncio.ensure_future(c.post("/exec", json={"code": "loop", "agent": "designer",
                                                               "target": "Draft"}))
             await asyncio.sleep(0.2)
-            await other.ws.send_str(json.dumps({"type": "stop", "doc": "doc:KEY1"}))
+            await stop(other, "doc:KEY1", "designer")
             r = await req
             body = await r.json()
             assert r.status == 409 and body["stopped"] is True and "pressed Stop" in body["error"]
             assert "line" not in body  # where the Stop caught it is no bug of the script
             assert p.of("abort")
             await settle()
-            f = island(p, "Draft")
-            assert f["recent"][0]["kind"] == "stop" and f["error"] is None
+            designer = agents(p, "Draft")["designer"]
+            assert designer["stopped"] and designer["error"] is None
+            assert island(p, "Draft")["recent"][0]["kind"] == "stop"
+            # It got its 409 already: once the user answers it, its scripts run.
+            assert (await c.post("/exec", json={"code": "x", "agent": "designer", "target": "Draft"})).status == 200
+            await settle()
+            assert agents(p, "Draft")["designer"]["stopped"] is None  # back at work
         await c.close()
     run(go())
 
 
-def test_a_script_that_ends_despite_stop_still_tells_its_agent():
+def test_stop_is_for_one_agent():
+    async def go():
+        c = await make_client()
+        async with Stoppable(c, name="Draft", key="KEY1", caps=CAPS) as p:
+            designer = asyncio.ensure_future(c.post("/exec", json={"code": "loop", "agent": "designer"}))
+            await asyncio.sleep(0.2)
+            icons = asyncio.ensure_future(c.post("/exec", json={"code": "loop", "agent": "icons"}))
+            await asyncio.sleep(0.1)
+            await stop(p, "doc:KEY1", "icons")  # waiting in the queue behind designer
+            await asyncio.sleep(0.2)
+            await stop(p, "doc:KEY1", "designer")
+            assert (await designer).status == 409
+            r = await icons
+            body = await r.json()
+            assert r.status == 409 and "did not run" in body["error"]
+            assert len(p.of("exec")) == 1  # only designer's script reached the plugin
+        await c.close()
+    run(go())
+
+
+def test_stop_between_scripts_refuses_the_next_one_once(monkeypatch):
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, name="Draft", key="KEY1", caps=CAPS) as p:
+            await c.post("/exec", json={"code": "a", "agent": "designer"})
+            await stop(p, "doc:KEY1", "designer")
+            await settle()
+            assert agents(p, "Draft")["designer"]["stopped"]
+            assert (await c.post("/exec", json={"code": "b", "agent": "icons"})).status == 200  # not icons
+            for parallel in (True, False):
+                await stop(p, "doc:KEY1", "designer")
+                r = await c.post("/exec", json={"code": "b", "agent": "designer", "parallel": parallel})
+                body = await r.json()
+                assert r.status == 409 and body["stopped"] is True and "did not run" in body["error"]
+            assert [m["code"] for m in p.of("exec")] == ["a", "b"]  # nothing of designer's ran
+            await settle()
+            assert agents(p, "Draft")["designer"]["stopped"]  # still stopped: it asks the user now
+            assert (await c.post("/exec", json={"code": "c", "agent": "designer"})).status == 200
+            monkeypatch.setattr(bridge_board, "HOLD", 0.1)
+            await stop(p, "doc:KEY1", "designer")
+            await asyncio.sleep(0.2)
+            assert (await c.post("/exec", json={"code": "d", "agent": "designer"})).status == 200  # too late
+        await c.close()
+    run(go())
+
+
+def test_done_lifts_a_stop():
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, name="Draft", key="KEY1", caps=CAPS) as p:
+            await stop(p, "doc:KEY1", "designer")
+            await c.post("/done", json={"agent": "designer", "text": "Stopped as you asked"})
+            await settle()
+            designer = agents(p, "Draft")["designer"]
+            assert designer["stopped"] is None and designer["done"]["text"] == "Stopped as you asked"
+            assert (await c.post("/exec", json={"code": "x", "agent": "designer"})).status == 200
+        await c.close()
+    run(go())
+
+
+def test_an_older_windows_stop_ends_whatever_runs_in_the_file():
     async def go():
         c = await make_client()
         async with FakePlugin(c, name="Draft", key="KEY1", caps=CAPS, delay=0.4) as p:
             req = asyncio.ensure_future(c.post("/exec", json={"code": "tight loop"}))
             await asyncio.sleep(0.15)
-            await p.ws.send_str(json.dumps({"type": "stop", "doc": "doc:KEY1"}))
+            await stop(p, "doc:KEY1")
             r = await req
+            # The script ran to its end despite the Stop; its agent still has to hear of it.
             assert r.status == 409 and "pressed Stop" in (await r.json())["error"]
+            assert (await c.post("/exec", json={"code": "x"})).status == 200  # it was told: no hold
         await c.close()
     run(go())
 

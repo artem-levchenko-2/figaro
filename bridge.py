@@ -477,7 +477,7 @@ async def plugin_ws_handler(request: web.Request):
                     fut.set_result(True)
                 continue
 
-            # A button in the window: Stop, Dismiss, Update and Reload, Reload.
+            # A button in the window: Stop, Update and Reload, Reload.
             if await bridge_board.handle(conn_id, m):
                 continue
 
@@ -668,6 +668,10 @@ async def exec_handler(request: web.Request) -> web.Response:
         updating = bridge_update.refusal()
         if updating is not None:
             return updating
+        held = bridge_board.refusal(_doc_key(conn_id), agent)  # the user pressed Stop for it
+        if held is not None:
+            return held
+        bridge_board.started(_doc_key(conn_id), agent)
         return await _dispatch(target_ws, conn_id, code, timeout, force,
                                fields=bridge_exec.exec_fields(conn_id, agent, opts, parallel=True))
 
@@ -677,18 +681,25 @@ async def exec_handler(request: web.Request) -> web.Response:
         fields=bridge_exec.exec_fields(conn_id, agent, opts)))
 
 
-async def _queued(request, conn_id, agent, queue_timeout, dispatch):
+async def _queued(request, conn_id, agent, queue_timeout, dispatch, script=True):
     """Run `dispatch(meta)` under the file's lock, waiting in its queue.
 
     Split out of exec_handler, so /undo and /reload wait their turn too.
+    `script`: an agent's script (exec, undo), which the plugin's window shows
+    and the user's Stop refuses; a /reload is none.
     """
     updating = bridge_update.refusal()  # the bridge is about to restart
     if updating is not None:
         return updating
     key = _doc_key(conn_id)
+    if script:
+        held = bridge_board.refusal(key, agent)  # the user pressed Stop for this agent
+        if held is not None:
+            return held
+        bridge_board.started(key, agent)
     lock = _lock_for(key)
     q = QUEUE.setdefault(key, {"waiting": [], "running": None})
-    me = {"agent": agent, "since": time.time()}
+    me = {"agent": agent, "since": time.time(), "script": script}
     q["waiting"].append(me)
     bridge_board.changed()
     try:
@@ -727,8 +738,10 @@ async def _queued(request, conn_id, agent, queue_timeout, dispatch):
         updating = bridge_update.refusal()  # it began while this caller waited
         if updating is not None:
             return updating
+        held = bridge_board.refusal(key, agent) if script else None  # Stop while it waited
+        if held is not None:
+            return held
         q["running"] = {"agent": agent, "since": time.time()}
-        bridge_board.started(key, agent)
         return await dispatch({"queued_ms": queued_ms})
     finally:
         q["running"] = None
@@ -832,9 +845,9 @@ async def _dispatch(target_ws, conn_id, code, timeout, force, meta=None,
 
     rid = str(uuid.uuid4())
     fut: asyncio.Future = asyncio.get_running_loop().create_future()
-    # doc and mtype: the window's Stop finds the file's running script by them
+    # doc, mtype and agent: the window's Stop finds an agent's running script by them
     PENDING[rid] = {"future": fut, "logs": [], "t0": time.time(), "conn": conn_id,
-                    "doc": doc, "mtype": mtype}
+                    "doc": doc, "mtype": mtype, "agent": (fields or {}).get("agent")}
 
     try:
         try:
@@ -1086,7 +1099,8 @@ async def root_handler(request: web.Request) -> web.Response:
             "POST /clear": "{target} -> drop a file's abandoned-script interlock after a 504",
             "POST /undo": "{target, agent?, force?} -> revert the file's last script",
             "POST /reload": "{target} -> run plugin/code.js from disk in the open plugin",
-            "POST /wait": "{target, agent?, text} -> the file's island in the plugin asks the user",
+            "POST /done": ("{target, agent?, text?} -> the agent is done in the file: the plugin's "
+                           "window says so, with the note, until its next script there"),
             "WS /plugin": "Figma plugin connects here (one per open file)",
         },
     })
@@ -1101,7 +1115,7 @@ def build_app() -> web.Application:
     app.router.add_post("/clear", clear_handler)
     app.router.add_get("/plugin", plugin_ws_handler)
     bridge_exec.install(app)  # /undo, /reload
-    bridge_board.install(app)  # /wait
+    bridge_board.install(app)  # /done
     return app
 
 

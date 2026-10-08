@@ -281,15 +281,21 @@ def test_undo_says_how_many_steps_and_what_is_left(monkeypatch, capsys):
     assert "⚠ not everything was undone" in err
 
 
-def test_wait_leaves_a_note_in_the_plugin_window(monkeypatch, capsys):
+def test_done_says_so_in_the_plugin_window(monkeypatch, capsys):
     reply = {"ok": True, "file": "Sandbox 5$", "text": "Check the card"}
-    rc, out, err, calls = cli(monkeypatch, capsys, "wait", "Check the card", "-T", KEY, "-A", "designer",
+    rc, out, err, calls = cli(monkeypatch, capsys, "done", "Check the card", "-T", KEY, "-A", "designer",
                               bridge_reply=reply)
     assert rc == 0 and calls == [{"text": "Check the card", "target": KEY, "agent": "designer"}]
-    assert out.strip() == 'the Figaro window in "Sandbox 5$" asks: Check the card'
+    assert out.strip() == 'the Figaro window in "Sandbox 5$" shows you done, with your note: Check the card'
     assert "until your next script" in err
+    # `wait`, its name while 1.1.0 was being made, still works
+    monkeypatch.setattr(figaro, "AGENT", None)  # -A above stays in the module
+    rc, out, _, calls = cli(monkeypatch, capsys, "wait", "-T", KEY,
+                            bridge_reply={"ok": True, "file": "Sandbox 5$", "text": None})
+    assert rc == 0 and calls == [{"target": KEY}]
+    assert out.strip() == 'the Figaro window in "Sandbox 5$" shows you done'
     old = {"ok": False, "error": "the plugin in \"Sandbox 5$\" runs an older build that can't show it"}
-    rc, _, err, _ = cli(monkeypatch, capsys, "wait", "Check the card", bridge_reply=old)
+    rc, _, err, _ = cli(monkeypatch, capsys, "done", "Check the card", bridge_reply=old)
     assert rc == 1 and "older build" in err
 
 

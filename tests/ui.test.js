@@ -2,8 +2,9 @@
 //
 // The keep-awake tone starts with a request from the bridge, stops 3 min after
 // the last one, and stops at once when the bridge goes away: it never plays
-// while the bridge is down. The islands show what the bridge's `board` says,
-// and their buttons send the bridge and the sandbox what they should.
+// while the bridge is down. The islands show what the bridge's `board` says —
+// each agent at work, done, stopped or failed — and their buttons send the
+// bridge and the sandbox what they should.
 //
 //     node tests/ui.test.js
 const fs = require("fs");
@@ -103,10 +104,13 @@ function load() {
   return env;
 }
 
-// A file in the bridge's board; its times are the bridge's clock (now = 1000 s).
+// A file in the bridge's board and an agent in it; times are the bridge's
+// clock, which reads 1000 s when the window gets its first board.
 function file(key, name, extra) {
-  return Object.assign({ doc: "doc:" + key, sig: key, name, running: null, queue: [], waiting: null,
-                         error: null, recent: [], seen: {} }, extra);
+  return Object.assign({ doc: "doc:" + key, sig: key, name, agents: [], recent: [] }, extra);
+}
+function agent(name, extra) {
+  return Object.assign({ name, since: null, last: 0, busy: false, done: null, stopped: null, error: null }, extra);
 }
 
 let failed = 0;
@@ -172,60 +176,83 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
   // ─── this file's island ─────────────────────────────────────────────────
   {
     const env = load();
+    const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;  // the bridge's time, `sec` seconds ago
     env.identity("Dashboard", "KEY1");
     env.ws().open();
     check("hello carries the file", env.sent("hello").map((m) => m.name).pop(), "Dashboard");
-    env.board([file("KEY1", "Dashboard", { running: { agent: "designer", since: 988 }, queue: ["icons"] })]);
+    env.board([file("KEY1", "Dashboard", { agents: [agent("designer", { since: ago(12), last: ago(1), busy: true })] })]);
     await env.clock.advance(400);
-    const now = env.html();
-    check("a script: the file, the agent, its clock and the queue",
-          [/Dashboard/.test(now), /designer/.test(now), /data-clock/.test(now), /\+1/.test(now)], [true, true, true, true]);
-    env.click("stop", "here");
-    check("Stop asks the bridge to end the file's script", env.sent("stop"), [{ type: "stop", doc: "doc:KEY1" }]);
+    const closed = env.html();
+    check("an agent at work: the file, the agent and its clock",
+          [/Dashboard/.test(closed), /designer/.test(closed), /data-clock/.test(closed)], [true, true, true]);
+    env.click("toggle", "here");
+    const open = env.html();
+    check("open: the agent's own row says it works, and has its Stop",
+          [/working/.test(open), /data-act="stop" data-agent="designer"/.test(open)], [true, true]);
+    check("…and the island's row keeps only the file's name", /class="sub"/.test(open), false);
+    env.click("stop", "here", { agent: "designer" });
+    check("Stop asks the bridge to stop that agent", env.sent("stop"), [{ type: "stop", doc: "doc:KEY1", agent: "designer" }]);
     check("…and the button waits for it", /disabled/.test(env.html()), true);
 
     env.board([file("KEY1", "Dashboard", {
-      recent: [{ agent: "designer", at: 999, kind: "ok", summary: "Created KPI card",
-                 layers: [{ id: "5:6", name: "KPI card", type: "COMPONENT" }] }],
-      seen: { designer: 999 } })]);
-    await env.clock.advance(400);
-    check("done: who and when", /designer · /.test(env.html()), true);
-    env.click("toggle", "here");
-    const panel = env.html();
-    check("open: the agents, the recent changes, the version",
-          [/Agents/.test(panel), /Created KPI card/.test(panel), /Figaro 1\.1\.0/.test(panel)], [true, true, true]);
+      agents: [agent("designer", { since: ago(12), last: ago(1) })],
+      recent: [{ agent: "designer", at: ago(1), kind: "ok", summary: "Created KPI card",
+                 layers: [{ id: "5:6", name: "KPI card", type: "COMPONENT" }] }] })]);
+    await env.clock.advance(MIN);
+    check("between its scripts the agent is still at work", /working/.test(env.html()), true);
+    check("open: the recent changes and the version",
+          [/Created KPI card/.test(env.html()), /Figaro 1\.1\.0/.test(env.html())], [true, true]);
     env.click("layer", "here", { id: "5:6" });
     check("a layer of this file: select it in Figma", env.posted.filter((m) => m.type === "select"), [{ type: "select", id: "5:6" }]);
+    await env.clock.advance(4 * MIN);
+    check("five quiet minutes after its last script it is idle",
+          [/working/.test(env.html()), /idle · <span[^>]*>5m</.test(env.html())], [false, true]);
 
-    env.board([file("KEY1", "Dashboard", { waiting: { agent: "designer", text: "Check the card", since: 999 } })]);
+    env.board([file("KEY1", "Dashboard", { agents: [
+      agent("designer", { since: ago(300), last: ago(200), done: { text: "Check the card", at: ago(1) } })] })]);
     await env.clock.advance(400);
-    check("an agent waits for the user: its note", [/is waiting/.test(env.html()), /Check the card/.test(env.html())], [true, true]);
-    env.click("dismiss", "here", { what: "waiting" });
-    check("Dismiss tells the bridge", env.sent("dismiss"), [{ type: "dismiss", doc: "doc:KEY1", what: "waiting" }]);
+    check("an agent says it is done: its row, with the note, and no buttons",
+          [/done · /.test(env.html()), /Check the card/.test(env.html()), /<button[^>]*data-act="(stop|dismiss)"/.test(env.html())],
+          [true, true, false]);
+    env.click("toggle", "here");
+    check("closed: who is done", /designer is done/.test(env.html()), true);
 
-    env.board([file("KEY1", "Dashboard", { error: { agent: "designer", at: 999, text: "Cannot read properties of null", line: 14 } })]);
+    env.board([file("KEY1", "Dashboard", { agents: [agent("designer", { since: ago(30), last: ago(5), stopped: ago(1) })] })]);
     await env.clock.advance(400);
-    check("a failed script stays red with its line", [/designer failed/.test(env.html()), /Line 14/.test(env.html())], [true, true]);
+    check("stopped by the user", /designer stopped/.test(env.html()), true);
+
+    env.board([file("KEY1", "Dashboard", { agents: [agent("designer", { since: ago(250), last: ago(1),
+      error: { text: "Cannot read properties of null", line: 14, at: ago(1) } })] })]);
+    await env.clock.advance(400);
+    check("a failed script while the agent works: it is still at work", /designer <span data-clock[^>]*>4:1/.test(env.html()), true);
+    await env.clock.advance(5 * MIN);
+    check("…and when it goes quiet after it: failed", /designer failed/.test(env.html()), true);
+    env.click("toggle", "here");
+    check("…with the error under its name", /Line 14: Cannot read properties of null/.test(env.html()), true);
   }
 
   // ─── other files ────────────────────────────────────────────────────────
   {
     const env = load();
+    const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;
     env.identity("Dashboard", "KEY1");
     env.ws().open();
     env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")]);
     await env.clock.advance(400);
     check("a quiet file has no island", /Sandbox/.test(env.html()), false);
-    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$", { running: { agent: "icons", since: 998 } })]);
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$", { agents: [
+      agent("icons", { since: ago(10), last: ago(0), busy: true }), agent("tokens", { since: ago(5), last: ago(1) })] })]);
     await env.clock.advance(400);
-    check("an agent at work in another file: its island", /Sandbox 5\$/.test(env.html()), true);
-    env.click("stop", "doc:KEY2");
-    check("…with its own Stop", env.sent("stop"), [{ type: "stop", doc: "doc:KEY2" }]);
-    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$", {
-      recent: [{ agent: "icons", at: 1000, kind: "ok", summary: "Created Icons",
-                 layers: [{ id: "1:2", name: "Icons", type: "FRAME" }] }], seen: { icons: 1000 } })]);
-    await env.clock.advance(400);
+    check("agents at work in another file: its island names them",
+          [/Sandbox 5\$/.test(env.html()), /icons, tokens/.test(env.html())], [true, true]);
     env.click("toggle", "doc:KEY2");
+    env.click("stop", "doc:KEY2", { agent: "tokens" });
+    check("…and each has its own Stop", env.sent("stop"), [{ type: "stop", doc: "doc:KEY2", agent: "tokens" }]);
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$", {
+      agents: [agent("icons", { since: ago(10), last: ago(0) })],
+      recent: [{ agent: "icons", at: ago(0), kind: "ok", summary: "Created Icons",
+                 layers: [{ id: "1:2", name: "Icons", type: "FRAME" }] }] })]);
+    await env.clock.advance(400);
     check("its layers are names, not buttons: Figma can't switch the tab",
           [/Icons/.test(env.html()), /data-act="layer"/.test(env.html())], [true, false]);
     await env.clock.advance(9 * MIN);
@@ -255,7 +282,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.click("release", null, { url: RELEASE });
     check("…in the browser", env.posted.filter((m) => m.type === "open-url").map((m) => m.url), [RELEASE]);
 
-    env.ws().receive({ type: "outdated", running: "2026-10-08.5", expected: "2026-10-08.6" });
+    env.ws().receive({ type: "outdated", running: "2026-10-08.6", expected: "2026-10-08.7" });
     env.board(files);
     await env.clock.advance(400);
     check("newer plugin code on disk: Reload", [/new build/.test(env.html()), /data-act="reload"/.test(env.html())], [true, true]);
