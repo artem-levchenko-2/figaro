@@ -105,7 +105,7 @@ flowchart LR
 
 ## Quick start
 
-You need a **Mac** (Windows works too, see [Windows](#windows)),
+You need a **Mac** (Windows works too, with less testing: see [Windows](#windows)),
 **[Figma Desktop](https://www.figma.com/downloads/)** (the browser version can't run local development
 plugins), **Python 3.10+** and **Git**. [Claude Code](https://claude.com/claude-code) is optional, for the
 agent skill.
@@ -133,9 +133,9 @@ In Figma Desktop: **Plugins → Development → Import plugin from manifest…**
 
 **3. Run it in a file**
 
-Open any file and run **Plugins → Development → Figaro**. A slim bar shows up with the file's name and a
-check mark once the bridge answers. Keep it open while you or your agents work. ⌘⌥P runs the last plugin
-again.
+Open any file and run **Plugins → Development → Figaro**. A slim bar shows up; it connects as soon as the
+bridge runs, and any `figaro` command starts the bridge. Keep the bar open while you or your agents work.
+⌘⌥P runs the last plugin again.
 
 **4. Check the chain**
 
@@ -229,7 +229,7 @@ JS
 
 Figaro writes to real files, so it keeps a few promises:
 
-| | |
+| Guard | What it does |
 |---|---|
 | **Checkpoints** | Before the first script that changes a file, and then hourly, Figaro saves a version in **File → Version history** (`Figaro · before changes by …`). `--checkpoint "before the grid"` saves one on demand |
 | **Change reports** | Every script reports what it created, deleted and changed, with links to new layers |
@@ -268,7 +268,7 @@ GitHub API, so the plugin bar can tell you about a new version. It sends nothing
 | `plugin not connected` | run **Plugins → Development → Figaro** in that file; `figaro doctor` names the broken link |
 | `N files connected — specify a target` | add `-T "<link>"`; `figaro targets` lists the files |
 | the first call says the plugin has not connected yet | a Figma window in the background takes up to a minute to reconnect; run the command again |
-| `504` — the script ran out of time | it may still be running: look at the file before you retry. When it is done, `figaro clear -T <file>` |
+| `504` — the script ran out of time | it may still be running: look at the file before you retry. If the file stays blocked after the script has ended, `figaro clear -T <file>` |
 | `⚠ … runs an older build` | `figaro reload -T <file>`, or run the plugin again |
 | `zsh: no matches found` | put the link in quotes |
 | Figma "plays audio" and the Mac won't sleep | while scripts run, the plugin plays an inaudible tone so macOS doesn't throttle a background Figma; it stops three minutes after the last script, or right away when the bridge stops |
