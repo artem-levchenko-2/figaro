@@ -8,6 +8,11 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
+### Changed
+
+- In the plugin's window an agent's name is a little heavier, and the note it leaves is grey like its status,
+  so the names stand out.
+
 ## [1.1.0] — 2026-10-09
 
 ### Added

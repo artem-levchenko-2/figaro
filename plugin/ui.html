@@ -126,8 +126,9 @@ button { font: inherit; }
 .callout p, .callout code { margin: 0 0 0 26px; }
 .callout p { color: var(--is-dim); font-size: 11.5px; line-height: 16px; }
 .callout code { color: color-mix(in srgb, var(--c) 45%, var(--is-ink)); font: 11px/15px var(--sys-mono); overflow-wrap: anywhere; }
-/* An agent: its name and what it is doing, and under them the note it left
-   (done) or the error its last script stopped at. An agent at work shows its
+/* An agent: its name, a little heavier than the text around it, and what it
+   is doing, and under them the note it left (done), grey like the status, or
+   the error its last script stopped at, in red. An agent at work shows its
    Stop while the pointer is on it, in a highlight 4 px in from the island's
    edges, with the avatar and the Stop 5 px in from its ends. The Stop makes
    room first and then appears; going, it fades first. */
@@ -136,7 +137,7 @@ button { font: inherit; }
 .agent.hot, .agent.held { background: var(--is-hover); }
 .ah { height: 28px; display: flex; align-items: center; gap: 8px; }
 .av { width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--av, #7b61ff); color: #fff; font-size: 10px; font-weight: 700; }
-.nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .st { flex: none; display: flex; align-items: center; gap: 6px; color: var(--is-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
 .st .dot { width: 6px; height: 6px; box-shadow: none; }
 .st .spin { width: 10px; height: 10px; border-width: 1.5px; }
@@ -148,7 +149,7 @@ button { font: inherit; }
 .hot .act, .held .act, .agent:focus-within .act { width: 18px; margin-left: -2px; transition-delay: 0s; transition-timing-function: cubic-bezier(.2, .8, .2, 1); }
 .hot .act .ib, .held .act .ib, .agent:focus-within .act .ib { opacity: 1; transform: none; pointer-events: auto;
   transition: opacity .16s ease .06s, transform .22s cubic-bezier(.2, .8, .2, 1) .04s; }
-.msg { margin: -4px 0 0; padding: 0 0 7px 26px; color: var(--is-text); font-size: 11.5px; line-height: 15px; overflow-wrap: anywhere; }
+.msg { margin: -4px 0 0; padding: 0 0 7px 26px; color: var(--is-dim); font-size: 11.5px; line-height: 15px; overflow-wrap: anywhere; }
 .msg.err { color: var(--is-err); }
 .feed { display: grid; padding-bottom: 2px; }
 .ev { display: grid; grid-template-columns: 26px minmax(0, 1fr); padding: 5px var(--pad); }
