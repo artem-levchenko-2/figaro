@@ -28,7 +28,7 @@ Everything runs on your computer.*
 
 </div>
 
-![The Figaro window in Figma: two agents at work in this file, each with its Stop, one that is done with a note, what they changed, and agents in two other files](assets/hero.png)
+![The Figaro window in Figma: two agents at work in this file, the pointer on one showing its Stop, one that is done with a note, what they changed, and agents in two other files](assets/hero.png)
 
 ## Why
 
