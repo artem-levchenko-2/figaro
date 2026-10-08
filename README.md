@@ -20,7 +20,7 @@
 
 <p align="center">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2f80ed">
-  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab">
+  <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-3776ab">
   <img alt="Figma Desktop" src="https://img.shields.io/badge/Figma-Desktop-a259ff">
   <img alt="macOS" src="https://img.shields.io/badge/macOS-ready-111111">
 </p>
@@ -107,8 +107,9 @@ flowchart LR
 
 You need a **Mac** (Windows works too, with less testing: see [Windows](#windows)),
 **[Figma Desktop](https://www.figma.com/downloads/)** (the browser version can't run local development
-plugins), **Python 3.10+** and **Git**. [Claude Code](https://claude.com/claude-code) is optional, for the
-agent skill.
+plugins), **Git** and **Python 3.9+**. On a Mac both come with Apple's Command Line Tools: if
+`git --version` answers, you have them, and `xcode-select --install` installs them if not.
+[Claude Code](https://claude.com/claude-code) is optional, for the agent skill.
 
 **1. Install the command and the skill**
 

@@ -14,6 +14,8 @@ installs it for every Claude Code session on the machine, together with the `fig
 ```sh
 python3 -m venv venv && venv/bin/pip install -r requirements-dev.txt   # once after cloning
 venv/bin/python -m pytest -q             # bridge, CLI, queue, fuzz and stress tests; no Figma needed
+/usr/bin/python3 -m venv /tmp/figaro-py39 && /tmp/figaro-py39/bin/pip install -q -r requirements-dev.txt
+/tmp/figaro-py39/bin/python -m pytest -q # the same on macOS's own python3 (3.9), the oldest we support
 node tests/helpers.test.js               # pure helpers of plugin/code.js on a stub of Figma
 node tests/plugin.test.js                # the plugin writes nothing to the file; the document id is the fileKey
 node tests/exec.test.js                  # the exec core: change reports, Cmd+Z, read-only, undo, error lines
@@ -84,7 +86,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   `setPluginData` on the file. Figaro runs in shared libraries too.
 - **`quick` is for the CLI's built-in readers only.** The plugin doesn't track what a quick script changes,
   so code from outside must never run as `quick`. A `-R` script costs ~150 ms more and is safe.
-- **Python 3.10.** No nested same-kind quotes inside f-strings (that is 3.12+).
+- **Python 3.9** — the `python3` of Apple's Command Line Tools, what a Mac without Homebrew runs. No `match`,
+  no `zip(strict=…)`, no nested same-kind quotes inside f-strings (3.12+); `X | None` only in annotations of
+  modules with `from __future__ import annotations`. The 3.9 run in Commands checks it.
 - **`start-bridge.ps1` stays pure ASCII:** Windows PowerShell 5.1 reads a BOM-less script as ANSI.
 - **Experiment only in a draft of your own.** Figma has one Cmd+Z for the whole file, and a script can touch
   hundreds of layers. The live tests take the file from `FIGARO_TEST_FILE`.
