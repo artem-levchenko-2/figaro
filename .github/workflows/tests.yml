@@ -1,0 +1,85 @@
+# The tests on Linux and on Windows, with the oldest Python Figaro supports and
+# a new one; the Mac runs them locally (AGENTS.md -> Commands). No Figma here:
+# the live tests need a person's draft.
+name: tests
+
+on:
+  push:
+    paths-ignore: ["**.md", "assets/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: python -m venv venv && venv/bin/pip install -q -r requirements-dev.txt
+      - run: venv/bin/python -m pytest -q
+      - run: for t in tests/*.test.js; do node "$t" || exit 1; done
+      - name: install.sh into a fresh home
+        run: |
+          export HOME="$(mktemp -d)"
+          bash tools/install.sh
+          "$HOME/.local/bin/figaro" --help > /dev/null
+          test -L "$HOME/.claude/skills/figaro" && test -L "$HOME/.agents/skills/figaro"
+          bash tools/install.sh --uninstall
+          test ! -e "$HOME/.local/bin/figaro" && test -f skill/figaro/SKILL.md
+
+  windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m venv venv; venv\Scripts\pip install -q -r requirements-dev.txt
+      # tests/test_install_ps1.py runs tools/install.ps1 against temporary
+      # folders; the autostart tests start a real bridge with start-bridge.ps1.
+      - run: venv\Scripts\python -m pytest -q
+      - name: install.ps1 for this user from a fresh clone, in Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $key = Get-Item HKCU:\Environment
+          $kind = if ($key.GetValueNames() -contains "Path") { $key.GetValueKind("Path") } else { "ExpandString" }
+          # No venv there yet: the installer finds Python and makes one.
+          git clone -q . "$env:RUNNER_TEMP\figaro"
+          Set-Location "$env:RUNNER_TEMP\figaro"
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\install.ps1
+          if ($LASTEXITCODE) { throw "install.ps1 failed" }
+          $bin = Join-Path $env:USERPROFILE ".local\bin"
+          $key = Get-Item HKCU:\Environment
+          if (($key.GetValue("Path") -split ";") -notcontains $bin) { throw "the user PATH lacks $bin" }
+          if ($key.GetValueKind("Path") -ne $kind) { throw "install.ps1 changed the type of the user PATH" }
+          foreach ($d in ".claude", ".agents") {
+            $link = Join-Path $env:USERPROFILE "$d\skills\figaro"
+            if ((Get-Item -Force $link).LinkType -ne "Junction") { throw "$link is not a junction" }
+          }
+          # A new terminal gets PATH from the registry, and finds figaro there,
+          # in Git Bash as well.
+          $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
+                      [Environment]::GetEnvironmentVariable("Path", "User")
+          figaro --help | Out-Null
+          if ($LASTEXITCODE) { throw "figaro --help failed" }
+          & "$env:ProgramFiles\Git\bin\bash.exe" -c "figaro --help > /dev/null"
+          if ($LASTEXITCODE) { throw "figaro is not found in Git Bash" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\install.ps1
+          if ($LASTEXITCODE) { throw "a second run failed" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\install.ps1 -Uninstall
+          if (Test-Path (Join-Path $bin "figaro.exe")) { throw "-Uninstall left figaro.exe" }
+          if (-not (Test-Path skill\figaro\SKILL.md)) { throw "-Uninstall emptied the skill" }

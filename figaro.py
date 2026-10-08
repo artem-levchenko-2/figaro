@@ -59,12 +59,16 @@ Helpers available inside exec'd code (as `h.*`):
 
 import argparse
 import json
+import locale
 import os
 import sys
 import urllib.error
 import urllib.request
 
-import cli_extras  # links, autostart, inspect / shot / link, --lib
+# On Windows `figaro` is the figaro.exe from tools/install.ps1, which starts
+# Python outside this folder: the modules next to this file are found anyway.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cli_extras  # noqa: E402  links, autostart, inspect / shot / link, --lib
 
 
 # 127.0.0.1, not "localhost": on Windows "localhost" tries ::1 first, and against a
@@ -104,6 +108,17 @@ def force_utf8_output():
             stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
             pass
+
+
+def read_stdin():
+    """The script on stdin, read as UTF-8: on Windows Python reads a pipe in the
+    ANSI code page, which would turn the Cyrillic in a script's texts into
+    mojibake, and Figma would get that."""
+    data = sys.stdin.buffer.read()
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return data.decode(locale.getpreferredencoding(False), errors="replace")
 
 
 def node_expr(id_or_alias):
@@ -332,7 +347,7 @@ def cmd_doctor(args):
 
     status, resp = _request("GET", "/status")
     if status == 0:
-        start = f"start it:  bash {cli_extras.START}   (Windows: .\\start-bridge.ps1)"
+        start = f"start it:  {cli_extras.start_hint()}"
         fail(f"bridge not answering on {HOST}:{PORT} — {resp.get('error')}", resp.get("hint") or start)
         return 1
     if status == 403:
@@ -345,8 +360,8 @@ def cmd_doctor(args):
     if resp.get("bridge_outdated"):
         stale = True
         fail("bridge.py changed since the bridge started — it runs old code",
-             f"restart it when no other agent is using it:  bash {cli_extras.START}   "
-             "(Windows: .\\start-bridge.ps1 -Restart)")
+             "restart it when no other agent is using it:  "
+             + cli_extras.start_hint(restart=True))
 
     if not resp.get("plugin_connected"):
         fail("plugin not connected",
@@ -405,7 +420,7 @@ def cmd_exec(args):
         with open(args.file, encoding="utf-8") as f:
             code = f.read()
     elif args.stdin:
-        code = sys.stdin.read()
+        code = read_stdin()
     elif args.code:
         code = args.code
     else:

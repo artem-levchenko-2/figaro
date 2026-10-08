@@ -15,7 +15,7 @@ Everything runs on your computer.*
 
 [![License](https://img.shields.io/badge/license-MIT-64748b?style=flat)](LICENSE)
 [![Figma Desktop](https://img.shields.io/badge/Figma-Desktop-a259ff?style=flat)](https://www.figma.com/downloads/)
-[![OS](https://img.shields.io/badge/OS-macOS_%C2%B7_Windows-0acf83?style=flat)](#install)
+[![OS](https://img.shields.io/badge/OS-macOS_%C2%B7_Windows_%C2%B7_Linux-0acf83?style=flat)](#install)
 [![Python](https://img.shields.io/badge/python-3.9%2B-1abcfe?style=flat)](#install)
 [![Agents](https://img.shields.io/badge/agents-Claude_Code_%C2%B7_Codex_%C2%B7_Cursor_%C2%B7_more-f24e1e?style=flat)](#works-with-your-agent)
 
@@ -55,7 +55,7 @@ auto-layout, styles and variables, and builds with them.
 - 🏠&nbsp; **It stays on your computer.** No Figma token, no account, no cloud:
   a small local server and a plugin you import once.
 
-Free and open source, for Figma Desktop on macOS and Windows.
+Free and open source, on macOS, Windows and Linux.
 
 ---
 
@@ -75,57 +75,71 @@ Free and open source, for Figma Desktop on macOS and Windows.
 
 ## Install
 
-You need [Figma Desktop](https://www.figma.com/downloads/), Git and Python
-3.9+. On a Mac, `xcode-select --install` adds Git and Python. The steps are for
-macOS; for Windows, open *Windows* below them.
+You need Python 3.9+ and [Figma Desktop](https://www.figma.com/downloads/) on
+macOS or Windows, or [figma-linux](https://github.com/Figma-Linux/figma-linux)
+on Linux.
 
-**1. Get Figaro.** Paste this into Terminal:
+**1. Let your agent set it up.** Give Claude Code, Codex, Cursor or another
+coding agent this line:
+
+```text
+https://github.com/artem-levchenko-2/figaro — set this up for me
+```
+
+It installs the `figaro` command and the skill, as [AGENTS.md](AGENTS.md)
+tells it, and says where Figaro is.
+
+**2. Add the plugin to Figma.** This step and the next are clicks only you can
+do. Once, in Figma Desktop: **Plugins → Development → Import plugin from
+manifest…**, then pick `plugin/manifest.json` in Figaro's folder.
+
+**3. Run it in your file.** Choose **Plugins → Development → Figaro**. A slim
+bar appears and shows the file's name once it's connected. Keep it open while
+you work.
+
+Your agent checks the connection with `figaro doctor`. That's all: give it its
+[first task](#your-first-task).
+
+<details>
+<summary>⌨️ <b>Install by hand</b></summary>
+
+<br>
+
+On macOS or Linux, in a terminal:
 
 ```sh
 git clone https://github.com/artem-levchenko-2/figaro.git ~/figaro
 bash ~/figaro/tools/install.sh
 ```
 
-If it says `~/.local/bin` is not on your PATH, run the line it prints.
+On Windows, in PowerShell:
 
-**2. Add the plugin to Figma.** Once, in Figma Desktop: **Plugins → Development
-→ Import plugin from manifest…**, then pick `~/figaro/plugin/manifest.json`.
-In the file dialog, ⇧⌘G lets you type the path.
-
-**3. Run it in your file.** Open the file and choose **Plugins → Development →
-Figaro**. A slim bar appears and shows the file's name once it's connected.
-Keep it open while you work; ⌥⌘P runs it again next time.
-
-**4. Check it.** In Terminal:
-
-```sh
-figaro doctor
+```powershell
+git clone https://github.com/artem-levchenko-2/figaro.git $HOME\figaro
+powershell -ExecutionPolicy Bypass -File $HOME\figaro\tools\install.ps1
 ```
 
-Every line should start with ✓. If one doesn't, it says what to do.
+Then do steps 2 and 3, and run `figaro doctor`: every line should start with
+✓. If one doesn't, it says what to do.
 
-That's all. Now give your agent its [first task](#your-first-task).
+</details>
 
 <details>
 <summary>🧭 <b>What the installer does</b></summary>
 
 <br>
 
-- Makes `~/figaro/venv` with Figaro's two Python packages, `aiohttp` and
-  `Pillow`.
-- Writes the `figaro` command to `~/.local/bin`. It runs the code in
-  `~/figaro` from any folder.
-- Links the agent skill into `~/.claude/skills/figaro` for Claude Code and
+- Makes a `venv` in Figaro's folder with its two Python packages, `aiohttp`
+  and `Pillow`.
+- Puts the `figaro` command in `~/.local/bin`, and on Windows `figaro.exe` in
+  `%USERPROFILE%\.local\bin`, which it adds to your PATH. The command runs
+  Figaro's code from any folder.
+- Links the skill into `~/.claude/skills/figaro` for Claude Code and
   `~/.agents/skills/figaro` for Codex and other agents. See
   [which agent reads what](#works-with-your-agent).
 
 Running it again is safe: it fixes only what is missing, and it never
-overwrites a file it didn't make. If Terminal can't find `figaro`, put
-`~/.local/bin` on your PATH:
-
-```sh
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && exec zsh
-```
+overwrites a file it didn't make.
 
 </details>
 
@@ -134,37 +148,13 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && exec zsh
 
 <br>
 
-```sh
-cd ~/figaro && git pull
-bash start-bridge.sh                 # restart the bridge with the new code
-figaro reload -T "<link to a file>"  # load the new plugin code into a running plugin
-```
+Run `git pull` in Figaro's folder, or ask your agent to update Figaro. Then
+`figaro doctor` says what to restart. If `plugin/manifest.json` changed, import
+the plugin again (step 2). When a new release is out, the plugin's bar says so.
 
-If `plugin/manifest.json` changed, import the plugin again (step 2). When a new
-release is out, the plugin's bar says so.
-
-To remove Figaro, run `bash ~/figaro/tools/install.sh --uninstall`, remove the
-plugin under **Plugins → Development → Manage plugins in development**, and
-delete `~/figaro`.
-
-</details>
-
-<details>
-<summary>🪟 <b>Windows</b></summary>
-
-<br>
-
-There's no installer for Windows yet. In PowerShell, in the folder you cloned:
-
-```powershell
-python -m venv venv; .\venv\Scripts\pip install -r requirements.txt
-.\start-bridge.ps1
-.\venv\Scripts\python figaro.py doctor
-```
-
-Then copy `skill\figaro` into `%USERPROFILE%\.claude\skills\` for Claude Code
-and into `%USERPROFILE%\.agents\skills\` for other agents. Windows gets less
-testing than macOS.
+To remove Figaro, run the installer with `--uninstall` (`-Uninstall` on
+Windows), remove the plugin under **Plugins → Development → Manage plugins in
+development**, and delete Figaro's folder.
 
 </details>
 
@@ -180,8 +170,8 @@ working in Figma, in the two folders they read:
 - `~/.agents/skills` for **Codex**, **Cursor**, **Gemini CLI**,
   **GitHub Copilot**, **OpenCode**, **Cline** and others.
 
-Another agent? Run `bash ~/figaro/tools/install.sh --skills <its folder>`, or
-ask it to read `~/figaro/skill/figaro/SKILL.md` first.
+Another agent? Run the installer with `--skills <its folder>` (`-Skills` on
+Windows), or ask the agent to read `skill/figaro/SKILL.md` first.
 
 <details>
 <summary>🔐 <b>Let your agent run figaro</b></summary>
@@ -205,8 +195,8 @@ Allow `figaro` once, for good:
 
 ## Your first task
 
-In Figma, right-click a layer and choose **Copy link to selection** (⌘L). Then
-open your agent in any folder and ask for something with that link:
+In Figma, right-click a layer and choose **Copy link to selection**. Then open
+your agent in any folder and ask for something with that link:
 
 | You ask | The agent |
 | :-- | :-- |
@@ -382,7 +372,7 @@ Everything works without settings. When you need them:
 | `FIGARO_AUTOSTART` | `1` | `0` keeps the command from starting the bridge |
 | `FIGARO_IDLE_EXIT` | `3h` | How long the bridge waits with no plugin and no requests before it exits |
 | `FIGARO_LIB` | — | `--lib` files for every `exec`, separated by `:` |
-| `FIGARO_SHOTS` | `/tmp/figaro/shots` | Where `shot` saves pictures |
+| `FIGARO_SHOTS` | `/tmp/figaro/shots`, on Windows `%TEMP%\figaro\shots` | Where `shot` saves pictures |
 | `FIGARO_PLUGIN_WAIT` | `6` | Seconds the command waits for the plugin after starting the bridge |
 | `FIGARO_STATE_DIR` | `~/.cache/figaro` | Where the time of each file's last checkpoint is kept |
 | `FIGARO_NO_UPDATE_CHECK` | — | `1` stops the bridge from checking GitHub for a new release |
@@ -396,8 +386,8 @@ keep the bridge there.
 
 ## Safety net
 
-Figaro works in your real files, and Figma has one ⌘Z for the whole file. So it
-keeps four promises:
+Figaro works in your real files, and Figma has one undo for the whole file. So
+it keeps four promises:
 
 - **A version before the first change.** Before a script first changes a file,
   and then every hour, Figaro saves a version in **File → Version history**,
@@ -408,7 +398,7 @@ keeps four promises:
   change is rolled back and the call fails.
 - **An undo that knows when to refuse.** `figaro undo` takes back the last
   script only if it is yours and nobody has changed the file since. Otherwise
-  it says so and points you to ⌘Z or the version history.
+  it says so and points you to Figma's own undo or the version history.
 
 <details>
 <summary>🔍 <b>The fine print</b></summary>
@@ -484,7 +474,7 @@ at the first broken link it says what to do.
 | **"Older&nbsp;build"** | The plugin in that file runs older code. Run `figaro reload -T <file>`, or run the plugin again |
 | **zsh:&nbsp;no&nbsp;matches&nbsp;found** | Put the link in quotes |
 | **Computer&nbsp;won't&nbsp;sleep** | Figma "plays audio": the silent tone that keeps a background Figma quick. It stops three minutes after the last script, or as soon as the bridge stops |
-| **Port&nbsp;8788&nbsp;taken** | `lsof -nP -iTCP:8788 -sTCP:LISTEN` shows who listens. Stop only a `bridge.py` you started, with `bash start-bridge.sh --stop`. Never `kill` everything `lsof -ti` prints: Figma itself is on that list |
+| **Port&nbsp;8788&nbsp;taken** | `lsof -nP -iTCP:8788 -sTCP:LISTEN` shows who listens. Stop a bridge with `bash start-bridge.sh --stop`, or `start-bridge.ps1 -Stop` on Windows: they stop nothing else. Never `kill` everything `lsof -ti` prints: Figma itself is on that list |
 
 More cases, each with its fix, are in
 [`pitfalls.md`](skill/figaro/references/pitfalls.md).
@@ -500,7 +490,8 @@ scripts and the pictures it takes stay on your computer and in Figma.
 
 - The bridge listens on `127.0.0.1` only and turns away requests from web
   pages.
-- Pictures from `figaro shot` are saved in `/tmp/figaro/shots`.
+- Pictures from `figaro shot` are saved in a temporary folder,
+  `/tmp/figaro/shots` (on Windows, `%TEMP%\figaro\shots`).
 - Versions saved before changes go into the file's version history, where
   everyone with access to the file can see them.
 - Figaro makes one request on its own: every six hours the bridge reads this

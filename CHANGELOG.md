@@ -3,9 +3,8 @@
 Notable changes, newest first. Versions follow [semver](https://semver.org/): what is versioned is what
 scripts and agents depend on — the CLI, the bridge's HTTP API and the `h.*` helpers.
 
-After an update, restart the bridge (`bash start-bridge.sh`) and load the new plugin code
-(`figaro reload -T <file>`, or run the plugin again). If `plugin/manifest.json` changed, import it in Figma
-again.
+After an update, `figaro doctor` says what to restart: the bridge, or the plugin's code
+(`figaro reload -T <file>`). If `plugin/manifest.json` changed, import it in Figma again.
 
 ## [Unreleased]
 
@@ -25,5 +24,10 @@ The first release of Figaro.
 - **The Figaro plugin** with thirty `h.*` helpers for auto-layout, text and fonts, variables, components and
   variants, and a deadline for every script.
 - **An agent skill** (`skill/figaro`) in the open Agent Skills format, for Claude Code, Codex, Cursor and
-  other agents, and `tools/install.sh`, which installs the command and links the skill into
-  `~/.claude/skills` and `~/.agents/skills`.
+  other agents, and installers that install the command and link the skill into `~/.claude/skills` and
+  `~/.agents/skills`: `tools/install.sh` for macOS and Linux, `tools/install.ps1` for Windows. An agent can
+  set Figaro up from the repository's link: `AGENTS.md` tells it how.
+- **macOS, Windows and Linux.** On Windows the command is a real `figaro.exe`, so Figma links with `&` pass
+  through PowerShell, cmd and Git Bash; scripts on stdin are read as UTF-8, and pictures go to
+  `%TEMP%\figaro\shots`. On Linux, Figma's desktop app is the unofficial figma-linux. CI runs the tests on
+  Linux and Windows.

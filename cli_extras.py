@@ -20,6 +20,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -30,7 +31,9 @@ import figma_links
 HERE = Path(__file__).resolve().parent
 START = HERE / "start-bridge.sh"
 START_PS1 = HERE / "start-bridge.ps1"  # Windows has no bash
-SHOTS = Path(os.environ.get("FIGARO_SHOTS") or "/tmp/figaro/shots")
+# /tmp/figaro/shots; Windows has no /tmp, so there it is %TEMP%\figaro\shots.
+SHOTS = Path(os.environ.get("FIGARO_SHOTS")
+             or (Path(tempfile.gettempdir(), "figaro", "shots") if os.name == "nt" else "/tmp/figaro/shots"))
 TILE = 1600          # px: taller pictures are cut into parts about this high
 # After starting the bridge: how long to wait for the open plugin windows (each
 # retries every 2 s), and how long no new one has to come before we go on.
@@ -107,15 +110,21 @@ def autostart(host, port):
     say(f"  no bridge answered on {port} — starting it: {' '.join(cmd)}")
     try:
         # A session of its own: the bridge must outlive this call and whatever
-        # process group the agent's shell kills when it is done.
-        r = subprocess.run(cmd, env=dict(os.environ, FIGARO_PORT=str(port)),
-                           stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                           timeout=40, start_new_session=True)
+        # process group the agent's shell kills when it is done. Its output goes
+        # to a file, not a pipe: on Windows the bridge inherits the script's
+        # handles, and a pipe would stay open, and this call wait, until the
+        # bridge exits.
+        with tempfile.TemporaryFile() as out:
+            r = subprocess.run(cmd, env=dict(os.environ, FIGARO_PORT=str(port)),
+                               stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                               timeout=40, start_new_session=True)
+            out.seek(0)
+            printed = out.read().decode("utf-8", errors="replace")
     except (OSError, subprocess.SubprocessError) as e:
         say(f"   ⚠ it did not start: {e}")
         return False
     if r.returncode != 0:
-        tail = (r.stdout + r.stderr).strip().splitlines()[-5:]
+        tail = printed.strip().splitlines()[-5:]
         say("   ⚠ it did not start:\n     " + "\n     ".join(tail))
         return False
     _wait_for_plugins(host, port)
@@ -129,6 +138,15 @@ def start_command(port, windows=os.name == "nt"):
         return START_PS1, ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                            str(START_PS1), "-Port", str(port)]
     return START, ["bash", str(START)]
+
+
+def start_hint(restart=False, windows=os.name == "nt"):
+    """The command that starts the bridge by hand on this computer.
+    start-bridge.sh restarts a running bridge by itself."""
+    if windows:
+        return (f'powershell -ExecutionPolicy Bypass -File "{START_PS1}"'
+                + (" -Restart" if restart else ""))
+    return f"bash {START}"
 
 
 def _wait_for_plugins(host, port):

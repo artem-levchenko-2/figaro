@@ -4,7 +4,8 @@ The bridge, the CLI, both launchers and the plugin must agree on one default
 port. The plugin must be able to read figma.fileKey and must never write into a
 document by itself. The update check looks at this project's own releases. The
 launcher must never suggest killing whatever holds the port: that list includes
-Figma itself.
+Figma itself. The Windows scripts stay readable for Windows PowerShell 5.1,
+and figaro.exe, which pip makes from pyproject.toml, runs figaro.py.
 """
 import json
 import re
@@ -57,3 +58,24 @@ def test_launcher_leaves_other_bridges_and_figma_alone():
     assert 'SESSION="figaro-bridge-$PORT"' in sh
     assert 'LOG="/tmp/figaro-bridge-$PORT.log"' in sh
     assert 'grep -q "bridge.py"' in sh  # a stale pid file is not killed blindly
+
+
+def test_powershell_scripts_are_pure_ascii():
+    # Windows PowerShell 5.1 reads a script without a BOM as ANSI: one em dash
+    # or arrow breaks the parsing of the whole file.
+    scripts = [ROOT / "start-bridge.ps1", *sorted((ROOT / "tools").glob("*.ps1"))]
+    assert len(scripts) == 2
+    for script in scripts:
+        for n, line in enumerate(script.read_bytes().split(b"\n"), 1):
+            assert line.isascii(), f"{script.relative_to(ROOT)}:{n} is not ASCII"
+
+
+def test_figaro_exe_runs_figaro_main():
+    pyproject = read("pyproject.toml")
+    assert '\nfigaro = "figaro:main"\n' in pyproject
+    assert 'py-modules = ["figaro"]' in pyproject
+    # figaro.exe starts Python outside this folder; figaro.py finds the
+    # modules next to it by itself.
+    figaro = read("figaro.py")
+    assert figaro.index("sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))") \
+        < figaro.index("import cli_extras")

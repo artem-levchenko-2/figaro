@@ -95,8 +95,12 @@ done
 
 case ":$PATH:" in
     *":$BIN:"*) ;;
-    *) echo "note: $BIN is not on your PATH yet. For zsh, the macOS default:"
-       echo "    echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc && exec zsh"
+    *) echo "note: $BIN is not on your PATH yet. To put it there:"
+       case "${SHELL##*/}" in
+           zsh) echo "    echo 'export PATH=\"$BIN:\$PATH\"' >> ~/.zshrc && exec zsh" ;;
+           bash) echo "    echo 'export PATH=\"$BIN:\$PATH\"' >> ~/.bashrc && exec bash" ;;
+           *) echo "    add it to PATH in your shell's startup file" ;;
+       esac
        echo "or call $CMD by its full path" ;;
 esac
 exit "$FAILED"

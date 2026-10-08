@@ -97,7 +97,7 @@ JS
   nodes or whole trees.
 - `<<'JS'` in quotes keeps the shell away from `$` and backticks in the code. Or use `-f script.js`: when the
   user allowed `figaro` by a command rule (Codex), a plain `figaro …` line runs without asking and a heredoc
-  doesn't.
+  doesn't. PowerShell has no heredoc, and its pipe loses letters outside ASCII: there, always use `-f`.
 - One script is one transaction: read and change in the same call. Between two calls the user or another
   agent may change the file.
 - Keep a script under ~10 s: it holds the file, and everyone else waits. Bulk edits go in batches of ~25

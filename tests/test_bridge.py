@@ -292,6 +292,8 @@ def test_version_is_valid_and_matches_the_changelog():
     changelog = (Path(bridge.__file__).parent / "CHANGELOG.md").read_text(encoding="utf-8")
     section = re.search(rf"^## \[{re.escape(bridge.VERSION)}\]", changelog, re.M)
     assert section, f"CHANGELOG.md has no '## [{bridge.VERSION}]' section"
+    pyproject = (Path(bridge.__file__).parent / "pyproject.toml").read_text(encoding="utf-8")
+    assert f'version = "{bridge.VERSION}"' in pyproject, "set the same version in pyproject.toml"
 
 
 def test_peers_counts_only_files_that_said_hello():

@@ -4,8 +4,9 @@ link, --lib, exec --shot, and the bridge leaving: when idle, and with its
 plugin sockets closed at once.
 
 A fake bridge answers the CLI here; the plugin's side is in
-tests/commands.test.js. Two tests start a real bridge on a free port: one with
-start-bridge.sh, one directly, to stop it with SIGTERM.
+tests/commands.test.js. Three tests start a real bridge on a free port: with
+start-bridge.sh, with start-bridge.ps1 on Windows, and directly, to stop it
+with SIGTERM.
 
     pytest tests/test_cli.py
 """
@@ -407,7 +408,8 @@ new Function("h", "print", "return (async () => {" + body + "})();")(h, print).t
 
 def run_rm(monkeypatch, capsys, *ids):
     code = cli(monkeypatch, capsys, "rm", *ids)[3][0]["code"]
-    r = subprocess.run(["node", "-e", RM_STUB % json.dumps(code)], capture_output=True, text=True, timeout=30)
+    r = subprocess.run(["node", "-e", RM_STUB % json.dumps(code)], capture_output=True, encoding="utf-8",
+                       timeout=30)
     return json.loads(r.stdout)
 
 
@@ -425,13 +427,16 @@ def test_rm_skips_what_went_with_its_parent(monkeypatch, capsys):
 
 # ─── starting the bridge ─────────────────────────────────────────────────
 
-def fake_start(tmp_path, monkeypatch, body="echo started >> \"$(dirname \"$0\")/runs\""):
-    script = tmp_path / "start-bridge.sh"
-    script.write_text("#!/usr/bin/env bash\n" + body + "\n")
-    monkeypatch.setattr(cli_extras, "START", script)
+def fake_start(tmp_path, monkeypatch, body="open(RUNS, 'a').write('started\\n')"):
+    """A start script in Python, so that the tests run on Windows as well."""
+    runs = tmp_path / "runs"
+    script = tmp_path / "start.py"
+    script.write_text(f"import sys\nRUNS = {str(runs)!r}\n{body}\n")
+    monkeypatch.setattr(cli_extras, "start_command",
+                        lambda port: (script, [sys.executable, str(script)]))
     monkeypatch.setattr(cli_extras, "PLUGIN_WAIT", 0.2)
     monkeypatch.setenv("FIGARO_AUTOSTART", "1")
-    return tmp_path / "runs"
+    return runs
 
 
 def test_autostart_runs_the_script_once(tmp_path, monkeypatch, capsys):
@@ -452,8 +457,21 @@ def test_autostart_can_be_turned_off_and_is_local_only(tmp_path, monkeypatch):
     assert not runs.exists()
 
 
+def test_autostart_does_not_wait_for_the_bridge_it_started(tmp_path, monkeypatch):
+    """The bridge outlives the start script and inherits its output (on
+    Windows, Start-Process passes it every handle): with a pipe, this call would
+    wait until the bridge exits."""
+    fake_start(tmp_path, monkeypatch, body=(
+        "import subprocess\n"
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(12)'],\n"
+        "                 stdout=sys.stdout, stderr=sys.stderr)"))
+    t = time.time()
+    assert cli_extras.autostart("127.0.0.1", free_port()) is True
+    assert time.time() - t < 8
+
+
 def test_a_failed_start_says_why(tmp_path, monkeypatch, capsys):
-    fake_start(tmp_path, monkeypatch, body="echo 'port is taken by another program'; exit 1")
+    fake_start(tmp_path, monkeypatch, body="print('port is taken by another program'); sys.exit(1)")
     assert cli_extras.autostart("127.0.0.1", 1) is False
     assert "port is taken by another program" in capsys.readouterr().err
 
@@ -535,12 +553,54 @@ def test_status_starts_a_real_bridge_that_outlives_the_call():
         assert json.loads(r.stdout)["plugin_connected"] is False
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=3) as resp:
             assert resp.status == 200
-        cmd = subprocess.run(["ps", "-p", Path(f"/tmp/figaro-bridge-{port}.pid").read_text().strip(),
-                              "-o", "command="], capture_output=True, text=True).stdout
-        assert f"--port {port} --idle-exit 120" in cmd
+        # Under tmux (Linux runners have it) there is no pid file: look for the process.
+        ps = subprocess.run(["ps", "-e", "-o", "command="], capture_output=True, text=True).stdout
+        assert f"bridge.py --port {port} --idle-exit 120" in ps
     finally:
         subprocess.run(["bash", str(ROOT / "start-bridge.sh"), "--stop"], env=env,
                        capture_output=True, timeout=30)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="start-bridge.ps1 is for Windows")
+def test_status_starts_a_real_bridge_on_windows():
+    port = free_port()
+    env = dict(os.environ, FIGARO_PORT=str(port), FIGARO_AUTOSTART="1",
+               FIGARO_PLUGIN_WAIT="0.3", FIGARO_IDLE_EXIT="120")
+    stop = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+            str(ROOT / "start-bridge.ps1"), "-Port", str(port), "-Stop"]
+    try:
+        t = time.time()
+        r = subprocess.run([sys.executable, str(ROOT / "figaro.py"), "status"], env=env,
+                           capture_output=True, text=True, timeout=90)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "starting it" in r.stderr
+        assert json.loads(r.stdout)["plugin_connected"] is False
+        assert time.time() - t < 30, "the call waited for the bridge it started"
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=3) as resp:
+            assert resp.status == 200
+    finally:
+        r = subprocess.run(stop, capture_output=True, text=True, timeout=60)
+    assert "stopped pid" in r.stdout, r.stdout + r.stderr
+
+
+def test_exec_reads_stdin_as_utf8(monkeypatch):
+    """On Windows Python reads a pipe in the ANSI code page."""
+    class Stdin:
+        def __init__(self, data):
+            self.buffer = io.BytesIO(data)
+
+    script = "return 'Grüße ✓ 日本'"
+    for data in (script.encode("utf-8"), b"\xef\xbb\xbf" + script.encode("utf-8")):
+        monkeypatch.setattr(sys, "stdin", Stdin(data))
+        assert figaro.read_stdin() == script
+    monkeypatch.setattr(sys, "stdin", Stdin("return 'café'".encode("cp1252")))
+    assert figaro.read_stdin().startswith("return 'caf")  # not UTF-8: no crash
+
+
+def test_start_hint_names_this_computers_script():
+    assert cli_extras.start_hint(windows=False) == f"bash {cli_extras.START}"
+    hint = cli_extras.start_hint(restart=True, windows=True)
+    assert hint == f'powershell -ExecutionPolicy Bypass -File "{cli_extras.START_PS1}" -Restart'
 
 
 # ─── the bridge leaves when idle ─────────────────────────────────────────

@@ -7,8 +7,34 @@ Figaro lets AI agents work in Figma Desktop. `figaro.py` (the CLI) sends a scrip
 file, so parallel agents never interleave their edits.
 
 How agents *use* Figaro is the skill in `skill/figaro/` (`SKILL.md` and `references/`), in the open Agent
-Skills format. `tools/install.sh` installs the `figaro` command and links the skill into `~/.claude/skills`
-(Claude Code) and `~/.agents/skills` (Codex and other agents).
+Skills format. `tools/install.sh` (macOS, Linux) and `tools/install.ps1` (Windows) install the `figaro` command
+and link the skill into `~/.claude/skills` (Claude Code) and `~/.agents/skills` (Codex and other agents).
+
+## Setting Figaro up for someone
+
+When a user gives you this repository's link and asks you to set it up:
+
+1. Clone it into `$HOME/figaro`, unless they name another folder; if it is there already, `git pull` in it
+   instead. (In PowerShell write `$HOME`: `~` in an argument of `git` makes a folder named `~`.)
+2. Run the installer. It is safe to run again, and it never overwrites what it didn't make.
+   - macOS, Linux: `bash $HOME/figaro/tools/install.sh`
+   - Windows, from PowerShell or Git Bash: `powershell -ExecutionPolicy Bypass -File $HOME/figaro/tools/install.ps1`
+
+   It needs Python 3.9+. On a Mac without it, `xcode-select --install` brings `python3`; on Windows, the
+   installer from python.org with *Add python.exe to PATH* ticked; Debian and Ubuntu also need `python3-venv`.
+   If the installer prints a note about PATH, follow it; until then call the command by the full path it
+   printed.
+3. Ask the user to do the two steps only they can do, in Figma Desktop: **Plugins → Development → Import plugin
+   from manifest…** with the full path to `plugin/manifest.json`, then **Plugins → Development → Figaro** in
+   the file they want to work in. The browser version of Figma can't run development plugins; on Linux the
+   desktop app is the unofficial figma-linux.
+4. Run `figaro doctor` and fix what it reports, until every line starts with ✓.
+5. Tell them that agents get the skill in their next session, and that an agent that runs commands in a
+   sandbox has to be allowed to run `figaro` outside it (README, "Let your agent run figaro").
+
+WSL2: install inside WSL with `install.sh`. Figma on Windows reaches the bridge in WSL through `localhost`,
+but imports a plugin only from a Windows folder: copy `plugin/` to one (`/mnt/c/Users/<name>/figaro-plugin`)
+and import it from there, and copy it again after every update.
 
 ## Commands
 
@@ -35,6 +61,19 @@ bash start-bridge.sh                     # (re)start the bridge in the backgroun
 bash start-bridge.sh --stop              # stop it
 figaro reload -T "<link>"                # load a changed plugin/ into the running plugin, no re-run by hand
 ```
+
+On Windows, in PowerShell:
+
+```powershell
+python -m venv venv; venv\Scripts\pip install -r requirements-dev.txt
+venv\Scripts\python -m pytest -q        # adds tests/test_install_ps1.py and a real start with start-bridge.ps1
+powershell -ExecutionPolicy Bypass -File tools\install.ps1   # figaro.exe in %USERPROFILE%\.local\bin (put on PATH), junctions to the skill
+powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Uninstall
+.\start-bridge.ps1 -Restart              # or -Stop; log in %TEMP%\figaro-bridge-8788.log
+```
+
+CI (`.github/workflows/tests.yml`) runs pytest on Linux and Windows with Python 3.9 and 3.13, the Node tests,
+and both installers; nothing else tests Windows, so check the run after changing anything it touches.
 
 A smoke test of the skill — a fresh Claude Code session that has only the skill and the command does a small
 task in your draft:
@@ -66,7 +105,10 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - `skill/figaro/` — `SKILL.md` (the loop, the commands, safety, house rules) and `references/`:
   `helpers.md`, `craft.md`, `pitfalls.md`. The recipes in them were checked against real Figma.
 - `tools/install.sh` — the command and the skill's links (`~/.claude/skills`, `~/.agents/skills`); never
-  overwrites what it didn't make.
+  overwrites what it didn't make. `tools/install.ps1` does the same on Windows: `figaro.exe` is the launcher
+  pip makes in the venv from `pyproject.toml` (an editable install, used for nothing else), copied to the bin
+  folder — an .exe, because a .cmd file would hand Figma links to cmd.exe, which cuts them at `&`. The skill
+  links are junctions, which need no admin rights.
   `start-bridge.sh` / `start-bridge.ps1` — start and stop the bridge (tmux or nohup; per-port session, log
   and pid file).
 - `tests/` — pytest (`test_*.py`), Node (`*.test.js`), live (`live_*.py`, with `live_file.py`), and
@@ -95,7 +137,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - **Python 3.9** — the `python3` of Apple's Command Line Tools, what a Mac without Homebrew runs. No `match`,
   no `zip(strict=…)`, no nested same-kind quotes inside f-strings (3.12+); `X | None` only in annotations of
   modules with `from __future__ import annotations`. The 3.9 run in Commands checks it.
-- **`start-bridge.ps1` stays pure ASCII:** Windows PowerShell 5.1 reads a BOM-less script as ANSI.
+- **`start-bridge.ps1` and `tools/install.ps1` stay pure ASCII:** Windows PowerShell 5.1 reads a BOM-less
+  script as ANSI (`tests/test_launch.py` checks). In them, don't redirect a program's stderr while
+  `$ErrorActionPreference` is `Stop`: 5.1 turns it into an error that stops the script.
 - **Experiment only in a draft of your own.** Figma has one Cmd+Z for the whole file, and a script can touch
   hundreds of layers. The live tests take the file from `FIGARO_TEST_FILE`.
 - **Never stop the bridge with `lsof -ti tcp:8788 | xargs kill`:** that list includes Figma itself, which
@@ -107,7 +151,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 ## Releasing
 
 1. Move the notes under `## [Unreleased]` in `CHANGELOG.md` to a new `## [X.Y.Z] — YYYY-MM-DD` section.
-2. Set `VERSION` in `bridge.py` to `X.Y.Z` (`tests/test_bridge.py` checks that the changelog has it).
+2. Set `VERSION` in `bridge.py` and `version` in `pyproject.toml` to `X.Y.Z` (`tests/test_bridge.py` checks
+   both against the changelog).
 3. Commit, then tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`.
 
 Every six hours a running bridge reads this repository's `vX.Y.Z` tags from GitHub (`REPO` in `bridge.py`)
