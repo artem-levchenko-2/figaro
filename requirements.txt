@@ -1,0 +1,3 @@
+aiohttp>=3.9
+# `figaro shot` cuts a tall picture into parts; without it the picture stays whole
+Pillow>=10

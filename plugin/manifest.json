@@ -1,0 +1,14 @@
+{
+  "name": "Figaro",
+  "id": "figaro",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma", "figjam"],
+  "enablePrivatePluginApi": true,
+  "permissions": ["teamlibrary", "activeusers", "fileusers", "currentuser"],
+  "networkAccess": {
+    "allowedDomains": ["http://localhost:8788", "ws://localhost:8788"],
+    "reasoning": "Local bridge to the Figaro CLI server running on the user's machine."
+  }
+}

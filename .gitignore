@@ -1,0 +1,16 @@
+venv/
+__pycache__/
+*.pyc
+.env
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Icon?
+
+# Local settings
+.mcp.json
+CLAUDE.local.md
+.claude/settings.local.json
