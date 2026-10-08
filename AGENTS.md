@@ -69,6 +69,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   and pid file).
 - `tests/` — pytest (`test_*.py`), Node (`*.test.js`), live (`live_*.py`, with `live_file.py`), and
   `plugin_fingerprint.json`.
+- `assets/banner.svg` — the README's banner, drawn by `assets/banner.py` (run it after changing the
+  letters or the colours).
 
 ## Rules
 
