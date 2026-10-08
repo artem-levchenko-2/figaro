@@ -8,7 +8,7 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
-## [1.1.0] — 2026-10-08
+## [1.1.0] — 2026-10-09
 
 ### Added
 
