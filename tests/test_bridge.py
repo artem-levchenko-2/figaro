@@ -517,6 +517,9 @@ def test_ipv6_survives_a_restart_in_place():
     import time
     try:
         server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        # as asyncio sets it on the bridge's listener; on Linux the closed
+        # sockets keep it, and a TIME_WAIT without it blocks every bind
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind(("::1", 0))
     except OSError:
         pytest.skip("no IPv6 here")
