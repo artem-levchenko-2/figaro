@@ -173,8 +173,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
    ```
 
 Every six hours a running bridge reads this repository's `vX.Y.Z` tags from GitHub (`REPO` in `bridge.py`)
-and, when there is a newer one, the plugin bar offers an Update button that opens the release. A private
-repository answers 404, and the check stays silent.
+and, when there is a newer one, the plugin's window offers **Update to X.Y.Z** on its last line: it pulls the
+release and restarts the bridge and the plugins (`bridge_update.py`). A private repository answers 404, and
+the check stays silent.
 
 ## Figma facts that cost time
 
