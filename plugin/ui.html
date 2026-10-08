@@ -170,9 +170,11 @@ button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), t
 
 /* The window's last line, under the islands: the Figaro version, always, and on
    the right a newer release to update to, the update under way, or newer
-   plugin code to reload. It keeps the islands' inner edges, x 15 to 305. Why
-   an update failed takes a line of its own above it, its button staying on
-   the last line. */
+   plugin code to reload. Its text keeps the islands' inner edges, x 15 to 305;
+   a button runs out to their outer edge, x 314, so it is 6 px from the
+   window's edge, as from the island above it and the window's bottom. Why an
+   update failed takes a line of its own above it, its button staying on the
+   last line. */
 .foot { margin-top: 6px; color: var(--win-faint); font-size: 11px; font-weight: 500; }
 .foot .line { height: 22px; display: flex; align-items: center; gap: 8px; padding: 0 9px; white-space: nowrap; }
 .foot .ver { flex: none; }
@@ -187,6 +189,7 @@ button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), t
 .go svg { width: 10px; height: 10px; margin-left: -1px; }
 .go.build { background: var(--build); }
 .go.build:hover { background: color-mix(in srgb, var(--build) 85%, #000); }
+.foot .go { margin-right: -9px; }
 
 @media (prefers-reduced-motion: reduce) {
   .slot.enter, .slot.enter > .island, .slot.leave, .island.opening :is(.fold, .panel, .chev) { animation: none; }
