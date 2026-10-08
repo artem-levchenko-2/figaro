@@ -1,89 +1,150 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="utf-8">
 <style>
-  * { box-sizing: border-box; }
-  html, body { height: 100%; }
-  body {
-    font-family: system-ui, -apple-system, sans-serif;
-    margin: 0;
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 6px;
-    padding: 0 8px;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1;
-    color: #fff;
-    background: #e8a317;
-    transition: background 150ms ease;
-    overflow: hidden;
-  }
-  body.ok      { background: #0fa958; }
-  body.err     { background: #d32f2f; }
-  body.pending { background: #e8a317; }
-  /* The bridge has newer plugin code on disk than this window is running. */
-  body.outdated { background: #7b61ff; }
-  body.multi.outdated #badge { color: #7b61ff; }
-  /* A newer Figaro release is out: "New version 2.4.0" + Update. */
-  body.update { background: #0d99ff; }
-  #update {
-    display: none; flex: none; order: 3; margin-left: auto;
-    padding: 2px 8px; border: 0; border-radius: 999px;
-    background: #fff; color: #0d99ff;
-    font: inherit; font-size: 10px; font-weight: 700; line-height: 1.2;
-    cursor: pointer;
-  }
-  body.update #update { display: block; }
-  body.update #badge { display: none; }
+/* The plugin's window: one black island per file — this file first, then each
+   file where agents are at work, until ten quiet minutes after their last
+   script. Figma draws the header above (40 px: the plugin's icon and name, the
+   close button), and the islands line up with it: indicators and avatars on
+   the icon's centre (x 24), names on the title's left edge (x 41), chevrons on
+   the close button's centre (20 px from the right). The window's corners are
+   13 px and the islands sit 6 px in, so theirs are 13 − 6 = 7 px, and they are
+   6 px apart. */
+* { box-sizing: border-box; }
+:root {
+  /* Figma's own window (themeColors), for what sits outside the islands */
+  --win-bg: var(--figma-color-bg, #2c2c2c);
+  --win-dim: var(--figma-color-text-secondary, rgba(255, 255, 255, .7));
+  /* the islands: one dark look in both Figma themes */
+  --is-bg: #0b0b0c;
+  --is-text: #f4f4f6;
+  --is-dim: rgba(244, 244, 246, .6);
+  --is-faint: rgba(244, 244, 246, .38);
+  --is-line: rgba(255, 255, 255, .08);
+  --is-fill: rgba(255, 255, 255, .1);
+  --is-fill-2: rgba(255, 255, 255, .18);
+  --ok: #14ae5c;
+  --run: #0d99ff;
+  --run-hover: #0b88e3;
+  --wait: #ffb224;
+  --err: #f24822;
+  --build: #9747ff;
+  --idle: #8e8e93;
+  --sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --sys-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+html, body { margin: 0; background: var(--win-bg); overflow: hidden; }
+body { font-family: var(--sys); -webkit-font-smoothing: antialiased; }
+button { font: inherit; }
+#app { padding: 0 6px 6px; }
 
-  #status { min-width: 0; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* With 2+ files connected the icon and "1/2" sit together in a white pill. */
-  #fileicon { flex: none; width: 8px; height: 12px; display: block; }
-  /* Name on the left, icon / pill pushed to the right edge. */
-  #badge { display: flex; align-items: center; gap: 3px; flex: none; order: 2; margin-left: auto; }
-  body.multi #badge {
-    padding: 2px 2px 2px 5px; border-radius: 999px;
-    background: #fff; color: #0fa958;
-  }
-  body.multi.err #badge { color: #d32f2f; }
-  body.multi #icon { font-size: 13px; }
-  #peers {
-    display: none;
-    font-size: 10px; font-weight: 700; line-height: 1.2;
-    font-variant-numeric: tabular-nums;
-  }
-  body.multi #peers { display: block; }
-  #icon { display: flex; font-size: 16px; flex: none; }
-  #icon svg { display: block; }
-  body.pending #icon, body.busy #icon { animation: spin 1.1s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+/* A newer Figaro: the closest a plugin gets to Figma's header, which it can't
+   touch — the arrow under the icon, the version under the title, the button
+   ending under the cross. */
+.uprow { height: 22px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; padding: 0 4px 0 9px; color: var(--win-dim); font-size: 11px; font-weight: 500; }
+.uprow .ind svg { width: 14px; height: 14px; color: var(--run); }
+.uprow .ind.warn svg { color: var(--wait); }
+.uprow .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uprow .go { margin-left: auto; flex: none; height: 22px; padding: 0 11px; border: 0; border-radius: 11px; background: var(--run); color: #fff; font: 600 11px/1 var(--sys); cursor: pointer; }
+.uprow .go:hover { background: var(--run-hover); }
+
+/* A slot grows and shrinks around its island as it comes and goes. */
+.slot { display: grid; grid-template-rows: 1fr; }
+.slot + .slot { margin-top: 6px; }
+.slot.enter { animation: rise .34s cubic-bezier(.2, .8, .2, 1) backwards; }
+.slot.enter > .island { animation: pop .34s cubic-bezier(.2, .8, .2, 1) backwards; }
+.slot.leave { animation: sink .26s cubic-bezier(.4, 0, .8, .4) forwards; pointer-events: none; }
+@keyframes rise { from { grid-template-rows: 0fr; margin-top: 0; opacity: 0; } }
+@keyframes pop { from { transform: scale(.96); } }
+@keyframes sink { to { grid-template-rows: 0fr; margin-top: 0; opacity: 0; } }
+.island { --pad: 9px; --bpad: 4px; min-height: 0; overflow: hidden; border-radius: 7px; background: var(--is-bg); color: var(--is-text); font-size: 12px; line-height: 16px; }
+.row { height: 30px; display: flex; align-items: center; gap: 4px; padding-right: var(--bpad); }
+.tg { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 8px; padding: 0 0 0 var(--pad); border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
+.tg:focus-visible, .chev:focus-visible { outline: 2px solid var(--run); outline-offset: -2px; border-radius: 7px; }
+.ind { width: 18px; height: 18px; flex: none; display: grid; place-items: center; }
+.dot { --c: var(--ok); width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 24%, transparent); }
+.dot.pulse { animation: pulse 1.6s ease-out infinite; }
+.spin { --c: var(--run); width: 12px; height: 12px; border: 2px solid color-mix(in srgb, var(--c) 24%, transparent); border-top-color: var(--c); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 65%, transparent); }
+  75%, 100% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--c) 0%, transparent); }
+}
+.lbl { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.lbl b { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.lbl .sub { flex: none; color: var(--is-dim); font-variant-numeric: tabular-nums; }
+.right { flex: none; display: flex; align-items: center; gap: 4px; }
+.badge { height: 18px; min-width: 18px; padding: 0 6px; display: grid; place-items: center; border-radius: 9px; background: var(--is-fill); color: var(--is-dim); font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ib { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 10px; background: var(--is-fill); color: var(--is-text); cursor: pointer; }
+.ib:hover { background: var(--is-fill-2); }
+.ib:disabled, .chip:disabled { opacity: .5; cursor: default; }
+.sq { width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
+.chip { height: 20px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 0; border-radius: 10px; background: var(--is-fill); color: var(--is-text); font: 600 11px/1 var(--sys); white-space: nowrap; cursor: pointer; }
+.chip:hover { background: var(--is-fill-2); }
+.chip.build { background: var(--build); color: #fff; }
+.chip.stop { background: color-mix(in srgb, var(--err) 20%, transparent); color: #ff8b74; }
+.chip.stop:hover { background: color-mix(in srgb, var(--err) 32%, transparent); }
+.chev { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--is-faint); cursor: pointer; transition: transform .2s ease; }
+.chev svg { width: 10px; height: 10px; }
+.island.open .chev { transform: rotate(180deg); }
+
+.panel { padding-bottom: 2px; border-top: 1px solid var(--is-line); }
+.panel.bare { padding-bottom: 5px; }
+.panel.anim { animation: drop .22s cubic-bezier(.2, .8, .2, 1); }
+@keyframes drop { from { opacity: 0; transform: translateY(-6px); } }
+.sect { padding: 11px var(--pad) 3px; color: var(--is-faint); font-size: 10px; line-height: 12px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+.callout { --c: var(--idle); display: grid; gap: 4px; margin: 6px calc(var(--pad) - 6px) 0; padding: 6px 6px 8px; border-radius: 5px; background: color-mix(in srgb, var(--c) 13%, var(--is-bg)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 32%, transparent); }
+.callout .h { min-height: 18px; display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.callout p, .callout code, .callout .acts { margin: 0 0 0 26px; }
+.callout p { color: var(--is-dim); font-size: 11.5px; line-height: 16px; }
+.callout p.msg { color: var(--is-text); overflow-wrap: anywhere; }
+.callout code { color: color-mix(in srgb, var(--c) 45%, #fff); font: 11px/15px var(--sys-mono); overflow-wrap: anywhere; }
+.callout .acts { display: flex; gap: 6px; margin-top: 4px; }
+.now { display: flex; align-items: center; gap: 8px; padding: 8px var(--bpad) 2px var(--pad); }
+.now .who { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.now .who b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now .who [data-clock] { color: var(--is-dim); font-variant-numeric: tabular-nums; }
+.next { padding: 0 var(--pad) 4px calc(var(--pad) + 26px); color: var(--is-faint); font-size: 11px; }
+.av { width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--av, #7b61ff); color: #fff; font-size: 10px; font-weight: 700; }
+.agent { height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 var(--pad); }
+.agent > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st { margin-left: auto; flex: none; display: flex; align-items: center; gap: 6px; color: var(--is-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+.st .dot { width: 6px; height: 6px; box-shadow: none; }
+.st .spin { width: 10px; height: 10px; border-width: 1.5px; }
+.feed { display: grid; padding-bottom: 2px; }
+.ev { display: grid; grid-template-columns: 26px minmax(0, 1fr); padding: 5px var(--pad); }
+.ev .t { color: var(--is-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+.ev .s { min-width: 0; overflow-wrap: anywhere; }
+.ev .s em { color: var(--is-dim); font-style: normal; }
+.ev.err .s b { color: #ff8b74; }
+.ev.stop .s b { color: var(--is-dim); }
+.layers { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.layer { height: 20px; max-width: 100%; display: inline-flex; align-items: center; gap: 4px; padding: 0 7px 0 5px; border: 0; border-radius: 5px; background: var(--is-fill); color: var(--is-text); font: 500 11px/1 var(--sys); }
+button.layer { cursor: pointer; }
+button.layer:hover { background: color-mix(in srgb, var(--run) 32%, transparent); }
+.layer.gone { opacity: .45; }
+.layer.gone span { text-decoration: line-through; }
+.layer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layer svg { width: 12px; height: 12px; flex: none; color: var(--is-dim); }
+.layer.comp svg { color: #b58cff; }
+.more { align-self: center; padding: 0 2px; color: var(--is-faint); font-size: 11px; }
+.foot { margin-top: 6px; padding: 8px var(--pad) 9px; border-top: 1px solid var(--is-line); color: var(--is-faint); font-size: 11px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .panel.anim, .dot.pulse, .slot.enter, .slot.enter > .island, .slot.leave { animation: none; }
+  .spin { animation-duration: 2.4s; }
+  .chev { transition: none; }
+}
 </style>
 </head>
 <body>
-  <span id="badge"><span id="peers"></span><span id="icon"></span></span>
-  <svg id="fileicon" viewBox="0 0 16 24" aria-hidden="true"><path fill="currentColor" d="M4 .3h3.7v7.4H4A3.7 3.7 0 0 1 4 .3zM8.3.3H12a3.7 3.7 0 0 1 0 7.4H8.3zM4 8.3h3.7v7.4H4a3.7 3.7 0 0 1 0-7.4zM12 8.3a3.7 3.7 0 1 1 0 7.4 3.7 3.7 0 0 1 0-7.4zM4 16.3h3.7V20A3.7 3.7 0 1 1 4 16.3z"/></svg>
-  <span id="status">Connecting…</span>
-  <button id="update" type="button">Update</button>
+<div id="app"></div>
 
 <script>
-// Icons: Solar icon set by 480 Design — CC BY 4.0
-// https://www.figma.com/community/file/1166831539721848736
-const ICONS = {
-  ok: `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12ZM16.0303 8.96967C16.3232 9.26256 16.3232 9.73744 16.0303 10.0303L11.0303 15.0303C10.7374 15.3232 10.2626 15.3232 9.96967 15.0303L7.96967 13.0303C7.67678 12.7374 7.67678 12.2626 7.96967 11.9697C8.26256 11.6768 8.73744 11.6768 9.03033 11.9697L10.5 13.4393L12.7348 11.2045L14.9697 8.96967C15.2626 8.67678 15.7374 8.67678 16.0303 8.96967Z" clip-rule="evenodd"/></svg>`,
-  err: `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12ZM12 6.25C12.4142 6.25 12.75 6.58579 12.75 7V13C12.75 13.4142 12.4142 13.75 12 13.75C11.5858 13.75 11.25 13.4142 11.25 13V7C11.25 6.58579 11.5858 6.25 12 6.25ZM12 17C12.5523 17 13 16.5523 13 16C13 15.4477 12.5523 15 12 15C11.4477 15 11 15.4477 11 16C11 16.5523 11.4477 17 12 17Z" clip-rule="evenodd"/></svg>`,
-  pending: `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22ZM15.9346 5.59158C16.217 5.70662 16.4017 5.98121 16.4017 6.28616V9.00067C16.4017 9.41489 16.0659 9.75067 15.6517 9.75067H13C12.6983 9.75067 12.4259 9.56984 12.3088 9.29174C12.1917 9.01364 12.2527 8.69245 12.4635 8.47659L13.225 7.69705C11.7795 7.25143 10.1467 7.61303 9.00097 8.78596C7.33301 10.4935 7.33301 13.269 9.00097 14.9765C10.6593 16.6742 13.3407 16.6742 14.999 14.9765C15.6769 14.2826 16.0805 13.4112 16.2069 12.5045C16.2651 12.0865 16.5972 11.7349 17.0192 11.7349C17.4246 11.7349 17.7609 12.0595 17.7217 12.463C17.5957 13.7606 17.0471 15.0265 16.072 16.0247C13.8252 18.3248 10.1748 18.3248 7.92796 16.0247C5.69068 13.7344 5.69068 10.0281 7.92796 7.7378C9.66551 5.95905 12.244 5.55465 14.3647 6.53037L15.1152 5.76208C15.3283 5.54393 15.6522 5.47653 15.9346 5.59158Z" clip-rule="evenodd"/></svg>`,
-};
-
 const SERVER = "ws://localhost:8788/plugin";
-const statusEl = document.getElementById("status");
-const iconEl = document.getElementById("icon");
-const peersEl = document.getElementById("peers");
-const updateEl = document.getElementById("update");
 let ws = null;
 let reconnectTimer = null;
-const recentLog = [];
 let identity = { fileKey: null, name: null, docSig: null, pluginVersion: null, caps: [] };
 
 function sendHello() {
@@ -96,6 +157,12 @@ function sendHello() {
       awake: awakeState(),
     }));
   } catch (e) {}
+}
+
+// A button's message to the bridge: stop, dismiss, update-now, reload-all.
+function send(msg) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  try { ws.send(JSON.stringify(msg)); } catch (e) {}
 }
 
 // ─── keep-awake ──────────────────────────────────────────────────────────
@@ -166,80 +233,384 @@ function toSandbox(msg) {
   if (ready) ready.then(send, send); else send();
 }
 
-// Kept for debugging via the plugin console — no longer rendered in the UI.
+// For debugging via the plugin console.
 function log(line) {
   console.log("[figaro] " + line);
-}
-
-// "1/2" — this window's slot among all plugin windows connected to the bridge.
-// Shown only when connected and there are 2+ of them; a lone file keeps the icon.
-let peers = null;
-let state = "pending";
-// Exec ids currently running in this file — while any are, the check spins.
-const running = new Set();
-let busyHold = null;
-
-// Set when the bridge says plugin/code.js on disk is newer than this run.
-let outdated = false;
-// Set when the bridge found a newer release on GitHub: {latest, url}.
-let update = null;
-let statusText = "Connecting…";
-
-function render() {
-  const multi = state === "ok" && peers && peers.total > 1;
-  const busy = state === "ok" && (running.size > 0 || busyHold !== null);
-  const failed = state === "ok" && !busy && errorHold !== null;
-  const stale = state === "ok" && !busy && !failed && outdated;
-  peersEl.textContent = multi ? `${peers.index}/${peers.total}` : "";
-  // Re-run beats Update: a stale plugin has to be re-run before anything else.
-  const offer = state === "ok" && !busy && !failed && !stale && update !== null;
-  statusEl.textContent = stale ? "New version: re-run plugin"
-    : offer ? `New version ${update.latest || ""}`.trim() : statusText;
-  iconEl.innerHTML = ICONS[busy || stale ? "pending" : failed ? "err" : state] || "";
-  document.body.className = (failed ? "err" : stale ? "ok outdated" : offer ? "ok update" : state)
-    + (multi ? " multi" : "") + (busy ? " busy" : "");
-}
-
-// A failed exec turns the bar red for 2s, then it goes back to normal.
-let errorHold = null;
-function flashError() {
-  clearTimeout(errorHold);
-  errorHold = setTimeout(() => { errorHold = null; render(); }, 2000);
-  render();
-}
-
-function execStarted(id) {
-  running.add(id);
-  render();
-}
-
-// Keep the spinner up for at least 400ms so a 20ms exec still registers.
-function execFinished(id) {
-  running.delete(id);
-  clearTimeout(busyHold);
-  busyHold = setTimeout(() => { busyHold = null; render(); }, 400);
-  render();
-}
-
-function setPeers(p) {
-  peers = p;
-  render();
-}
-
-function setStatus(text, cls) {
-  statusText = text;
-  state = cls;
-  if (cls !== "ok") { peers = null; running.clear(); }
-  render();
 }
 
 function shortId(id) {
   return id ? String(id).slice(0, 8) : "?";
 }
 
+// ─── what the window knows ───────────────────────────────────────────────
+const QUIET = 10 * 60 * 1000;  // another file's island goes away after ten quiet minutes
+const NO_BRIDGE_AFTER = 3;     // failed connects in a row before "no bridge yet"
+
+let conn = "connecting";       // connecting | ok | nobridge
+let failures = 0;
+let board = null;              // the bridge's last `board`, its times on this window's clock
+let shift = null;              // this window's clock minus the bridge's, in ms
+let update = null;             // a newer release, from a bridge without boards
+let outdated = false;          // the bridge has newer plugin code than this window runs
+const local = new Map();       // exec id -> {agent, since}: for a bridge without boards
+const open = new Set();        // the islands that are open, by id
+const stopping = new Map();    // doc -> since of the script the user stopped
+const goneLayers = new Set();  // Recent layers that are no longer in the file
+
+// The board's times are the bridge's clock in seconds; the window counts in its own.
+function takeBoard(m) {
+  if (shift === null) shift = Date.now() - m.now * 1000;
+  const t = (s) => (typeof s === "number" ? s * 1000 + shift : 0);
+  board = {
+    version: m.version || "", update: m.update || null, stale: !!m.stale,
+    updating: m.updating || null, failed: m.failed || null,
+    files: (m.files || []).map((f) => ({
+      id: f.doc, doc: f.doc, sig: f.sig, name: f.name || "Untitled", here: false,
+      running: f.running ? { agent: f.running.agent, since: t(f.running.since) } : null,
+      queue: f.queue || [],
+      waiting: f.waiting ? { agent: f.waiting.agent, text: f.waiting.text, since: t(f.waiting.since) } : null,
+      error: f.error ? { agent: f.error.agent, text: f.error.text, line: f.error.line, at: t(f.error.at) } : null,
+      recent: (f.recent || []).map((e) => Object.assign({}, e, { at: t(e.at) })),
+      seen: Object.keys(f.seen || {}).reduce((o, a) => { o[a] = t(f.seen[a]); return o; }, {}),
+    })),
+  };
+}
+
+// This file first, under the id "here", then the others as the bridge lists them.
+function filesNow() {
+  const here = { id: "here", doc: null, name: identity.name || "This file", here: true,
+                 running: null, queue: [], waiting: null, error: null, recent: [], seen: {} };
+  if (conn !== "ok" || !board) {
+    if (conn === "ok" && local.size) here.running = local.values().next().value;
+    return [here];
+  }
+  let mine = null;
+  const others = [];
+  for (const f of board.files) {
+    if (!mine && identity.docSig && f.sig === identity.docSig) {
+      mine = Object.assign({}, f, { id: "here", here: true, name: identity.name || f.name });
+    } else others.push(f);
+  }
+  return [mine || here].concat(others);
+}
+
+const stale = () => outdated || !!(board && board.stale);
+const busy = (f) => !!(f.running || f.queue.length || f.waiting || f.error);
+function lastAt(f) {  // null: no agent has run anything there
+  const times = f.recent.map((e) => e.at).concat(Object.values(f.seen));
+  if (f.waiting) times.push(f.waiting.since);
+  if (f.error) times.push(f.error.at);
+  return times.length ? Math.max(...times) : null;
+}
+// This file always has its island; another file has one while its agents are busy and for ten minutes after.
+function shown(f) {
+  if (f.here) return true;
+  if (conn !== "ok") return false;
+  const last = lastAt(f);
+  return busy(f) || (last !== null && Date.now() - last < QUIET);
+}
+
+// ─── drawing it ──────────────────────────────────────────────────────────
+const PALETTE = ["#7b61ff", "#f2711c", "#12a594", "#e5489b", "#3e7bfa", "#b7791f"];
+const ICON = {
+  chev: '<svg viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  up: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M8 11.5v-7M5 7.5l3-3 3 3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  warn: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M8 4.5v4.2" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.3" r=".95" fill="#fff"/></svg>',
+  FRAME: '<svg viewBox="0 0 12 12"><path d="M4 1.5v9M8 1.5v9M1.5 4h9M1.5 8h9" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>',
+  COMPONENT: '<svg viewBox="0 0 12 12"><path fill="currentColor" d="M6 .9 7.7 2.6 6 4.3 4.3 2.6zM6 7.7l1.7 1.7L6 11.1 4.3 9.4zM2.6 4.3 4.3 6 2.6 7.7.9 6zM9.4 4.3 11.1 6 9.4 7.7 7.7 6z"/></svg>',
+  INSTANCE: '<svg viewBox="0 0 12 12"><path d="M6 1.3 10.7 6 6 10.7 1.3 6z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+  TEXT: '<svg viewBox="0 0 12 12"><path d="M2.5 2.5h7M6 2.5v7.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+};
+
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function color(name) {
+  let h = 0;
+  for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
+function ago(ts) {
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 45) return "now";
+  const m = Math.round(s / 60);
+  return m < 60 ? m + "m" : Math.round(m / 60) + "h";
+}
+const agoLong = (ts) => { const a = ago(ts); return a === "now" ? "just now" : a + " ago"; };
+function clock(ts) {
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+}
+const clockSpan = (ts) => `<span data-clock="${ts}">${clock(ts)}</span>`;
+const agoSpan = (ts) => `<span data-ago="${ts}" data-long="1">${agoLong(ts)}</span>`;
+const av = (name) => `<span class="av" style="--av: ${color(name)}">${esc(String(name)[0].toUpperCase())}</span>`;
+
+// What a closed island shows: the file, then the most urgent thing in it.
+function headline(f) {
+  if (f.here && conn === "connecting") return { kind: "connecting", ind: '<span class="spin" style="--c: var(--idle)"></span>', sub: "connecting…" };
+  if (f.here && conn === "nobridge") return { kind: "nobridge", ind: '<span class="dot" style="--c: var(--idle)"></span>', sub: "no bridge yet" };
+  if (f.running) return { kind: "running", ind: '<span class="spin"></span>', sub: esc(f.running.agent) + " " + clockSpan(f.running.since) };
+  if (f.waiting) return { kind: "waiting", ind: '<span class="dot pulse" style="--c: var(--wait)"></span>', sub: esc(f.waiting.agent) + " is waiting" };
+  if (f.error) return { kind: "error", ind: '<span class="dot" style="--c: var(--err)"></span>', sub: esc(f.error.agent) + " failed" };
+  if (f.here && stale()) return { kind: "outdated", ind: '<span class="dot" style="--c: var(--build)"></span>', sub: "new build" };
+  const last = f.recent[0];
+  if (!last) return { kind: "ok", ind: '<span class="dot"></span>', sub: "" };
+  return { kind: "ok", ind: '<span class="dot"></span>', sub: esc(last.agent) + " · " + agoSpan(last.at) };
+}
+
+const isStopping = (f) => !!(f.running && stopping.has(f.doc));
+
+function row(f) {
+  const h = headline(f);
+  let right = "";
+  if (h.kind === "running") {
+    if (f.queue.length) right += `<span class="badge" title="${f.queue.length} more in the queue">+${f.queue.length}</span>`;
+    const tip = isStopping(f) ? "Stopping…" : f.here ? "Stop this script" : "Stop the script in " + f.name;
+    right += `<button type="button" class="ib" data-act="stop" title="${esc(tip)}" aria-label="${esc(tip)}"${isStopping(f) ? " disabled" : ""}><span class="sq"></span></button>`;
+  } else if (h.kind === "outdated") {
+    right += '<button type="button" class="chip build" data-act="reload">Reload</button>';
+  }
+  const isOpen = open.has(f.id);
+  right += `<button type="button" class="chev" data-act="toggle" aria-label="${isOpen ? "Collapse" : "Expand"}" tabindex="-1">${ICON.chev}</button>`;
+  return `<div class="row"><button type="button" class="tg" data-act="toggle" aria-expanded="${isOpen}">`
+    + `<span class="ind">${h.ind}</span><span class="lbl"><b title="${esc(f.name)}">${esc(f.name)}</b>${h.sub ? `<span class="sub">${h.sub}</span>` : ""}</span></button>`
+    + `<div class="right">${right}</div></div>`;
+}
+
+function callout(f) {
+  const h = headline(f);
+  if (h.kind === "connecting") return `<div class="callout"><div class="h"><span class="ind">${h.ind}</span>Looking for the bridge</div><p>It runs on this computer and answers in a second or two.</p></div>`;
+  if (h.kind === "nobridge") return `<div class="callout"><div class="h"><span class="ind">${h.ind}</span>Waiting for the bridge</div><p>It starts with your agent's first figaro command. To start it now, run <code>figaro doctor</code> in a terminal.</p></div>`;
+  if (h.kind === "running") {
+    const next = f.queue.length ? `<div class="next">Next: ${f.queue.map(esc).join(", ")}</div>` : "";
+    const stop = isStopping(f) ? '<button type="button" class="chip stop" disabled>Stopping…</button>'
+      : '<button type="button" class="chip stop" data-act="stop"><span class="sq"></span>Stop</button>';
+    return `<div class="now"><span class="who">${av(f.running.agent)}<b>${esc(f.running.agent)}</b>${clockSpan(f.running.since)}</span>${stop}</div>${next}`;
+  }
+  if (h.kind === "waiting") return `<div class="callout" style="--c: var(--wait)"><div class="h">${av(f.waiting.agent)}${esc(f.waiting.agent)} is waiting for you</div>`
+    + `<p class="msg">${esc(f.waiting.text)}</p><div class="acts"><button type="button" class="chip" data-act="dismiss" data-what="waiting">Dismiss</button></div></div>`;
+  if (h.kind === "error") return `<div class="callout" style="--c: var(--err)"><div class="h">${av(f.error.agent)}${esc(f.error.agent)}’s script failed</div>`
+    + `<code>${esc(f.error.text)}</code><p>${f.error.line ? `Line ${f.error.line}. ` : ""}The agent got this error too and usually fixes it.</p>`
+    + '<div class="acts"><button type="button" class="chip" data-act="dismiss" data-what="error">Dismiss</button></div></div>';
+  if (h.kind === "outdated") return `<div class="callout" style="--c: var(--build)"><div class="h"><span class="ind">${h.ind}</span>Figaro has a new build</div>`
+    + '<p>Reload the plugin to use it. Scripts in the queue wait.</p><div class="acts"><button type="button" class="chip build" data-act="reload">Reload</button></div></div>';
+  return "";
+}
+
+function agents(f) {
+  const m = new Map();
+  const put = (name, st, rank, extra) => {
+    const cur = m.get(name);
+    if (!cur || cur.rank > rank) m.set(name, Object.assign({ name, st, rank }, extra));
+  };
+  if (f.running) put(f.running.agent, "running", 0, { since: f.running.since });
+  if (f.waiting) put(f.waiting.agent, "waiting", 1, {});
+  if (f.error) put(f.error.agent, "failed", 2, { at: f.error.at });
+  f.queue.forEach((a, i) => put(a, "queued", 3, { pos: i }));
+  for (const a of Object.keys(f.seen)) put(a, "idle", 4, { at: f.seen[a] });
+  return [...m.values()].sort((x, y) => x.rank - y.rank || (y.at || 0) - (x.at || 0));
+}
+
+function agentRow(a) {
+  let st;
+  if (a.st === "running") st = `<span class="spin"></span>running ${clockSpan(a.since)}`;
+  else if (a.st === "waiting") st = '<span class="dot" style="--c: var(--wait)"></span>waiting for you';
+  else if (a.st === "failed") st = '<span class="dot" style="--c: var(--err)"></span>failed';
+  else if (a.st === "queued") st = a.pos === 0 ? "next in queue" : `in queue · ${a.pos + 1}`;
+  else st = `done · <span data-ago="${a.at}">${ago(a.at)}</span>`;
+  return `<div class="agent">${av(a.name)}<span>${esc(a.name)}</span><span class="st">${st}</span></div>`;
+}
+
+// Layers of this file are buttons that select and zoom; another file's are only names.
+function event(e, here) {
+  const chips = (e.layers || []).map((l) => {
+    const type = l.type === "COMPONENT_SET" ? "COMPONENT" : l.type;
+    const gone = here && goneLayers.has(l.id);
+    const cls = "layer" + (type === "COMPONENT" || type === "INSTANCE" ? " comp" : "") + (gone ? " gone" : "");
+    const inner = `${ICON[type] || ICON.FRAME}<span>${esc(l.name)}</span>`;
+    return here ? `<button type="button" class="${cls}" data-act="layer" data-id="${esc(l.id)}" title="${gone ? "Not in the file any more" : "Select it in Figma"}">${inner}</button>`
+      : `<span class="${cls}">${inner}</span>`;
+  }).join("") + (e.more ? `<span class="more">+${e.more}</span>` : "");
+  const note = e.note ? ` <em>· ${esc(e.note)}</em>` : "";
+  return `<div class="ev${e.kind === "err" ? " err" : e.kind === "stop" ? " stop" : ""}"><span class="t" data-ago="${e.at}">${ago(e.at)}</span>`
+    + `<span class="s"><em>${esc(e.agent)}</em> <b>${esc(e.summary)}</b>${note}</span>`
+    + (chips ? `<div class="layers">${chips}</div>` : "") + "</div>";
+}
+
+function panel(f, anim) {
+  const on = conn === "ok";
+  const list = on ? agents(f) : [];
+  const feed = on ? f.recent.slice(0, 5) : [];
+  const version = board && board.version;
+  const foot = f.here ? `<div class="foot">Figaro${version ? " " + esc(version) : ""}</div>` : "";
+  return `<div class="panel${anim ? " anim" : ""}${foot ? "" : " bare"}">` + callout(f)
+    + (list.length ? '<div class="sect">Agents</div>' + list.map(agentRow).join("") : "")
+    + (feed.length ? '<div class="sect">Recent</div><div class="feed">' + feed.map((e) => event(e, f.here)).join("") + "</div>" : "")
+    + foot + "</div>";
+}
+
+function island(f, cls, anim) {
+  const isOpen = open.has(f.id);
+  return `<div class="slot${cls}" data-fid="${esc(f.id)}"><div class="island${isOpen ? " open" : ""}">${row(f)}${isOpen ? panel(f, anim) : ""}</div></div>`;
+}
+
+// A newer release, the update under way, or why it failed.
+function updateRow() {
+  if (conn !== "ok") return "";
+  const doing = board && board.updating;
+  const failed = board && board.failed;
+  const latest = (board && board.update && board.update.latest) || (update && update.latest);
+  if (doing) {
+    const reload = doing.what === "reload";
+    const text = doing.step === "wait" ? (reload ? "Reloads once the scripts finish" : "Updates once the scripts finish")
+      : doing.step === "pull" ? `Updating to ${esc(doing.to || latest || "the new version")}…`
+      : reload ? "Reloading Figaro…" : "Restarting Figaro…";
+    return `<div class="uprow"><span class="ind"><span class="spin"></span></span><span class="txt">${text}</span></div>`;
+  }
+  if (failed) {
+    const text = `Couldn't ${failed.what === "reload" ? "reload" : "update"}: ${esc(failed.error)}`;
+    return `<div class="uprow"><span class="ind warn">${ICON.warn}</span><span class="txt" title="${esc(failed.detail || failed.error)}">${text}</span>`
+      + (failed.url ? `<button type="button" class="go" data-act="release" data-url="${esc(failed.url)}">Open release</button>` : "") + "</div>";
+  }
+  if (!latest) return "";
+  return `<div class="uprow"><span class="ind">${ICON.up}</span><span class="txt">${esc(latest)} is out</span>`
+    + '<button type="button" class="go" data-act="update">Update and Reload</button></div>';
+}
+
+// ─── rendering ───────────────────────────────────────────────────────────
+// The window is drawn anew from its state. An island that appears grows in,
+// one that goes away shrinks out; a redraw waits for those to finish, and for
+// a pressed button to be released, so it never swallows a click.
+const app = document.getElementById("app");
+const onScreen = new Set();    // islands on screen, by id
+let lastFiles = new Map();
+let animId = null;             // the island whose panel just opened
+let ready = false;
+let animUntil = 0;
+let later = null;
+let pressed = false;
+let dirty = false;
+let lastHtml = "";
+
+function schedule() {
+  if (pressed) { dirty = true; return; }
+  const wait = animUntil - Date.now();
+  if (wait > 0) {
+    clearTimeout(later);
+    later = setTimeout(schedule, wait);
+    return;
+  }
+  render();
+}
+
+function render() {
+  dirty = false;
+  for (const [doc, since] of stopping) {
+    const f = board && board.files.find((x) => x.doc === doc);
+    if (!f || !f.running || Math.abs(f.running.since - since) > 1000) stopping.delete(doc);
+  }
+  const files = filesNow();
+  const byId = new Map(files.map((f) => [f.id, f]));
+  let html = updateRow();
+  let moving = animId !== null;
+  for (const f of files) {
+    if (shown(f)) {
+      const enter = ready && !onScreen.has(f.id);
+      onScreen.add(f.id);
+      html += island(f, enter ? " enter" : "", animId === f.id);
+      moving = moving || enter;
+    } else if (onScreen.has(f.id)) {
+      onScreen.delete(f.id);
+      html += island(f, " leave", false);
+      moving = true;
+    }
+  }
+  for (const id of [...onScreen]) {
+    if (byId.has(id)) continue;
+    onScreen.delete(id);  // its window closed: it leaves like a quiet one
+    const f = lastFiles.get(id);
+    if (f) { html += island(f, " leave", false); moving = true; }
+  }
+  lastFiles = byId;
+  animId = null;
+  ready = true;
+  if (html !== lastHtml) {
+    app.innerHTML = html;
+    lastHtml = html;
+  }
+  if (moving) {
+    animUntil = Date.now() + 360;
+    clearTimeout(later);
+    later = setTimeout(schedule, 360);  // then without the animations' classes
+  }
+  fit();
+}
+
+// The window follows its islands: Figma sizes it from the sandbox (code.js).
+let sentHeight = 0;
+function fit() {
+  const height = Math.ceil(app.getBoundingClientRect ? app.getBoundingClientRect().height : 0);
+  if (height > 0 && height !== sentHeight) {
+    sentHeight = height;
+    parent.postMessage({ pluginMessage: { type: "resize", height } }, "*");
+  }
+}
+if (typeof ResizeObserver === "function") new ResizeObserver(fit).observe(app);
+
+// ─── the buttons ─────────────────────────────────────────────────────────
+function act(name, fid, el) {
+  const f = fid ? filesNow().find((x) => x.id === fid) : null;
+  if (name === "toggle" && f) {
+    if (open.has(f.id)) open.delete(f.id);
+    else { open.add(f.id); animId = f.id; }
+    render();
+  } else if (name === "stop" && f && f.doc && f.running) {
+    stopping.set(f.doc, f.running.since);
+    send({ type: "stop", doc: f.doc });
+    render();
+  } else if (name === "dismiss" && f && f.doc) {
+    send({ type: "dismiss", doc: f.doc, what: el.dataset.what });
+  } else if (name === "update") {
+    send({ type: "update-now" });
+  } else if (name === "reload") {
+    send({ type: "reload-all" });
+  } else if (name === "release") {
+    parent.postMessage({ pluginMessage: { type: "open-url", url: el.dataset.url } }, "*");
+  } else if (name === "layer") {
+    parent.postMessage({ pluginMessage: { type: "select", id: el.dataset.id } }, "*");
+  }
+}
+
+document.addEventListener("click", (e) => {
+  const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
+  if (!el || el.disabled) return;
+  const slot = el.closest("[data-fid]");
+  act(el.dataset.act, slot ? slot.dataset.fid : null, el);
+});
+let pressTimer = null;
+function release() {
+  clearTimeout(pressTimer);
+  if (!pressed) return;
+  pressed = false;
+  setTimeout(() => { if (dirty) schedule(); }, 0);  // after the click that follows
+}
+document.addEventListener("pointerdown", () => {
+  pressed = true;
+  clearTimeout(pressTimer);
+  pressTimer = setTimeout(release, 2000);  // a press that never ends must not freeze the window
+});
+document.addEventListener("pointerup", release);
+document.addEventListener("pointercancel", release);
+
+// Live clocks, "2m ago", and another file's island leaving after ten quiet minutes.
+setInterval(() => {
+  for (const el of app.querySelectorAll("[data-clock]")) el.textContent = clock(+el.dataset.clock);
+  for (const el of app.querySelectorAll("[data-ago]")) el.textContent = el.dataset.long ? agoLong(+el.dataset.ago) : ago(+el.dataset.ago);
+  const want = filesNow().filter(shown).map((f) => f.id).sort().join();
+  if (want !== [...onScreen].sort().join()) schedule();
+}, 1000);
+
+// ─── the bridge ──────────────────────────────────────────────────────────
 function connect() {
   clearTimeout(reconnectTimer);
-  setStatus("Connecting…", "pending");
   try {
     ws = new WebSocket(SERVER);
   } catch (e) {
@@ -249,15 +620,19 @@ function connect() {
   }
 
   ws.onopen = () => {
-    // A new bridge may have different code on disk; it re-sends `outdated` at
-    // hello time if this build is still behind.
+    // A new bridge may have different code on disk; it says `outdated` and
+    // `update` again at hello time, and sends its board.
+    conn = "ok";
+    failures = 0;
     outdated = false;
     update = null;
-    setStatus(identity.name || "connected", "ok");
+    board = null;
+    shift = null;
     log("[ws] connected" + (identity.name ? ` as ${identity.name}` : ""));
     sendHello();
     // In case identity hasn't arrived from the plugin yet, ask for it.
     parent.postMessage({ pluginMessage: { type: "need-identity" } }, "*");
+    schedule();
   };
 
   ws.onmessage = (e) => {
@@ -268,7 +643,8 @@ function connect() {
     }
     if (msg.type === "exec") {
       log(`[exec] ${shortId(msg.id)} code=${(msg.code || "").length}b`);
-      execStarted(msg.id);
+      local.set(msg.id, { agent: msg.agent || "agent", since: Date.now() });
+      if (!board) schedule();
       // timeout rides along: h.ck() in code.js stops a run once it has passed.
       // So do agent, readOnly, checkpoint, quick and libs — every field
       // bridge_exec.exec_fields sends (tests/test_exec.py checks the list).
@@ -278,7 +654,6 @@ function connect() {
         quick: msg.quick, libs: msg.libs });
     } else if (msg.type === "undo") {
       // Revert the last script — code.js decides whether that is safe.
-      execStarted(msg.id);
       toSandbox({ type: "undo", id: msg.id, agent: msg.agent, force: msg.force });
     } else if (msg.type === "reload") {
       // New code.js and ui.html from disk; this window is replaced by it.
@@ -288,40 +663,37 @@ function connect() {
       // wants the slot. Answering keeps ours.
       try { ws.send(JSON.stringify({ type: "pong" })); } catch (e) {}
     } else if (msg.type === "abort") {
-      // The bridge gave up on this run; code.js marks it so h.ck() throws.
+      // The bridge gave up on this run, or the user pressed Stop; code.js
+      // marks it so h.ck() throws.
       parent.postMessage({ pluginMessage: { type: "abort", id: msg.id } }, "*");
+    } else if (msg.type === "board") {
+      takeBoard(msg);
+      schedule();
     } else if (msg.type === "update") {
       // A newer release (vX.Y.Z tag) than the bridge's VERSION; url = its release page.
-      update = { latest: msg.latest, url: msg.url };
-      updateEl.title = `Figaro ${msg.latest} is out (this is ${msg.current}) — open the release notes`;
-      render();
+      update = { latest: msg.latest, current: msg.current, url: msg.url };
+      schedule();
     } else if (msg.type === "outdated") {
       outdated = true;
       log(`[outdated] running ${msg.running}, bridge has ${msg.expected}`);
-      render();
-    } else if (msg.type === "peers") {
-      setPeers({ index: msg.index, total: msg.total });
+      schedule();
     }
-  };
-
-  ws.onerror = () => {
-    setStatus("Error", "err");
-    log("[ws] error");
   };
 
   ws.onclose = () => {
     // The bridge holds one slot per open file, so a close is always transient:
     // bridge restart, or this tab's socket dropped. Just reconnect.
-    setStatus("Reconnecting…", "pending");
+    failures++;
+    conn = failures >= NO_BRIDGE_AFTER ? "nobridge" : "connecting";
+    board = null;
+    local.clear();
+    stopping.clear();
     log("[ws] disconnected");
     hush();  // no bridge, no agents — let the Mac sleep
     reconnectTimer = setTimeout(connect, 2000);
+    schedule();
   };
 }
-
-updateEl.onclick = () => {
-  if (update) parent.postMessage({ pluginMessage: { type: "open-url", url: update.url } }, "*");
-};
 
 window.onmessage = (e) => {
   const m = e.data && e.data.pluginMessage;
@@ -330,15 +702,16 @@ window.onmessage = (e) => {
     identity = { fileKey: m.fileKey || null, name: m.name || null, docSig: m.docSig || null,
                  pluginVersion: m.pluginVersion || null, caps: m.caps || [] };
     log(`[id] file=${identity.name}`);
-    // Show which file this window is bound to, once the socket is up.
-    if (ws && ws.readyState === WebSocket.OPEN && identity.name) setStatus(identity.name, "ok");
     sendHello();  // (re-)register this connection under the file name
+    schedule();
     return;
   }
-  if (m.type === "result" || m.type === "error") {
-    if (m.type === "error") flashError();
-    execFinished(m.id);
+  if (m.type === "selected") {
+    if (m.ok) goneLayers.delete(m.id); else goneLayers.add(m.id);
+    schedule();
+    return;
   }
+  if ((m.type === "result" || m.type === "error") && local.delete(m.id) && !board) schedule();
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     log(`[drop] ws not open, ${m.type} id=${shortId(m.id)}`);
     return;
@@ -367,6 +740,8 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+parent.postMessage({ pluginMessage: { type: "need-identity" } }, "*");
+render();
 connect();
 </script>
 </body>

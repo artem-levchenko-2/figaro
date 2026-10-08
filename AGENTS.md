@@ -40,14 +40,14 @@ and import it from there, and copy it again after every update.
 
 ```sh
 python3 -m venv venv && venv/bin/pip install -r requirements-dev.txt   # once after cloning
-venv/bin/python -m pytest -q             # bridge, CLI, queue, fuzz and stress tests; no Figma needed
+venv/bin/python -m pytest -q             # bridge, board, update, CLI, queue, fuzz, stress; no Figma needed
 /usr/bin/python3 -m venv /tmp/figaro-py39 && /tmp/figaro-py39/bin/pip install -q -r requirements-dev.txt
 /tmp/figaro-py39/bin/python -m pytest -q # the same on macOS's own python3 (3.9), the oldest we support
 node tests/helpers.test.js               # pure helpers of plugin/code.js on a stub of Figma
 node tests/plugin.test.js                # the plugin writes nothing to the file; the document id is the fileKey
 node tests/exec.test.js                  # the exec core: change reports, Cmd+Z, read-only, undo, error lines
 node tests/commands.test.js              # links, quick reads, --lib, inspect, shot, fonts, auto-layout, find
-node tests/ui.test.js                    # the plugin bar: the tone plays only during scripts, while the bridge is up
+node tests/ui.test.js                    # the plugin window: islands, buttons; the tone plays only during scripts
 node tests/variants.test.js              # h.variant: short names and #ids, "true"/"false"; h.bN with a key
 
 export FIGARO_TEST_FILE="<link to a draft of yours>"   # the live tests need the plugin running in it
@@ -94,6 +94,11 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   `exec --shot`; `inspect_text.py` — the text `inspect` prints.
 - `bridge.py` — HTTP and WebSocket, routing to files, the queue and lock per file, Origin/Host checks, the
   release check, `ERROR_HINTS`.
+- `bridge_board.py` — what every plugin window shows (the `board`: each file's running agent, queue, note
+  from `figaro wait`, last error, recent changes), its buttons (Stop, Dismiss) and `POST /wait`.
+- `bridge_update.py` — Update and Reload from the window: waits until no file runs a script,
+  `git pull --ff-only`, reloads the plugins that run older code, restarts the bridge (`os.execv`; on Windows
+  `start-bridge.ps1 -Restart`). Scripts sent meanwhile get a 503 and run nothing.
 - `bridge_exec.py` — the bridge's side of exec: the fields it sends (`readOnly`, `checkpoint`, `quick`,
   `libs` — a library's code goes once, then its hash), when checkpoints are due, links as targets,
   `POST /undo`, `POST /reload`.
@@ -101,7 +106,7 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   closes the plugins' connections at once.
 - `figma_links.py` — Figma links: the file key and node id in a link, links to layers for reports.
 - `plugin/` — `manifest.json`, `code.js` (the `HELPERS` object behind `h.*`, running scripts with a deadline,
-  change tracking, undo), `ui.html` (the bar).
+  change tracking, undo, selecting a layer from the window), `ui.html` (the window: one island per file).
 - `skill/figaro/` — `SKILL.md` (the loop, the commands, safety, house rules) and `references/`:
   `helpers.md`, `craft.md`, `pitfalls.md`. The recipes in them were checked against real Figma.
 - `tools/install.sh` — the command and the skill's links (`~/.claude/skills`, `~/.agents/skills`); never
@@ -171,7 +176,10 @@ repository answers 404, and the check stays silent.
 - **Hot reload.** With Figma's *Plugins → Development → Hot reload plugin* on, any write to `plugin/code.js`
   or `ui.html` (even `touch`) restarts the plugin in every file within a second. A running script is cut off
   ("plugin disconnected mid-request") and `undo` forgets everything. Don't touch `plugin/` while agents work.
-- **The keep-awake tone.** While scripts run, the bar plays an inaudible tone (20 Hz, −66 dBFS); without it
+- **The window is 320 px wide and as tall as its islands**: `ui.html` measures itself and `code.js` calls
+  `figma.ui.resize`. The header above it (icon, title, close button) is Figma's: a plugin can put nothing
+  there, and its title changes only with a new `figma.showUI`, which restarts the window.
+- **The keep-awake tone.** While scripts run, the window plays an inaudible tone (20 Hz, −66 dBFS); without it
   Chromium throttles a background Figma to up to a minute per step. Meanwhile macOS doesn't sleep
   (`pmset -g assertions` shows Figma "Playing audio"). The tone stops 3 minutes after the last script or
   ~2 s after the bridge goes away — that is why the bridge closes the plugins' connections on exit

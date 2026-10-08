@@ -33,8 +33,8 @@ The references next to this file — read each one when you reach its step:
 - "This frame", "the selection" → `figaro sel -T …`; don't ask for ids.
 - The CLI starts the bridge by itself. Don't start it in background tasks, and don't stop it unless the user
   asks (then `bash start-bridge.sh --stop` in the Figaro folder).
-- When several agents work in one file, name yourself: `-A <name>` in every call. The name shows in the
-  file's queue, and `undo` undoes only what is yours.
+- Name yourself: `-A <name>` in every call, a short role such as `-A designer`. The user sees it in the
+  plugin's window and in the file's queue, and `undo` undoes only what is yours.
 
 ## 2. The loop: look → change → look
 
@@ -47,8 +47,9 @@ The references next to this file — read each one when you reach its step:
    prints: spacing, alignment, cut-off text and fonts show only in a picture. Numbers (sizes, spacing) come
    from `inspect` or an `-R` script. If you can't open images, say so and ask the user to look.
 5. **Fix in place.** Don't rebuild what is already right.
-6. **Stop for review** after the first component or block: a link, a shot, what was done. Go on once the
-   user answers.
+6. **Stop for review** after the first component or block: a link, a shot, what was done. Leave a note in
+   Figma too, `figaro wait "Check the card, then answer in the chat"`: the user may be looking at Figma,
+   not at the chat. Go on once the user answers.
 
 ## 3. Commands
 
@@ -68,6 +69,7 @@ The references next to this file — read each one when you reach its step:
 | `figaro rm <layer>…` | delete; finds every id first, so one wrong id deletes nothing |
 | `figaro undo` | undo the file's last script, when that is safe (section 5) |
 | `figaro reload` | restart the plugin in a file with the code on disk, after an update |
+| `figaro wait "<what to check>"` | a note for the user in the plugin's window: the file's island turns amber with it until your next script in the file. It doesn't wait for an answer: ask in the chat too, then end your turn |
 | `figaro targets` · `doctor` · `status` | the connected files · a connection check with advice · the bridge's raw state |
 | `figaro clear` | unblock a file after a 504 (`pitfalls.md`) |
 
@@ -137,6 +139,9 @@ JS
   parent (`h.frame(page, …)`, `page.appendChild(node)`) and show the result with a link in the report.
 - **The user may edit the file while your script runs**, and their changes land in your report. Keep scripts
   short.
+- **The user can press Stop** in the plugin's window. Your script ends, and the call fails with `stopped:
+  the user pressed Stop…` (409); what it changed before that stays in the file. Don't run it again: ask the
+  user what to do.
 - **504** — the script may still be running and writing. Don't retry blindly: look at the file first
   (`pitfalls.md`).
 - **Don't edit Figaro's own code from another project**: with Figma's Hot reload on, a write to its `plugin/`

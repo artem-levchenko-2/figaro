@@ -281,6 +281,18 @@ def test_undo_says_how_many_steps_and_what_is_left(monkeypatch, capsys):
     assert "⚠ not everything was undone" in err
 
 
+def test_wait_leaves_a_note_in_the_plugin_window(monkeypatch, capsys):
+    reply = {"ok": True, "file": "Sandbox 5$", "text": "Check the card"}
+    rc, out, err, calls = cli(monkeypatch, capsys, "wait", "Check the card", "-T", KEY, "-A", "designer",
+                              bridge_reply=reply)
+    assert rc == 0 and calls == [{"text": "Check the card", "target": KEY, "agent": "designer"}]
+    assert out.strip() == 'the Figaro window in "Sandbox 5$" asks: Check the card'
+    assert "until your next script" in err
+    old = {"ok": False, "error": "the plugin in \"Sandbox 5$\" runs an older build that can't show it"}
+    rc, _, err, _ = cli(monkeypatch, capsys, "wait", "Check the card", bridge_reply=old)
+    assert rc == 1 and "older build" in err
+
+
 def test_created_names_the_outermost_new_layers():
     url = "https://www.figma.com/design/K/F?node-id="
     items = [{"op": "+", "id": "5:2", "name": "Icon", "url": url + "5-2"}]

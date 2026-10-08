@@ -1,15 +1,18 @@
-figma.showUI(__html__, { width: 220, height: 28, title: "Figaro" });
+// The window: one island per file (ui.html). It grows and shrinks with them —
+// the UI measures itself and asks for its height (`resize` below).
+const UI_WIDTH = 320;
+figma.showUI(__html__, { width: UI_WIDTH, height: 36, title: "Figaro", themeColors: true });
 
 // Build id of this plugin code. The bridge compares it with plugin/code.js on
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-08.5";
+const PLUGIN_VERSION = "2026-10-08.6";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
 const CAPS = ["changes", "readOnly", "undo", "reload", "checkpoint",
-                 "quick", "libs", "links", "inspect", "shot", "gate"];
+                 "quick", "libs", "links", "inspect", "shot", "gate", "board"];
 
 // Tell the UI which file we're in, so it can register this connection with the
 // bridge by name (figma.root.name). The bridge routes --target by that name.
@@ -449,12 +452,18 @@ function makeGate(id, deadline) {
 figma.ui.onmessage = async (msg) => {
   if (msg.type === "need-identity") { postIdentity(); return; }
   if (msg.type === "open-url") {
-    // The Update button. Only ever the project's GitHub pages.
+    // The release page, when an update can't be done here. Only ever the project's GitHub pages.
     if (typeof msg.url === "string" && msg.url.startsWith("https://github.com/artem-levchenko-2/figaro/")) {
       figma.openExternal(msg.url);
     }
     return;
   }
+  if (msg.type === "resize") {
+    const height = Math.round(Number(msg.height));
+    if (height > 0) figma.ui.resize(UI_WIDTH, Math.min(height, 2000));
+    return;
+  }
+  if (msg.type === "select") { await selectLayer(msg.id); return; }
   if (msg.type === "abort") {
     if (msg.id) markAborted(msg.id);
     const fail = GATES.get(msg.id);  // a script stuck in a Figma call ends now
@@ -1883,6 +1892,31 @@ Object.assign(HELPERS, {
     return instance;
   },
 });
+
+// ─── the window's Recent list ────────────────────────────────────────────
+// A click on a layer there selects it and brings it into view, on its own
+// page. The user asked for it, so their selection and camera are ours to move.
+
+async function selectLayer(id) {
+  let node = null;
+  try {
+    node = nodeHere(id);
+    if (node === undefined) node = await figma.getNodeByIdAsync(String(id));
+  } catch (e) { node = null; }
+  let page = node;
+  try {
+    while (page && page.type !== "PAGE") page = page.parent;
+  } catch (e) { page = null; }
+  const ok = !!(node && page && node !== page);
+  if (ok) {
+    try {
+      if (figma.currentPage !== page) await figma.setCurrentPageAsync(page);
+      figma.currentPage.selection = [node];
+      figma.viewport.scrollAndZoomIntoView([node]);
+    } catch (e) { /* removed meanwhile, or locked away in an instance */ }
+  }
+  figma.ui.postMessage({ type: "selected", id, ok });
+}
 
 // ─── hot reload ──────────────────────────────────────────────────────────
 // `figaro reload` sends plugin/code.js and ui.html from disk; running them

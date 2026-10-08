@@ -17,6 +17,7 @@ Commands:
     figaro import-component <key>   # import library component, instantiate (--focus: show it)
     figaro undo                     # undo the file's last script, when that is safe
     figaro reload                   # load plugin/code.js from disk into the open plugin
+    figaro wait "<text>"            # ask the user in the plugin's window; the island turns amber
     figaro inspect <id> [--json | -o f.json]   # layout, styles, text, keys of what it uses
     figaro shot <id> ...            # picture(s) saved to files; tall ones cut in parts
     figaro link <id|sel> ...        # clickable links to layers, for reports
@@ -92,7 +93,7 @@ SANDBOXED = ("a sandbox keeps this command off the network, 127.0.0.1 included. 
 
 KNOWN_CMDS = {
     "exec", "status", "targets", "clear", "doctor", "sel", "tree", "find", "text", "variant",
-    "clone", "rm", "import-component", "icomp", "undo", "reload",
+    "clone", "rm", "import-component", "icomp", "undo", "reload", "wait",
     "inspect", "shot", "link",
 }
 
@@ -333,6 +334,28 @@ def cmd_reload(args):
         return 1
     print(f"plugin {resp.get('plugin')} runs in \"{resp.get('file')}\" "
           f"({resp.get('elapsed_ms')} ms)")
+    return 0
+
+
+def cmd_wait(args):
+    """Ask the user for something: the file's island in the plugin's window
+    turns amber with the text, until this agent's next script in the file."""
+    payload = {"text": args.text}
+    if TARGET:
+        payload["target"] = TARGET
+    if AGENT:
+        payload["agent"] = AGENT
+    status, resp = _request("POST", "/wait", payload)
+    if args.raw:
+        return _emit(resp, raw=True)
+    if not resp.get("ok"):
+        print(f"figaro: {resp.get('error', 'wait failed')}", file=sys.stderr)
+        if resp.get("hint"):
+            print(f"   hint: {resp['hint']}", file=sys.stderr)
+        return 1
+    print(f"the Figaro window in \"{resp.get('file')}\" asks: {resp.get('text')}")
+    print("  it stays until your next script in this file, or until the user dismisses it",
+          file=sys.stderr)
     return 0
 
 
@@ -692,6 +715,11 @@ def build_parser():
                               help="load plugin/code.js and ui.html from disk into the open plugin")
     _add_common_flags(p_reload)
 
+    p_wait = sub.add_parser("wait", help="ask the user for something in the plugin's window: the "
+                                         "file's island turns amber until your next script")
+    _add_common_flags(p_wait)
+    p_wait.add_argument("text", help="what the user should check or do, in their language")
+
     cli_extras.add_parsers(sub, _add_common_flags)
 
     return ap
@@ -745,6 +773,7 @@ def main():
         "icomp": cmd_import_component,
         "undo": cmd_undo,
         "reload": cmd_reload,
+        "wait": cmd_wait,
         "inspect": cli_extras.cmd_inspect,
         "shot": cli_extras.cmd_shot,
         "link": cli_extras.cmd_link,

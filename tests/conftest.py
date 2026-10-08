@@ -15,7 +15,9 @@ import pytest
 os.environ["FIGARO_NO_UPDATE_CHECK"] = "1"
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import bridge  # noqa: E402
+import bridge_board  # noqa: E402
 import bridge_exec  # noqa: E402
+import bridge_update  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -26,11 +28,15 @@ def clean_state(tmp_path, monkeypatch):
 
     def reset():
         for registry in (bridge.PENDING, bridge.PLUGINS, bridge.LOCKS, bridge.ABANDONED,
-                         bridge.QUEUE, bridge_exec.CHECKPOINTS):
+                         bridge.QUEUE, bridge_exec.CHECKPOINTS, bridge_board.FILES,
+                         bridge_update.FAILED):
             registry.clear()
         bridge.ALLOWED_HOSTS = set()
         bridge.UPDATE = None
         bridge_exec._loaded = False
+        bridge_board._send_task = None
+        bridge_update.STATE.update(step=None, what=None, to=None)
+        bridge_update.RESTART.update(argv=None, port=8788)
     reset()
     yield
     reset()

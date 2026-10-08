@@ -35,8 +35,10 @@ from aiohttp import web, WSMsgType
 # its own PLUGINS / PENDING — so both names point at this one.
 if __name__ == "__main__":
     sys.modules.setdefault("bridge", sys.modules[__name__])
+import bridge_board  # noqa: E402
 import bridge_exec  # noqa: E402
 import bridge_idle  # noqa: E402
+import bridge_update  # noqa: E402
 
 
 PENDING: dict = {}        # rid -> {"future", "logs", "t0", "conn"}
@@ -45,6 +47,7 @@ SLOT_PROBE_TIMEOUT = 1.0  # how long an incumbent connection has to answer a pin
 LOCKS: dict = {}          # conn_id -> asyncio.Lock — one exec at a time per file
 ABANDONED: dict = {}      # rid -> {"conn", "t0", "timeout"} — timed out, may still be running
 QUEUE: dict = {}          # conn_id -> {"waiting": [{agent, since}], "running": {agent, since} | None}
+DISCONNECTED = "plugin disconnected mid-request"
 
 # Host: values accepted in the Host header. Populated in main() from the bind
 # address. Empty set means "don't check" — chosen when the user binds a
@@ -70,7 +73,8 @@ def _file_digest(path: Path):
 
 # The bridge runs its helper modules too — a changed bridge_exec.py is old code just the same.
 _BRIDGE_CODE = [Path(__file__).resolve()] + [
-    HERE / n for n in ("bridge_exec.py", "bridge_idle.py", "figma_links.py")]
+    HERE / n for n in ("bridge_board.py", "bridge_exec.py", "bridge_idle.py", "bridge_update.py",
+                       "figma_links.py")]
 BRIDGE_DIGEST = [_file_digest(p) for p in _BRIDGE_CODE]
 
 
@@ -160,6 +164,7 @@ async def set_update(latest):
               f"git pull, restart the bridge, re-run the plugin")
     for _, info in _live_plugins():
         await _send_update(info["ws"])
+    bridge_board.changed()
 
 
 async def _send_update(ws):
@@ -462,6 +467,7 @@ async def plugin_ws_handler(request: web.Request):
                         pass
                 await _send_update(ws)
                 await _broadcast_peers()
+                bridge_board.changed()
                 continue
             if mtype == "pong":
                 # Answer to a liveness probe: this slot is defended, so a new
@@ -469,6 +475,10 @@ async def plugin_ws_handler(request: web.Request):
                 fut = PLUGINS.get(conn_id, {}).pop("pong", None)
                 if fut is not None and not fut.done():
                     fut.set_result(True)
+                continue
+
+            # A button in the window: Stop, Dismiss, Update and Reload, Reload.
+            if await bridge_board.handle(conn_id, m):
                 continue
 
             rid = m.get("id")
@@ -518,15 +528,14 @@ async def plugin_ws_handler(request: web.Request):
         # Fail in-flight requests routed to THIS connection so clients don't hang.
         for rid, entry in list(PENDING.items()):
             if entry.get("conn") == conn_id and not entry["future"].done():
-                entry["future"].set_result({
-                    "id": rid, "type": "error", "text": "plugin disconnected mid-request",
-                })
+                entry["future"].set_result({"id": rid, "type": "error", "text": DISCONNECTED})
         # The sandbox died with the connection, so nothing can still be mutating
         # through it — drop its interlock instead of wedging the next reconnect.
         for rid, orphan in list(ABANDONED.items()):
             if orphan.get("conn") == conn_id:
                 ABANDONED.pop(rid, None)
         await _broadcast_peers()
+        bridge_board.changed()
     return ws
 
 
@@ -656,6 +665,9 @@ async def exec_handler(request: web.Request) -> web.Response:
     # Reads are safe to fan out; anything that mutates must take the file's lock.
     # So a parallel script is read-only — the plugin rolls back its changes.
     if parallel:
+        updating = bridge_update.refusal()
+        if updating is not None:
+            return updating
         return await _dispatch(target_ws, conn_id, code, timeout, force,
                                fields=bridge_exec.exec_fields(conn_id, agent, opts, parallel=True))
 
@@ -670,15 +682,20 @@ async def _queued(request, conn_id, agent, queue_timeout, dispatch):
 
     Split out of exec_handler, so /undo and /reload wait their turn too.
     """
+    updating = bridge_update.refusal()  # the bridge is about to restart
+    if updating is not None:
+        return updating
     key = _doc_key(conn_id)
     lock = _lock_for(key)
     q = QUEUE.setdefault(key, {"waiting": [], "running": None})
     me = {"agent": agent, "since": time.time()}
     q["waiting"].append(me)
+    bridge_board.changed()
     try:
         got = await _acquire(lock, queue_timeout)
     finally:
         q["waiting"].remove(me)
+        bridge_board.changed()
     queued_ms = int((time.time() - me["since"]) * 1000)
 
     if not got:
@@ -707,11 +724,16 @@ async def _queued(request, conn_id, agent, queue_timeout, dispatch):
             print(f"[queue] caller left after {queued_ms}ms in the queue — not running")
             return web.json_response({"ok": False, "error": "caller disconnected"},
                                      status=499)
+        updating = bridge_update.refusal()  # it began while this caller waited
+        if updating is not None:
+            return updating
         q["running"] = {"agent": agent, "since": time.time()}
+        bridge_board.started(key, agent)
         return await dispatch({"queued_ms": queued_ms})
     finally:
         q["running"] = None
         lock.release()
+        bridge_board.changed()
 
 
 MAX_SECONDS = 3600  # one hour; a longer exec is a bug, not a plan
@@ -810,7 +832,9 @@ async def _dispatch(target_ws, conn_id, code, timeout, force, meta=None,
 
     rid = str(uuid.uuid4())
     fut: asyncio.Future = asyncio.get_running_loop().create_future()
-    PENDING[rid] = {"future": fut, "logs": [], "t0": time.time(), "conn": conn_id}
+    # doc and mtype: the window's Stop finds the file's running script by them
+    PENDING[rid] = {"future": fut, "logs": [], "t0": time.time(), "conn": conn_id,
+                    "doc": doc, "mtype": mtype}
 
     try:
         try:
@@ -860,6 +884,7 @@ async def _dispatch(target_ws, conn_id, code, timeout, force, meta=None,
         except asyncio.TimeoutError:
             entry = PENDING.get(rid, {})
             _abandon(rid, conn_id, timeout, target_ws)
+            bridge_board.timed_out(entry, mtype, fields, timeout)
             return web.json_response({
                 "ok": False,
                 "error": f"timeout after {timeout:.0f}s",
@@ -870,6 +895,7 @@ async def _dispatch(target_ws, conn_id, code, timeout, force, meta=None,
                 "logs": list(entry.get("logs", [])),
             }, status=504)
 
+        bridge_board.finished(PENDING[rid], mtype, fields, result)
         return _reply(PENDING[rid], result, meta)
     finally:
         # Always reap, including on client disconnect / task cancellation —
@@ -900,7 +926,13 @@ def _result_text(result) -> str:
 def _reply(entry, result, meta=None) -> web.Response:
     elapsed_ms = int((time.time() - entry["t0"]) * 1000)
 
-    if result.get("type") == "error":
+    if entry.get("stopped"):
+        # The user pressed Stop in the window. Whether the script noticed it in
+        # time or ran to its end, its agent has to stop and ask.
+        body = {"ok": False, "error": bridge_board.STOPPED, "stopped": True,
+                "logs": entry["logs"], "elapsed_ms": elapsed_ms}
+        status = 409
+    elif result.get("type") == "error":
         error_text = result.get("text", "unknown error")
         body = {
             "ok": False,
@@ -926,6 +958,9 @@ def _reply(entry, result, meta=None) -> web.Response:
     if notice:
         body["notice"] = notice
     bridge_exec.decorate(body, result, entry)  # changes, line, checkpoint, …
+    if entry.get("stopped"):
+        for key in ("line", "col", "source", "lib"):  # where the Stop caught it, not a bug
+            body.pop(key, None)
     body.update(meta or {})
     return web.json_response(body, status=status)
 
@@ -1051,6 +1086,7 @@ async def root_handler(request: web.Request) -> web.Response:
             "POST /clear": "{target} -> drop a file's abandoned-script interlock after a 504",
             "POST /undo": "{target, agent?, force?} -> revert the file's last script",
             "POST /reload": "{target} -> run plugin/code.js from disk in the open plugin",
+            "POST /wait": "{target, agent?, text} -> the file's island in the plugin asks the user",
             "WS /plugin": "Figma plugin connects here (one per open file)",
         },
     })
@@ -1065,6 +1101,7 @@ def build_app() -> web.Application:
     app.router.add_post("/clear", clear_handler)
     app.router.add_get("/plugin", plugin_ws_handler)
     bridge_exec.install(app)  # /undo, /reload
+    bridge_board.install(app)  # /wait
     return app
 
 
@@ -1088,6 +1125,8 @@ def main():
                     help="exit after this long with no plugin connected and no requests "
                          "(seconds, or 30m / 3h; 0 = never)")
     args = ap.parse_args()
+    # Update and Reload starts this same command again
+    bridge_update.RESTART.update(argv=sys.argv[1:], port=args.port)
 
     if args.host in ("127.0.0.1", "localhost", "::1"):
         ALLOWED_HOSTS = {

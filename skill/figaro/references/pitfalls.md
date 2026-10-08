@@ -10,11 +10,13 @@ Read the `hint:` in the answer first: the bridge knows most of the cases below.
 | `plugin not connected` (503), "open … in Figma and run … Figaro there" | the plugin is not running in that file | tell the user: open the link in Figma and run Plugins → Development → Figaro (⌘⌥P repeats the last plugin). Don't poll in a loop |
 | `N files connected — specify a target` (409), "ambiguous" | several files, and no target or an ambiguous one | `-T` with a key or a link; `figaro targets` |
 | `file busy` (503) | another agent has held the file longer than `--queue-timeout` | nothing ran — retry later; the message says who holds it |
+| `Figaro is updating` (503) | the user pressed Update and Reload: the bridge pulls the new version and restarts | nothing ran — run the command again in ~10 s |
+| `stopped: the user pressed Stop` (409) | the user ended your script from the plugin's window | what it changed before the Stop stays (`changed:`). Don't run it again: ask the user what to do |
 | `(waited 4.2s in the file's queue)` | you waited in the queue | normal; keep your scripts short so others don't wait for you |
 | 504 timeout | the script didn't finish within `--timeout` — most often a long loop without `h.ck()` | it may still be running and writing. Don't retry blindly: look at the result with `inspect` or `shot`. Until the abandoned script ends, the file answers 409; once you are sure it has ended — `figaro clear -T …`. Then use smaller batches |
 | `figma.…() did not answer before --timeout ran out — the script was stopped` | Figma never answered the call on the line it names | the file is free, but don't repeat that call. It happens with `figma.teamLibrary` and import by key — take what the file already has by id from `figaro inspect` |
 | `plugin disconnected mid-request` | the plugin restarted (Figma restarted it after a code change, or the user closed its window) | check what the script managed to do (`inspect`) and run it again; `undo` remembers nothing from before a restart |
-| `⚠ … runs an older build — figaro reload` | Figma runs old plugin code | `figaro reload -T <file>`; if that fails, ask the user to restart the plugin |
+| `⚠ … runs an older build — figaro reload` | Figma runs old plugin code | `figaro reload -T <file>`; if that fails, ask the user to press Reload in the plugin's window or to restart the plugin |
 | the first call is slow, "the plugin has not connected yet" | the bridge has just started, and a Figma window in the background takes up to a minute to connect | retry in a few seconds |
 | `zsh: no matches found: https://…` | a link without quotes | quote links |
 | `zsh: = not found` | the command line starts with `=` (`echo ======`) | use `echo ---` as a divider |

@@ -8,6 +8,27 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
+### Added
+
+- **Islands in the plugin's window.** The slim bar became a window with one black island per file: its own
+  file first, then each file where agents are at work, until ten quiet minutes after their last script. An
+  island names the agent running a script, its time and the queue; open it for the agents, the recent changes
+  with their layers (a click on a layer of this file selects it and zooms to it) and **Stop**, which ends the
+  running script in that file. The window grows and shrinks with its islands.
+- **`figaro wait "<text>"`**: an agent leaves the user a note in the window. The file's island turns amber
+  with it until the agent's next script there, or until the user dismisses it.
+- **Update and Reload.** When a new release is out, the window offers it under its header. Once no file runs
+  a script, the bridge pulls the release (`git pull --ff-only`), reloads the plugins and restarts itself;
+  scripts sent meanwhile get a 503 and run nothing. When it can't pull (local changes, local commits, no
+  connection), the window says why and links to the release. **Reload** does the same without the pull,
+  when the code on disk is newer than what runs.
+
+### Changed
+
+- A failed script keeps its file's island red until the same agent's next script succeeds, or until the user
+  dismisses it, instead of a two-second flash.
+- A script stopped from the window fails with a 409 that says the user pressed Stop.
+
 ## [1.0.0] — 2026-10-08
 
 The first release of Figaro.

@@ -93,9 +93,9 @@ tells it, and says where Figaro is.
 do. Once, in Figma Desktop: **Plugins → Development → Import plugin from
 manifest…**, then pick `plugin/manifest.json` in Figaro's folder.
 
-**3. Run it in your file.** Choose **Plugins → Development → Figaro**. A slim
-bar appears and shows the file's name once it's connected. Keep it open while
-you work.
+**3. Run it in your file.** Choose **Plugins → Development → Figaro**. A small
+window opens with a black island: your file's name, and next to it who is at
+work there. Keep it open while you work.
 
 Your agent checks the connection with `figaro doctor`. That's all: give it its
 [first task](#your-first-task).
@@ -150,7 +150,9 @@ overwrites a file it didn't make.
 
 Run `git pull` in Figaro's folder, or ask your agent to update Figaro. Then
 `figaro doctor` says what to restart. If `plugin/manifest.json` changed, import
-the plugin again (step 2). When a new release is out, the plugin's bar says so.
+the plugin again (step 2). When a new release is out, the plugin's window says
+so: **Update and Reload** pulls it, restarts the bridge and reloads the plugin
+as soon as no script is running.
 
 To remove Figaro, run the installer with `--uninstall` (`-Uninstall` on
 Windows), remove the plugin under **Plugins → Development → Manage plugins in
@@ -308,6 +310,7 @@ Keep it running
   figaro targets                  the files where the plugin runs
   figaro status                   the bridge's raw state, as JSON
   figaro reload                   load new plugin code into a running plugin
+  figaro wait "Check the card"    a note for you in the plugin's window
   figaro clear                    free a file after a script ran out of time
 ```
 
@@ -368,7 +371,7 @@ Everything works without settings. When you need them:
 
 | Variable | Default | What it does |
 | :-- | :-- | :-- |
-| `FIGARO_AGENT` | — | The caller's name in the file's queue, the same as `-A` |
+| `FIGARO_AGENT` | — | The caller's name in the plugin's window and the file's queue, the same as `-A` |
 | `FIGARO_AUTOSTART` | `1` | `0` keeps the command from starting the bridge |
 | `FIGARO_IDLE_EXIT` | `3h` | How long the bridge waits with no plugin and no requests before it exits |
 | `FIGARO_LIB` | — | `--lib` files for every `exec`, separated by `:` |
@@ -433,6 +436,12 @@ Three small pieces, all on your computer. When your agent runs `figaro shot sel`
    notes what changed and sends back the answer, usually in a fraction of a
    second.
 
+The plugin's window shows a black island for its file, and one more for each
+other file where agents are at work. An island names the agent running a
+script and who waits in the queue. Click it for the recent changes (a click on
+a layer selects it in Figma) and a **Stop** button that ends the running
+script.
+
 <details>
 <summary>🔌 <b>Under the hood</b></summary>
 
@@ -444,7 +453,7 @@ Three small pieces, all on your computer. When your agent runs `figaro shot sel`
 - The plugin is a development plugin: you import it from your copy of Figaro,
   nothing is published, and no Figma token is involved. It knows a file by the
   file's key, so it never writes anything of its own into your design.
-- While scripts run, the plugin's bar plays a tone you can't hear. Without it,
+- While scripts run, the plugin's window plays a tone you can't hear. Without it,
   Figma throttles a window in the background, and each step can take up to a
   minute. The tone stops three minutes after the last script, or as soon as
   the bridge stops.
@@ -471,7 +480,7 @@ at the first broken link it says what to do.
 | **"Specify&nbsp;a&nbsp;target"** | The plugin runs in several files, so add `-T "<link>"`. `figaro targets` lists them |
 | **First&nbsp;call&nbsp;fails** | The plugin hasn't connected yet: a Figma window in the background can take up to a minute. Run the command again |
 | **504,&nbsp;out&nbsp;of&nbsp;time** | It may still be running, so look at the file before you retry. If the file stays blocked after the script has ended, run `figaro clear -T <file>` |
-| **"Older&nbsp;build"** | The plugin in that file runs older code. Run `figaro reload -T <file>`, or run the plugin again |
+| **"Older&nbsp;build"** | The plugin in that file runs older code. Press **Reload** in its window, or run `figaro reload -T <file>` |
 | **zsh:&nbsp;no&nbsp;matches&nbsp;found** | Put the link in quotes |
 | **Computer&nbsp;won't&nbsp;sleep** | Figma "plays audio": the silent tone that keeps a background Figma quick. It stops three minutes after the last script, or as soon as the bridge stops |
 | **Port&nbsp;8788&nbsp;taken** | `lsof -nP -iTCP:8788 -sTCP:LISTEN` shows who listens. Stop a bridge with `bash start-bridge.sh --stop`, or `start-bridge.ps1 -Stop` on Windows: they stop nothing else. Never `kill` everything `lsof -ti` prints: Figma itself is on that list |
@@ -495,7 +504,7 @@ scripts and the pictures it takes stay on your computer and in Figma.
 - Versions saved before changes go into the file's version history, where
   everyone with access to the file can see them.
 - Figaro makes one request on its own: every six hours the bridge reads this
-  repository's release tags on GitHub, so the plugin's bar can tell you about a
+  repository's release tags on GitHub, so the plugin's window can tell you about a
   new version. It sends nothing about you or your files, and
   `FIGARO_NO_UPDATE_CHECK=1` turns it off.
 
