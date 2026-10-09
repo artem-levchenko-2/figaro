@@ -108,6 +108,9 @@ def bridge_outdated() -> bool:
 # typo pushed to master is not a new version. It never blocks anything and
 # stays silent on any failure (a private repository answers 404 to it, too).
 # Set FIGARO_NO_UPDATE_CHECK=1 to turn it off.
+# FIGARO_AUTO_UPDATE=off is different: the check still runs (figaro doctor
+# still says a release is out), but the window offers no Update button and
+# refuses the update-now message. Reload, which pulls nothing, keeps working.
 #
 # Releasing (see AGENTS.md → Releasing): bump VERSION here, move CHANGELOG's
 # "Unreleased" under the new version, tag vX.Y.Z and push the tag.
@@ -117,6 +120,11 @@ REPO = "artem-levchenko-2/figaro"
 UPDATE_EVERY = 6 * 60 * 60   # seconds between checks
 UPDATE: dict | None = None   # {"latest", "current", "url"} once a newer release exists
 _SEMVER = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
+
+
+def update_allowed():
+    """False when FIGARO_AUTO_UPDATE is off/0/false/no: the window must not pull code."""
+    return os.environ.get("FIGARO_AUTO_UPDATE", "").strip().lower() not in ("off", "0", "false", "no")
 
 
 def parse_version(tag):
@@ -168,7 +176,7 @@ async def set_update(latest):
 
 
 async def _send_update(ws):
-    if not UPDATE:
+    if not UPDATE or not update_allowed():
         return
     try:
         await ws.send_str(json.dumps({"type": "update", **UPDATE}))

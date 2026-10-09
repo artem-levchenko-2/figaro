@@ -164,7 +164,7 @@ def payload():
             "recent": f["recent"],
         })
     board = {"type": "board", "now": time.time(), "active_for": ACTIVE_FOR,
-             "version": bridge.VERSION, "files": files, "update": bridge.UPDATE,
+             "version": bridge.VERSION, "files": files, "update": bridge.UPDATE if bridge.update_allowed() else None,
              "stale": _bridge_stale()}
     board.update(bridge_update.board())
     return board
@@ -347,7 +347,11 @@ async def handle(conn_id, m):
         if doc:
             stop(doc, agent.strip()[:40] or None if isinstance(agent, str) else None)
     elif mtype == "update-now":
-        bridge_update.start(pull=True)
+        if bridge.update_allowed():
+            bridge_update.start(pull=True)
+        else:
+            bridge_update._fail("update", "turned off", None,
+                                "this bridge runs with FIGARO_AUTO_UPDATE=off: pull the release by hand")
     elif mtype == "reload-all":
         bridge_update.start(pull=False)
     else:
