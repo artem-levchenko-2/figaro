@@ -13,10 +13,13 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import figaro_token  # noqa: E402
 import figma_links  # noqa: E402
 
 PORT = os.environ.get("FIGARO_PORT", "8788")
 BRIDGE = f"http://127.0.0.1:{PORT}"
+# What the bridge wants on every request that changes something (see figaro_token.py)
+HEADERS = {"Content-Type": "application/json", "X-Figaro-Token": figaro_token.read_token(PORT) or ""}
 
 
 def key():

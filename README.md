@@ -418,6 +418,7 @@ it keeps four promises:
 | :-- | :-- |
 | One&nbsp;script&nbsp;at&nbsp;a&nbsp;time | Scripts in one file wait their turn. A script that runs out of time keeps the file until it ends, instead of racing the next one |
 | Local&nbsp;only | The bridge listens on `127.0.0.1` and turns away requests from web pages: it checks `Origin` and `Host` |
+| A&nbsp;token | Every request that runs code or changes a file needs the secret the bridge writes to `~/.figaro/token-<port>` (readable only by you) when it starts. `figaro` reads it by itself |
 | A&nbsp;version&nbsp;on&nbsp;demand | `--checkpoint "before the grid"` saves one before a risky script |
 | Whose&nbsp;change | Figma doesn't say who changed a layer, so Figaro reads the script's code. What changes while code that only reads runs (Figma updating a page it just loaded, someone at work in the file) is reported, never rolled back. If an undo ever takes back a step that wasn't the script's, the answer says so: Cmd+Shift+Z in Figma brings it back |
 
@@ -435,8 +436,8 @@ Three small pieces, all on your computer. When your agent runs `figaro shot sel`
 
 1. **The `figaro` command** turns it into a few lines of JavaScript and sends
    them to the bridge.
-2. **The bridge**, a small server at `127.0.0.1:8788`, finds the file, waits
-   for that file's turn and passes the script on. The command starts the bridge
+2. **The bridge**, a small server at `127.0.0.1:8788`, checks the request's
+   token, finds the file, waits for that file's turn and passes the script on. The command starts the bridge
    when it isn't running, and the bridge leaves by itself after three idle
    hours.
 3. **The Figaro plugin** in that file runs the script with Figma's Plugin API,
@@ -509,6 +510,13 @@ scripts and the pictures it takes stay on your computer and in Figma.
 
 - The bridge listens on `127.0.0.1` only and turns away requests from web
   pages.
+- Every request that runs code or changes a file must carry a token. The
+  bridge makes a new one each time it starts and saves it, for you alone, in
+  `~/.figaro/token-8788` (`token-<port>` for another port; on Windows the same
+  folder in your profile). `figaro` reads it by itself. Your own script or
+  `curl` sends it in the `X-Figaro-Token` header; `FIGARO_TOKEN_FILE` points
+  the command and the bridge to another file. `GET /status`, `/targets` and `/`
+  need no token, so `figaro doctor` can still explain what is wrong.
 - Pictures from `figaro shot` are saved in a temporary folder,
   `/tmp/figaro/shots` (on Windows, `%TEMP%\figaro\shots`).
 - Versions saved before changes go into the file's version history, where

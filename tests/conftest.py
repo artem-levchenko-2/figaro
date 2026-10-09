@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from aiohttp.test_utils import TestClient
 
 # Bridges the tests start (some run the real start-bridge.sh) never ask GitHub
 # for releases.
@@ -20,8 +21,24 @@ import bridge_exec  # noqa: E402
 import bridge_update  # noqa: E402
 
 
+TEST_TOKEN = "test-token"
+
+
 @pytest.fixture(autouse=True)
-def clean_state(tmp_path, monkeypatch):
+def clean_state(tmp_path, tmp_path_factory, monkeypatch):
+    # The bridge wants its token on every request that changes something: every
+    # test client sends it, unless a test removes it (tests/test_token.py).
+    monkeypatch.setattr(bridge, "TOKEN", TEST_TOKEN)
+    # The CLI's token file: never the real ~/.figaro.
+    token_file = tmp_path_factory.mktemp("figaro-home") / "token"
+    token_file.write_text(TEST_TOKEN)
+    monkeypatch.setenv("FIGARO_TOKEN_FILE", str(token_file))
+    orig_init = TestClient.__init__
+
+    def init(self, *args, **kwargs):
+        kwargs.setdefault("headers", {"X-Figaro-Token": TEST_TOKEN})
+        orig_init(self, *args, **kwargs)
+    monkeypatch.setattr(TestClient, "__init__", init)
     # Checkpoint times are kept in ~/.cache/figaro — never touch the real one.
     monkeypatch.setattr(bridge_exec, "STATE_DIR", tmp_path / "state")
     monkeypatch.setattr(bridge_exec, "CHECKPOINTS_FILE", tmp_path / "state" / "checkpoints.json")

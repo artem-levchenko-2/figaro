@@ -19,9 +19,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import sys
 import time
 import uuid
@@ -39,6 +41,7 @@ import bridge_board  # noqa: E402
 import bridge_exec  # noqa: E402
 import bridge_idle  # noqa: E402
 import bridge_update  # noqa: E402
+import figaro_token  # noqa: E402
 
 
 PENDING: dict = {}        # rid -> {"future", "logs", "t0", "conn"}
@@ -53,6 +56,9 @@ DISCONNECTED = "plugin disconnected mid-request"
 # address. Empty set means "don't check" — chosen when the user binds a
 # non-loopback address on purpose (--host 0.0.0.0).
 ALLOWED_HOSTS: set = set()
+# The secret of the HTTP API (see _guard); main() makes it, tests set it.
+TOKEN = None
+PORT = 8788
 
 # ─── version checks ───────────────────────────────────────────────────────
 # A running plugin keeps the code it started with, and a running bridge keeps
@@ -222,7 +228,7 @@ def _lock_for(key):
     return lock
 
 
-def _guard(request: web.Request, *, allow_null_origin: bool = False):
+def _guard(request: web.Request, *, allow_null_origin: bool = False, need_token: bool = True):
     """Reject browser-driven requests. Returns an error Response, or None if OK.
 
     The bridge executes arbitrary JS inside the user's Figma file, so any web
@@ -237,6 +243,12 @@ def _guard(request: web.Request, *, allow_null_origin: bool = False):
       * Host — a page whose DNS is re-pointed at 127.0.0.1 (DNS rebinding)
         becomes same-origin with the bridge and could then read responses.
         Pinning Host to the loopback names we actually serve closes that.
+
+    Then the token: every endpoint that changes a file or runs code wants the
+    secret the bridge wrote to its token file (figaro_token.py). A local process
+    of another user, or a page that got past the checks above, can't read it.
+    The read-only status endpoints and the plugin's socket (the plugin can't
+    read files) pass need_token=False.
     """
     if ALLOWED_HOSTS:
         host = (request.headers.get("Host") or "").lower()
@@ -255,6 +267,19 @@ def _guard(request: web.Request, *, allow_null_origin: bool = False):
                  "hint": "the bridge only accepts local clients (curl, figaro CLI) "
                          "and the Figma plugin"},
                 status=403,
+            )
+    if need_token:
+        sent = request.headers.get("X-Figaro-Token") or ""
+        if not TOKEN or not hmac.compare_digest(sent.encode(), TOKEN.encode()):
+            return web.json_response(
+                {"ok": False,
+                 "error": "missing or wrong X-Figaro-Token",
+                 "hint": f"the token is in {figaro_token.token_path(PORT)}, written when "
+                         "the bridge started: send its text in the X-Figaro-Token header. "
+                         "figaro reads it by itself: if the caller runs in another home "
+                         "folder or sandbox, set FIGARO_TOKEN_FILE to that path; if the "
+                         "bridge was restarted since, run the command again"},
+                status=401,
             )
     return None
 
@@ -380,7 +405,7 @@ async def _broadcast_peers():
 
 async def plugin_ws_handler(request: web.Request):
     # CSRF/rebinding guard: the plugin UI iframe reports Origin "null".
-    blocked = _guard(request, allow_null_origin=True)
+    blocked = _guard(request, allow_null_origin=True, need_token=False)
     if blocked is not None:
         print(f"[plugin] refused connection from {request.remote} "
               f"(origin={request.headers.get('Origin')!r})")
@@ -1035,7 +1060,7 @@ def _files_payload():
 
 
 async def status_handler(request: web.Request) -> web.Response:
-    blocked = _guard(request)
+    blocked = _guard(request, need_token=False)
     if blocked is not None:
         return blocked
 
@@ -1085,7 +1110,7 @@ async def clear_handler(request: web.Request) -> web.Response:
 
 
 async def targets_handler(request: web.Request) -> web.Response:
-    blocked = _guard(request)
+    blocked = _guard(request, need_token=False)
     if blocked is not None:
         return blocked
 
@@ -1093,7 +1118,7 @@ async def targets_handler(request: web.Request) -> web.Response:
 
 
 async def root_handler(request: web.Request) -> web.Response:
-    blocked = _guard(request)
+    blocked = _guard(request, need_token=False)
     if blocked is not None:
         return blocked
 
@@ -1131,8 +1156,24 @@ def build_app() -> web.Application:
     return app
 
 
+def _write_token(_text=""):
+    """Save TOKEN for the CLI. web.run_app calls this once the port is bound.
+
+    Only then: a second bridge started by mistake dies on the busy port, and
+    must not replace the token of the one that runs. Mode 0600 where the OS
+    has modes; on Windows the file sits in the user's own profile.
+    """
+    path = figaro_token.token_path(PORT)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(TOKEN)
+    if os.name != "nt":
+        os.chmod(path, 0o600)  # a file that was there before keeps its old mode
+
+
 def main():
-    global ALLOWED_HOSTS
+    global ALLOWED_HOSTS, TOKEN, PORT
 
     # File names are routinely Cyrillic, CJK or emoji. With stdout redirected to
     # a log on Windows, Python falls back to the ANSI code page and a `hello`
@@ -1151,6 +1192,8 @@ def main():
                     help="exit after this long with no plugin connected and no requests "
                          "(seconds, or 30m / 3h; 0 = never)")
     args = ap.parse_args()
+    TOKEN = secrets.token_urlsafe(32)
+    PORT = args.port
     # Update or Reload in the window starts this same command again
     bridge_update.RESTART.update(argv=sys.argv[1:], port=args.port)
 
@@ -1172,6 +1215,7 @@ def main():
     print(f"[bridge] plugin should connect to ws://localhost:{args.port}/plugin")
     print(f"[bridge] try: curl -X POST http://localhost:{args.port}/exec "
           f"-H 'Content-Type: application/json' "
+          f"-H \"X-Figaro-Token: $(cat {figaro_token.token_path(args.port)})\" "
           f"-d '{{\"code\":\"return figma.currentPage.name\"}}'")
 
     loop = asyncio.new_event_loop()
@@ -1181,7 +1225,7 @@ def main():
     if not os.environ.get("FIGARO_NO_UPDATE_CHECK"):
         app.on_startup.append(_start_update_checks)
         app.on_cleanup.append(_stop_update_checks)
-    web.run_app(app, host=hosts, port=args.port, print=None, loop=loop)
+    web.run_app(app, host=hosts, port=args.port, print=_write_token, loop=loop)
 
 
 def _bind_hosts(host, port):

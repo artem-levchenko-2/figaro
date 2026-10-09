@@ -62,6 +62,11 @@ bash start-bridge.sh --stop              # stop it
 figaro reload -T "<link>"                # load a changed plugin/ into the running plugin, no re-run by hand
 ```
 
+The bridge saves a fresh token to `~/.figaro/token-<port>` once its port is bound; every POST wants it in the
+`X-Figaro-Token` header (`_guard`). `tests/conftest.py` gives every test client the right one and points
+`FIGARO_TOKEN_FILE` at a temp file; a test of the check removes it from `client.session.headers`. Run a
+third-party script against a bridge with `-H "X-Figaro-Token: $(cat ~/.figaro/token-8788)"`.
+
 On Windows, in PowerShell:
 
 ```powershell
@@ -92,7 +97,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   `--no-checkpoint`, `--lib`, `--shot`).
 - `cli_extras.py` — links in arguments, starting the bridge on demand, `inspect`, `shot`, `link`, `--lib`,
   `exec --shot`; `inspect_text.py` — the text `inspect` prints.
-- `bridge.py` — HTTP and WebSocket, routing to files, the queue and lock per file, Origin/Host checks, the
+- `bridge.py` — HTTP and WebSocket, routing to files, the queue and lock per file, Origin/Host checks and the
+  API token (`_guard`; `figaro_token.py` is the path and the reader both sides share), the
   release check, `ERROR_HINTS`.
 - `bridge_board.py` — what every plugin window shows (the `board`: each file's agents — at work from their
   first script until five quiet minutes or `figaro done`, its note, a failed last script, the user's Stop —

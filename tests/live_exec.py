@@ -33,7 +33,7 @@ failed = 0
 
 def post(path, body, timeout=90):
     req = urllib.request.Request(BRIDGE + path, data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
+                                 headers=live_file.HEADERS)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status, json.load(r)
