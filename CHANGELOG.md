@@ -8,6 +8,11 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
+### Added
+
+- `h.annotations(scope)` reads the Dev Mode annotations under a layer: the frame, the layer, whether it
+  shows in Dev Mode, and the labels. The pitfalls list gains an Annotations part.
+
 ## [1.1.1] — 2026-10-09
 
 ### Changed

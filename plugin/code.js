@@ -7,7 +7,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-09.4";
+const PLUGIN_VERSION = "2026-10-09.6";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -1826,6 +1826,42 @@ Object.assign(HELPERS, {
     } finally {
       figma.skipInvisibleInstanceChildren = was;
     }
+  },
+
+  // Dev Mode annotations under a node, link, id, "page" or "sel" (default: the
+  // selection, else the page): [{frame, node, name, visible, labels}] for each layer
+  // that has any. `frame` is the top-level frame holding it (inside a section, the
+  // frame in the section); `visible` is false when the layer or any parent is hidden,
+  // as Dev Mode shows nothing for those. `node` is the id.
+  async annotations(scope) {
+    const page = figma.currentPage;
+    const sel = page.selection;
+    const root = scope == null
+      ? (sel.length ? sel[0] : page)
+      : typeof scope === "string" ? await HELPERS.resolve(scope) : scope;
+    const out = [];
+    const stack = [root];
+    let seen = 0;
+    while (stack.length) {
+      const n = stack.pop();
+      // A big page takes long to walk: let the plugin breathe now and then.
+      if (++seen % 300 === 0) await wait(0);
+      // node.annotations is a new array on every read: read it once.
+      const notes = n.annotations;
+      if (notes && notes.length) {
+        const chain = [];
+        for (let p = n; p && p.type !== "PAGE"; p = p.parent) chain.push(p);
+        const top = chain.length > 1 && chain[chain.length - 1].type === "SECTION"
+          ? chain[chain.length - 2] : chain[chain.length - 1];
+        out.push({
+          frame: top.name, node: n.id, name: n.name,
+          visible: chain.every((p) => p.visible !== false),
+          labels: notes.map((a) => a.label != null ? a.label : a.labelMarkdown),
+        });
+      }
+      if (n.children) for (let i = n.children.length - 1; i >= 0; i--) stack.push(n.children[i]);
+    }
+    return out;
   },
 });
 

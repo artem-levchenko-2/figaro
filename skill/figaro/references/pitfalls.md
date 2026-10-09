@@ -128,6 +128,17 @@ order. If you write it by hand:
 - **An error in a `--lib` library** prints as `file.js, line N`; `libMissing` — the plugin restarted, and the
   CLI sends the library again by itself.
 
+## Annotations
+
+- **`node.annotations` returns a new array on every read**, so `array.includes(item)` with an item from an
+  earlier read never matches. Compare by label text, and read it once into a variable inside the script.
+- **An item comes back with both `label` and `labelMarkdown`.** When you write it back, pass one of them
+  (`{label}`), not the object you read.
+- **A layer inside an instance may refuse an annotation** (Figma refused a second one on an Input instance).
+  Put it on the nearest ancestor that accepts it.
+- **An annotation on a hidden layer, or inside a hidden parent, doesn't show in Dev Mode.** Check the
+  `visible` chain up to the frame; `h.annotations` reports it for you.
+
 ## Undo
 
 - **`undo` refuses** when something changed in the file after the script (the user or another agent), when
