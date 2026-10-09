@@ -1,8 +1,9 @@
 """What every plugin window shows, and what its buttons do.
 
-A Figaro window draws one island per file: its own file first, then each file
-where agents are at work. This module keeps what the islands show and sends
-it to every window as a `board` message whenever something changes:
+A Figaro window draws one island per file where the plugin runs: its own file
+first, then the others in the order they connected. This module keeps what
+the islands show and sends it to every window as a `board` message whenever
+something changes:
 
 - per file: its agents and the recent changes with their layers. An agent is
   at work from its first script until ACTIVE_FOR seconds pass without one,

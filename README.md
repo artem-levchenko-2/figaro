@@ -439,14 +439,14 @@ Three small pieces, all on your computer. When your agent runs `figaro shot sel`
    notes what changed and sends back the answer, usually in a fraction of a
    second.
 
-The plugin's window shows an island for its file, and one more for each other
-file where agents are at work: black in Figma's dark theme, white in its light
-one. Click an island for its agents and the recent changes. An agent's row says
-what it is doing: at work, done (with a note for you), stopped or failed, and
-the error of its last script stays under its name until a script of its
-succeeds. Point at an agent at work for its **Stop** button. A click on a
-changed layer selects it in Figma. At the bottom of the window: Figaro's
-version, and an **Update** button when a new one is out.
+The plugin's window shows an island for each file where Figaro runs, its own
+file first: black in Figma's dark theme, white in its light one. Click an
+island for its agents and the recent changes. An agent's row says what it is
+doing: at work, done (with a note for you), stopped or failed, and the error of
+its last script stays under its name until a script of its succeeds. Point at
+an agent at work for its **Stop** button. A click on a changed layer selects it
+in Figma. At the bottom of the window: Figaro's version, and an **Update**
+button when a new one is out.
 
 <details>
 <summary>🔌 <b>Under the hood</b></summary>

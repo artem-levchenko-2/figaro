@@ -276,11 +276,14 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;
     env.identity("Dashboard", "KEY1");
     env.ws().open();
-    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")]);
+    env.board([file("KEY2", "Sandbox 5$"), file("KEY1", "Dashboard"), file("KEY3", "Kit")]);
     await env.clock.advance(400);
-    check("a quiet file has no island", /Sandbox/.test(env.html()), false);
+    const at = ["Dashboard", "Sandbox 5$", "Kit"].map((n) => env.html().indexOf(`title="${n}"`));
+    check("every file where Figaro runs has an island, quiet or not: this file first, then the others as they connected",
+          [at.every((i) => i >= 0), at[0] < at[1] && at[1] < at[2]], [true, true]);
     env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$", { agents: [
-      agent("icons", { since: ago(10), last: ago(0), busy: true }), agent("tokens", { since: ago(5), last: ago(1) })] })]);
+      agent("icons", { since: ago(10), last: ago(0), busy: true }), agent("tokens", { since: ago(5), last: ago(1) })] }),
+      file("KEY3", "Kit")]);
     await env.clock.advance(400);
     check("agents at work in another file: its island names them",
           [/Sandbox 5\$/.test(env.html()), /icons, tokens/.test(env.html())], [true, true]);
@@ -290,14 +293,15 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$", {
       agents: [agent("icons", { since: ago(10), last: ago(0) })],
       recent: [{ agent: "icons", at: ago(0), kind: "ok", summary: "Created Icons",
-                 layers: [{ id: "1:2", name: "Icons", type: "FRAME" }] }] })]);
+                 layers: [{ id: "1:2", name: "Icons", type: "FRAME" }] }] }), file("KEY3", "Kit")]);
     await env.clock.advance(400);
     check("its layers are names, not buttons: Figma can't switch the tab",
           [/Icons/.test(env.html()), /data-act="layer"/.test(env.html())], [true, false]);
-    await env.clock.advance(9 * MIN);
-    check("it stays for ten quiet minutes", /Sandbox/.test(env.html()), true);
-    await env.clock.advance(2 * MIN);
-    check("…then goes", /Sandbox/.test(env.html()), false);
+    await env.clock.advance(11 * MIN);
+    check("it stays while its plugin runs, quiet or not", /Sandbox/.test(env.html()), true);
+    env.board([file("KEY1", "Dashboard"), file("KEY3", "Kit")]);
+    await env.clock.advance(400);
+    check("its plugin closes: its island goes", [/Sandbox/.test(env.html()), /Kit/.test(env.html())], [false, true]);
   }
 
   // ─── updates and new builds ─────────────────────────────────────────────

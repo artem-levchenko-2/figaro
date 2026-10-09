@@ -3,17 +3,16 @@
 <head>
 <meta charset="utf-8">
 <style>
-/* The plugin's window: one island per file — this file first, then each file
-   where agents are at work, until ten quiet minutes after their last script —
-   and under them a line with the Figaro version. Figma draws the
-   header above (40 px: the plugin's icon and name, the close button) and a
-   1 px line under it; the islands keep 6 px from that line, or it reads as
-   their border. They line up with the header: indicators and avatars on the
-   icon's centre (x 24), names on the title's left edge (x 41), chevrons on
-   the close button's centre (20 px from the right). Inside an island what
-   starts 9 px from its left edge ends 9 px from its right one (x 15 to 305).
-   The window's corners are 13 px and the islands sit 6 px in, so theirs are
-   13 − 6 = 7 px, and they are 6 px apart. */
+/* The plugin's window: one island per file where Figaro runs — this file
+   first, then the others in the order they connected — and under them a line
+   with the Figaro version. Figma draws the header above (40 px: the plugin's
+   icon and name, the close button) and a 1 px line under it; the islands keep
+   6 px from that line, or it reads as their border. They line up with the
+   header: indicators and avatars on the icon's centre (x 24), names on the
+   title's left edge (x 41), chevrons on the close button's centre (20 px from
+   the right). Inside an island what starts 9 px from its left edge ends 9 px
+   from its right one (x 15 to 305). The window's corners are 13 px and the
+   islands sit 6 px in, so theirs are 13 − 6 = 7 px, and they are 6 px apart. */
 * { box-sizing: border-box; }
 :root {
   /* Figma's own window (themeColors), for what sits outside the islands */
@@ -304,7 +303,6 @@ function shortId(id) {
 }
 
 // ─── what the window knows ───────────────────────────────────────────────
-const QUIET = 10 * 60 * 1000;     // another file's island goes away after ten quiet minutes
 const SHOW_FOR = 60 * 60 * 1000;  // an agent's row goes an hour after it was last at work
 const NO_BRIDGE_AFTER = 3;        // failed connects in a row before "no bridge yet"
 
@@ -389,22 +387,10 @@ function agentsOf(f) {
   }).filter((a) => a.st === "working" || now - a.at < SHOW_FOR)
     .sort((x, y) => RANK[x.st] - RANK[y.st] || (x.st === "working" ? x.since - y.since : y.at - x.at));
 }
-function lastAt(f) {  // null: no agent has done anything there
-  const times = f.recent.map((e) => e.at);
-  for (const a of f.agents) {
-    times.push(a.last);
-    if (a.stopped !== null) times.push(a.stopped);
-    if (a.done) times.push(a.done.at);
-  }
-  return times.length ? Math.max(...times) : null;
-}
-// This file always has its island; another file has one while its agents work and for ten minutes after.
+// Every file where Figaro runs has its island, quiet or not: the board lists
+// the files whose plugin is connected. One whose plugin closes leaves.
 function shown(f) {
-  if (f.here) return true;
-  if (conn !== "ok") return false;
-  if (agentsOf(f).some((a) => a.st === "working")) return true;
-  const last = lastAt(f);
-  return last !== null && Date.now() - last < QUIET;
+  return f.here || conn === "ok";
 }
 
 // ─── drawing it ──────────────────────────────────────────────────────────
@@ -631,7 +617,7 @@ function render() {
   }
   for (const id of [...onScreen]) {
     if (byId.has(id)) continue;
-    onScreen.delete(id);  // its window closed: it leaves like a quiet one
+    onScreen.delete(id);  // its plugin closed: its island shrinks out
     const f = lastFiles.get(id);
     if (f) { html += island(f, " leave", false); moving = true; }
   }
@@ -754,8 +740,8 @@ document.addEventListener("pointerup", release);
 document.addEventListener("pointercancel", release);
 
 // Live clocks and "2m ago", and what changes with time alone: an agent quiet
-// for activeFor is no longer at work, another file's island leaves after ten
-// quiet minutes.
+// for activeFor is no longer at work, and one quiet for SHOW_FOR leaves its
+// island.
 function signature() {
   return filesNow().map((f) => [f.id, shown(f), headline(f).kind,
     agentsOf(f).map((a) => a.name + ":" + a.st).join()].join("|")).join("\n");

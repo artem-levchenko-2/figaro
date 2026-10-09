@@ -108,8 +108,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   closes the plugins' connections at once.
 - `figma_links.py` — Figma links: the file key and node id in a link, links to layers for reports.
 - `plugin/` — `manifest.json`, `code.js` (the `HELPERS` object behind `h.*`, running scripts with a deadline,
-  change tracking, undo, selecting a layer from the window), `ui.html` (the window: one island per file,
-  and under them a line with the version, Update and Reload).
+  change tracking, undo, selecting a layer from the window), `ui.html` (the window: one island per file
+  where Figaro runs, and under them a line with the version, Update and Reload).
 - `skill/figaro/` — `SKILL.md` (the loop, the commands, safety, house rules) and `references/`:
   `helpers.md`, `craft.md`, `pitfalls.md`. The recipes in them were checked against real Figma.
 - `tools/install.sh` — the command and the skill's links (`~/.claude/skills`, `~/.agents/skills`); never

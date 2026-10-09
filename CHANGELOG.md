@@ -10,6 +10,8 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ### Changed
 
+- The plugin's window shows every file where Figaro runs, quiet or not: its own file first, then the others in
+  the order they connected. Before, another file showed only while agents worked there and ten minutes after.
 - In the plugin's window an agent's name is a little heavier, and the note it leaves is grey like its status,
   so the names stand out.
 
