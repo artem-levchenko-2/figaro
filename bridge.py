@@ -262,6 +262,9 @@ def _guard(request: web.Request, *, allow_null_origin: bool = False):
 ERROR_HINTS = [
     # The errors agents hit most come first, so they win over the broader
     # matches below.
+    ("took back a step that was not the script's",
+     "only the user can bring that step back: tell them at once to press Cmd+Shift+Z in Figma, "
+     "before anyone changes the file. Don't run undo or the script again before they have"),
     ("did not answer before --timeout ran out",
      "Figma never answered this call: the script was stopped and the file is free. A retry is "
      "unlikely to help. Import by key and figma.teamLibrary sometimes never answer at all: take "

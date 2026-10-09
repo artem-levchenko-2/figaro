@@ -1,7 +1,8 @@
 // The exec core in plugin/code.js against a stub of Figma that reports
 // edits the way Figma does — `documentchange` in a batch a moment after them —
 // and keeps an undo stack: what a script changed, one Cmd+Z step per script,
-// read-only rollback, `undo`, line numbers in errors, the guarded `figma`.
+// read-only rollback, whose change it was, `undo`, line numbers in errors,
+// the guarded `figma`.
 //
 //     node tests/exec.test.js
 const fs = require("fs");
@@ -127,14 +128,21 @@ function makeFigma() {
     undo.steps.push(changes);
     emit(changes);
   };
-  return { figma, handlers, posted, shown, saved, fontLoads, undo, userEdit, nodes, keepAlive,
+  // Figma changing layers itself, as in a large file that was just opened:
+  // reported as local, never an undo step.
+  const figmaEdit = (...specs) => {
+    const changes = specs.map((s) => parse(s, "LOCAL"));
+    apply(changes);
+    emit(changes);
+  };
+  return { figma, handlers, posted, shown, saved, fontLoads, undo, userEdit, figmaEdit, nodes, keepAlive,
            failSaves() { failSave = true; } };
 }
 
 function load() {
   const env = makeFigma();
   env.api = new Function("figma", "__html__", src +
-    "\nreturn { HISTORY, OUTSIDE, RUNS, ABORTED, GATES, markAborted, SCRIPT_LINE_OFFSET };")(env.figma, html);
+    "\nreturn { HISTORY, OUTSIDE, RUNS, ABORTED, GATES, markAborted, SCRIPT_LINE_OFFSET, codeMayWrite };")(env.figma, html);
   return env;
 }
 
@@ -246,6 +254,149 @@ function check(label, actual, expected) {
     check("overlapping read-only: a notice, no rollback", [rd.type, /nothing rolled back/.test(rd.notice), rd.changes.shared],
       ["result", true, true]);
     check("overlapping writer still reports", w.changes.changed, 1);
+  }
+
+  // ─── whose change it was ────────────────────────────────────────────────
+  {
+    const env = load();
+    const may = (code, libs) => env.api.codeMayWrite(code, libs);
+    const reads = [
+      "return figma.root.name;",
+      'const p = await figma.getNodeByIdAsync("0:1"); await p.loadAsync(); let n = 0;\n' +
+        'for (const c of p.children) if ("findAll" in c) n += c.findAll(() => true).length;\nreturn n;',
+      'const out = {}; out.count = 1; const rows = []; rows[0] = { id: 1 }; rows[1] = { name: "x" }; return [out, rows];',
+      "const counts = {};\nfor (const n of figma.currentPage.findAll()) counts[n.type] = (counts[n.type] || 0) + 1;\nreturn counts;",
+      "figma.skipInvisibleInstanceChildren = true; figma.currentPage = figma.root.children[1];" +
+        " figma.currentPage.selection = []; return 1;",
+      'const m = new Map(); m.set("a", 1); return [...m.keys()];',
+      'return figma.currentPage.findAll((n) => n.name === "Header" || n.width >= 10 || n.x != 0).length;',
+      'print("n.name = 1"); // n.visible = false\n/* n.remove() */ return 1;',
+      "const [a, b] = [1, 2]; let x = 0; x += a; return x + b;",
+      'const n = await h.node("1:1"); const data = await h.inspect(n); return [h.link(n), h.sel(), data];',
+      "return figma.currentPage.children.map((n) => n.name.replace(/\"/g, \"'\"));",
+      "const half = figma.root.children.length / 2; const n = 10 / half; return n;",
+      "const { width: w, height: h } = figma.currentPage.children[0]; return [{ w, h }];",
+      "let a = 1, b = 2; [a, b] = [b, a]; return a;",
+      'const stats = new Map()\nfor (const n of figma.currentPage.children) stats.set(n.id, n.name)\nreturn [...stats]',
+    ];
+    check("code that only reads", reads.map((c) => may(c)), reads.map(() => false));
+    const writes = [
+      'return figma.currentPage.findAll((n) => n.name = "Header").length;',
+      '(await h.node("1:1")).name = "x";',
+      'const n = await h.node("1:1"); n.fills = [];',
+      "const n = {}; for (const n of figma.currentPage.children) n.visible = false;",
+      'const n = await h.node("1:1"); n.resize(10, 10);',
+      "figma.createFrame();",
+      'await h.setText(await h.node("1:1"), "Hi");',
+      'const n = await h.node("1:1"); n.setProperties({ Size: "L" });',
+      'const n = await h.node("1:1"); Object.assign(n, { x: 1 });',
+      'const n = await h.node("1:1"); n["opacity"] = 0.5;',
+      'const n = await h.node("1:1"); n.x++;',
+      'figma.edit("~1:1 Card fills");',
+      'let o = {}; o = await h.node("1:1"); o.name = "x";',
+      // through what an array or a map of its own holds
+      'const rows = []; for (const n of figma.currentPage.children) rows.push(n); rows[0].name = "x";',
+      'const by = {}; for (const n of figma.currentPage.children) by[n.name] = n; by["Card"].visible = false;',
+      'const m = new Map(); m.set("a", figma.currentPage.children[0]); m.get("a").name = "x";',
+      'const nodes = [figma.currentPage.children[0]]; ++nodes[0].x;',
+      // a value that only starts as its own
+      "const first = Array.from(figma.currentPage.children)[0]; first.name = \"x\";",
+      "const n = [figma.currentPage.children[0]][0]; n.name = \"x\";",
+      // a regular expression with a quote in it, then a write
+      "const q = /\"/; figma.currentPage.children[0].name = \"x\";",
+      // patterns, calls by name, aliases
+      "const n = figma.currentPage.children[0]; [n.x, n.y] = [0, 0];",
+      "const n = figma.currentPage.children[0]; ({ a: n.name } = { a: \"x\" });",
+      'const n = figma.currentPage.children[0]; n["remove"]();',
+      "const n = figma.currentPage.children[0]; const r = n.remove.bind(n); r();",
+      "const n = figma.currentPage.children[0]; n.removeOverrides();",
+      "const H = h; await H.fill(figma.currentPage.children[0]);",
+      "const n = figma.currentPage.children[0]; with (n) { name = \"x\"; }",
+    ];
+    check("code that may write", writes.map((c) => may(c)), writes.map(() => true));
+    check("…and so does code with --lib files", may("return 1;", [{ name: "a", hash: "x" }]), true);
+  }
+  {
+    // A read-only script in a large file that was just opened: Figma updates
+    // layers while it runs. Its code only reads, so nothing is undone — an
+    // undo would take back the user's last edit instead.
+    const env = load();
+    env.userEdit("~2:2 Header name");
+    await sleep(50);
+    const run = exec(env, 'const p = await figma.getNodeByIdAsync("0:1");' +
+      " await new Promise((r) => setTimeout(r, 60)); return 1;", { readOnly: true });
+    await sleep(20);
+    env.figmaEdit("~1:1 Card width", "~1:1 Card height");
+    const r = await run;
+    check("Figma's own changes during a script that only reads are not rolled back",
+      [r.type, r.value, r.rolledBack, r.changes, env.undo.log.includes("undo"), env.undo.steps.length],
+      ["result", 1, undefined, undefined, false, 1]);
+    check("…but told", r.notice, "read-only: 1 changed in the file while the script ran (Card) — not by the " +
+      "script: its code only reads, so Figma itself or someone in the file made them; nothing rolled back");
+    check("…and counted as made in Figma itself", env.api.OUTSIDE.local, 3);
+  }
+  {
+    const env = load();
+    const run = exec(env, "await new Promise((r) => setTimeout(r, 60)); return figma.root.name;", { readOnly: true });
+    await sleep(20);
+    env.userEdit("~1:1 Card fills");
+    const r = await run;
+    check("the user's edit while a read-only script reads stays",
+      [r.type, env.undo.steps.length, env.undo.log.includes("undo")], ["result", 1, false]);
+  }
+  {
+    const env = load();
+    await exec(env, 'figma.edit("~1:1 Card fills"); return 1;', { agent: "anna" });
+    const run = exec(env, "await new Promise((r) => setTimeout(r, 60)); return 1;", { agent: "anna" });
+    await sleep(20);
+    env.userEdit("~2:2 Header name");
+    const r = await run;
+    check("a script that only reads does not take the user's edit for its own",
+      [r.changes, /^1 changed in the file while the script ran \(Header\) — not by the script/.test(r.notice),
+       env.api.HISTORY.length], [undefined, true, 1]);
+    const u = await undoLast(env, { agent: "anna" });
+    check("…so undo does not revert past it",
+      [u.type, /1 more changed in the file \(Header\)/.test(u.text), env.undo.log.includes("undo")],
+      ["error", true, false]);
+  }
+  {
+    // Code that may write, and Figma's own change while it ran: the undo meant
+    // for the script takes back the user's step. It can't be redone from here.
+    const env = load();
+    env.userEdit("~2:2 Header name");
+    await sleep(50);
+    const code = 'const n = await h.node("1:1"); if (n.name === "nope") n.name = "x";' +
+      " await new Promise((r) => setTimeout(r, 60)); return 1;";
+    const run = exec(env, code, { readOnly: true });
+    await sleep(20);
+    env.figmaEdit("~1:1 Card width");
+    const r = await run;
+    check("an undo that took back someone else's step says how to bring it back",
+      [r.type, r.rolledBack, /the undo meant to roll that back took back a step that was not the script's/.test(r.text),
+       /press Cmd\+Shift\+Z in Figma at once/.test(r.text)], ["error", undefined, true, true]);
+
+    env.userEdit("~2:2 Header name");
+    await sleep(50);
+    const again = exec(env, code);
+    await sleep(20);
+    env.figmaEdit("~1:1 Card width");
+    await again;
+    const u = await undoLast(env, {});
+    check("…and so does undo", [u.type, /^undo: Figma's undo took back a step that was not the script's/.test(u.text),
+      env.api.HISTORY.length], ["error", true, 0]);
+
+    // A collaborator changes the script's layer just as the undo runs: no sign
+    // that the undo took back the script's step.
+    env.userEdit("~2:2 Header name");
+    await sleep(50);
+    const trigger = env.figma.triggerUndo;
+    env.figma.triggerUndo = () => { trigger(); env.figma.remoteEdit("~1:1 Card width"); };
+    const third = exec(env, code, { readOnly: true });
+    await sleep(20);
+    env.figmaEdit("~1:1 Card width");
+    const t = await third;
+    check("…also when someone else changes the script's layer meanwhile",
+      [t.type, /press Cmd\+Shift\+Z/.test(t.text)], ["error", true]);
   }
 
   // ─── undo ───────────────────────────────────────────────────────────────

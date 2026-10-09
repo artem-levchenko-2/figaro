@@ -413,6 +413,9 @@ def test_a_shot_is_not_printed_twice():
     # what a fresh agent hit in a smoke test
     ("in setProperties: Could not find a component property with name: 'Right Icon#164:41'", "h.variant"),
     ('could not find variable with key "58931feeac5c3df23dc96d949f8b7c43fd6b84a1"', "VariableID"),
+    ("read-only: 45 changed in the file during the script, and the undo meant to roll that back took back "
+     "a step that was not the script's (it touched none of its layers) — press Cmd+Shift+Z in Figma at "
+     "once to redo that step, before anything else changes the file", "tell them at once"),
 ])
 def test_hints_for_what_agents_hit_most(error, needle):
     assert needle in bridge.find_hint(error)

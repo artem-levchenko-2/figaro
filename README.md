@@ -356,7 +356,8 @@ JS
 ```
 
 - `-R` runs a script read-only: if it changes anything, the change is rolled
-  back and the call fails.
+  back and the call fails. What Figma or a person changes while code that
+  only reads runs is reported and left alone.
 - `--shot` takes a picture of what the script returned or created.
 - An error comes back with the line of your script that threw and, for known
   problems, a `hint:`.
@@ -401,7 +402,9 @@ it keeps four promises:
 - **A report after every script.** What was created, deleted and changed, with
   links to the new layers.
 - **Read-only when you ask.** If a script run with `-R` changes anything, the
-  change is rolled back and the call fails.
+  change is rolled back and the call fails. Changes made meanwhile in Figma
+  itself aren't blamed on a script whose code only reads: they are reported and
+  left as they are.
 - **An undo that knows when to refuse.** `figaro undo` takes back the last
   script only if it is yours and nobody has changed the file since. Otherwise
   it says so and points you to Figma's own undo or the version history.
@@ -416,6 +419,7 @@ it keeps four promises:
 | One&nbsp;script&nbsp;at&nbsp;a&nbsp;time | Scripts in one file wait their turn. A script that runs out of time keeps the file until it ends, instead of racing the next one |
 | Local&nbsp;only | The bridge listens on `127.0.0.1` and turns away requests from web pages: it checks `Origin` and `Host` |
 | A&nbsp;version&nbsp;on&nbsp;demand | `--checkpoint "before the grid"` saves one before a risky script |
+| Whose&nbsp;change | Figma doesn't say who changed a layer, so Figaro reads the script's code. What changes while code that only reads runs (Figma updating a page it just loaded, someone at work in the file) is reported, never rolled back. If an undo ever takes back a step that wasn't the script's, the answer says so: Cmd+Shift+Z in Figma brings it back |
 
 Two things Figma itself doesn't report: changes to **variables** and
 **deleted components**. They are missing from the change report, `-R` can't

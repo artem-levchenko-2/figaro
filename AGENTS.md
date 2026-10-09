@@ -108,8 +108,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   closes the plugins' connections at once.
 - `figma_links.py` — Figma links: the file key and node id in a link, links to layers for reports.
 - `plugin/` — `manifest.json`, `code.js` (the `HELPERS` object behind `h.*`, running scripts with a deadline,
-  change tracking, undo, selecting a layer from the window), `ui.html` (the window: one island per file
-  where Figaro runs, and under them a line with the version, Update and Reload).
+  change tracking and whose change it was (`codeMayWrite`), undo, selecting a layer from the window),
+  `ui.html` (the window: one island per file where Figaro runs, and under them a line with the version, Update
+  and Reload).
 - `skill/figaro/` — `SKILL.md` (the loop, the commands, safety, house rules) and `references/`:
   `helpers.md`, `craft.md`, `pitfalls.md`. The recipes in them were checked against real Figma.
 - `tools/install.sh` — the command and the skill's links (`~/.claude/skills`, `~/.agents/skills`); never
@@ -204,6 +205,12 @@ the check stays silent.
   and the bridge waits `GATE_GRACE` (1 s) more, so the agent gets that error rather than a 504 and the file
   isn't blocked. Node methods (`getMainComponentAsync`) aren't covered. `figma.teamLibrary` and import by key
   are the usual culprits; in a draft, import by key may fail even for what the file already uses.
+- **`documentchange` doesn't say who made a change**, only `origin` LOCAL or REMOTE: Figma's own updates
+  (instances on a page that a script loads for the first time in a large file) and the user's edits during
+  a script come as the script's, though they aren't its undo step — and the Plugin API has no redo. So the
+  plugin reads the script's code (`codeMayWrite`): while only code that reads runs, local changes count as
+  made in Figma itself — no rollback, no step for `undo`. A first undo that touches none of the script's
+  layers took back someone else's step: the answer asks for Cmd+Shift+Z.
 - **`documentchange` doesn't see variables:** `-R` can't roll their changes back, and `undo` refuses after a
   script that may have changed them.
 - **Deleting a component or a component set isn't reported** in `documentchange`: it is missing from the

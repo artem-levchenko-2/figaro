@@ -8,6 +8,16 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
+### Fixed
+
+- A read-only script (`-R`) no longer rolls back what it didn't change (#1). Figma reports every change made
+  while a script runs without saying who made it: the instances it updates when a script first loads a page
+  of a large file, or the user's own edits meanwhile, came as the script's, and the undo meant for them took
+  back the last step of the user or another agent. Figaro now reads the script's code: while code that only
+  reads runs, what changes in the file is told in a `⚠` line and left alone, and `undo` doesn't take it for
+  the script's step. If an undo takes back a step that wasn't the script's, the answer says so and asks for
+  Cmd+Shift+Z in Figma, which brings it back.
+
 ## [1.1.1] — 2026-10-09
 
 ### Changed

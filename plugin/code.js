@@ -7,7 +7,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-09.4";
+const PLUGIN_VERSION = "2026-10-09.5";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -521,7 +521,7 @@ figma.ui.onmessage = async (msg) => {
   // quick run — the CLI's own readers, which change nothing — skips all that
   // and the ~150 ms wait for Figma's report.
   const run = msg.quick === true ? null
-    : startRun(id, { agent: msg.agent, readOnly: msg.readOnly === true, code });
+    : startRun(id, { agent: msg.agent, readOnly: msg.readOnly === true, code, libs: msg.libs });
   if (run) figma.commitUndo();  // whatever came before is not this run's step
   const checkpoint = run && msg.checkpoint ? await saveCheckpoint(msg.checkpoint) : null;
 
@@ -580,10 +580,281 @@ const OUTSIDE = { local: 0, remote: 0, recent: [] };  // changes made while no r
 // instead of reverting the wrong step.
 const VARIABLE_WRITES = /\b(setValueForMode|createVariable|createVariableCollection|addMode|removeMode|renameMode|setVariableCodeSyntax|removeVariableCodeSyntax)\b|\.remove\(\)/;
 
+// Figma reports every local change made while a script runs without saying
+// who made it: Figma's own updates (in a large file that was just opened) and
+// the user's edits come as the script's. A script whose code only reads cannot
+// have made them, so they count as made in Figma itself: -R rolls nothing back
+// for them — the undo would take back someone else's step, and the plugin has
+// no redo — and `undo` neither takes them for a script's step nor reverts past
+// them. The code is read as text: it may write when it assigns to anything but
+// a slot of its own objects and arrays (out.count, rows[i] — not rows[i].name),
+// calls a method that writes, an h.* helper that writes or a figma method
+// beyond those that only read, passes figma or h on, or runs --lib files.
+// Read wrong one way, a script keeps the rollback; the other way, a change it
+// did make stays, reported — so whatever is unclear counts as a write.
+const FIGMA_READS = /^(?:get\w*|load\w*|listAvailableFontsAsync|notify|on|once|off|base64Encode|base64Decode|setCurrentPageAsync|saveVersionHistoryAsync|commitUndo)$/;
+const HELPER_READS = /^(?:node|resolve|sel|find|findByName|findAllByName|dumpTree|link|inspect|shot|hex|solid|fonts|withFonts|fa|variantsOf|var_|ck|aborted)$/;
+// Methods that change the file, called or bound on anything; a call by a
+// computed name; code that runs code.
+const WRITE_CALLS = /\.\s*(?:set(?!CurrentPageAsync\b|Timeout\b|Interval\b)[A-Z]\w*|create[A-Z]\w*|import\w*Async|(?:add|edit|delete|remove|reset|clear)[A-Z]\w*|remove|appendChild|insertChild|resize|resizeWithoutConstraints|rescale|clone|detachInstance|swapComponent|outlineStroke|insertCharacters|(?:lock|unlock)AspectRatio|group|ungroup|flatten|union|subtract|intersect|exclude|combineAsVariants|moveLocal\w*|triggerUndo|renameMode)\s*(?:\(|\.\s*(?:call|apply|bind)\b)|\]\s*\(|\b(?:eval|Function|import)\s*\(|(?:^|[;{}\n])\s*with\s*\(|\bReflect\s*\.|\bObject\s*\.\s*(?:defineProperty|defineProperties|setPrototypeOf)\b/;
+const ASSIGN_OP = "(?:(?:[-+*/%&|^]|\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?)?=(?![=>])|\\+\\+|--)";
+// Not the file: the page on show, the selection, the view, a speed-up for reads.
+const NOT_THE_FILE = /^figma\.(?:currentPage|skipInvisibleInstanceChildren|viewport\..+)$|\.selection$/;
+const OWN_CALL = /^\s*(?:new\s+(?:Map|Set|WeakMap|WeakSet|Array|Object)\b|(?:Object\s*\.\s*(?:create|fromEntries)|Array\s*\.\s*from|JSON\s*\.\s*parse|structuredClone)(?=\s*\())/;
+const KEYWORD_BEFORE = /(?:^|[^\w$])(?:const|let|var|return|typeof|void|delete|await|yield|in|of|new|case|throw|else|do)$/;
+const MEMBER = /[\w$)\]]\s*(?:\??\.\s*[A-Za-z_$]|\[)/;  // x.y or x[k] inside a pattern
+
+function codeMayWrite(code, libs) {
+  if (Array.isArray(libs) && libs.length) return true;
+  const src = codeOnly(code);
+  if (VARIABLE_WRITES.test(src) || WRITE_CALLS.test(src)) return true;
+  let m;
+  const figmaCall = /\bfigma\s*\.\s*([A-Za-z_$][\w$]*)\s*\(/g;
+  while ((m = figmaCall.exec(src))) if (!FIGMA_READS.test(m[1])) return true;
+  const helperCall = /\bh\s*\.\s*([A-Za-z_$][\w$]*)\s*\(/g;
+  while ((m = helperCall.exec(src))) if (!HELPER_READS.test(m[1])) return true;
+  const { own, bound } = bindings(src);
+  for (const name of ["figma", "h"]) {  // passed on: what is called on it under another name is unknown
+    const passed = new RegExp("(?:^|[^\\w$.])" + name + "[ \\t]*(?=[\\n,;)\\]}]|$)");
+    if (!bound.has(name) && passed.test(src)) return true;
+  }
+  const assign = /\bObject\s*\.\s*assign\s*\(\s*(?:([A-Za-z_$][\w$]*)\s*(?=[,)])|([{[]))?/g;
+  while ((m = assign.exec(src))) if (!m[2] && !(m[1] && own.has(m[1]))) return true;
+  const write = new RegExp("(\\.\\s*[A-Za-z_$][\\w$]*|\\])\\s*" + ASSIGN_OP, "g");
+  while ((m = write.exec(src))) {
+    const end = m.index + m[1].length;
+    const target = assignTarget(src, end);
+    if (target === null) {  // [a, b] = …: sets a property only if it names one
+      if (MEMBER.test(src.slice(groupStart(src, end - 1), end))) return true;
+      continue;
+    }
+    if (!ownSlot(target, own) && !NOT_THE_FILE.test(target.replace(/\s+/g, ""))) return true;
+  }
+  const objectPattern = /\}\s*=(?![=>])/g;  // ({ a: n.name } = …)
+  while ((m = objectPattern.exec(src))) {
+    const start = groupStart(src, m.index);
+    if (start < 0) return true;
+    const declared = /(?:^|[^\w$])(?:const|let|var)\s*$/.test(src.slice(Math.max(0, start - 8), start));
+    if (!declared && MEMBER.test(src.slice(start, m.index + 1))) return true;
+  }
+  const before = /(?:\+\+|--)\s*([A-Za-z_$][\w$]*)(?=\s*(?:\??\.|\[))/g;  // ++x.y
+  while ((m = before.exec(src))) {
+    let k = m.index;
+    while (k > 0 && /[ \t]/.test(src[k - 1])) k--;
+    if (/[\w$)\]]/.test(src[k - 1] || "")) continue;  // x++ on the same line: it belongs to x
+    const start = m.index + m[0].length - m[1].length;
+    if (!ownSlot(src.slice(start, chainEnd(src, start + m[1].length)), own)) return true;
+  }
+  return false;
+}
+
+// The code without its comments, strings and regular expressions, which say
+// nothing about what it does: a comment becomes a space, the others "".
+function codeOnly(code) {
+  const s = String(code || "");
+  const parts = [];
+  let tail = "";  // the end of the code so far, spaces squeezed: what a slash comes after
+  const add = (text) => {
+    parts.push(text);
+    tail = (tail + text.slice(-64)).replace(/\s+/g, " ").slice(-24);
+  };
+  let from = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c !== "/" && c !== '"' && c !== "'" && c !== "`") continue;
+    const d = s[i + 1];
+    let end, text = '""';
+    if (c === "/" && d === "/") {
+      end = s.indexOf("\n", i);
+      if (end < 0) end = s.length;
+      text = " ";
+    } else if (c === "/" && d === "*") {
+      end = s.indexOf("*/", i + 2);
+      end = end < 0 ? s.length : end + 2;
+      text = " ";
+    } else if (c !== "/" || regexHere(tail + s.slice(Math.max(from, i - 64), i))) {
+      end = literalEnd(s, i);
+    } else {
+      end = -1;  // a division
+    }
+    if (end < 0) continue;
+    add(s.slice(from, i));
+    add(text);
+    from = end;
+    i = end - 1;
+  }
+  add(s.slice(from));
+  return parts.join("");
+}
+
+// A slash after an operator, a bracket that opens, a comma or a keyword like
+// `return` starts a regular expression; after a name, ) or ] it divides.
+function regexHere(before) {
+  let k = before.length;
+  while (k > 0 && /\s/.test(before[k - 1])) k--;
+  const t = before.slice(Math.max(0, k - 12), k);
+  if (/(?:\+\+|--)$/.test(t)) return false;
+  return k === 0 || /[(,=:[!&|?{};+\-*%<>~^]$/.test(t) ||
+    /(?:^|[^\w$.])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|instanceof|yield|await)$/.test(t);
+}
+
+// The end of the string, template or regular expression that starts at `i`,
+// or -1 if it doesn't end (on its own line, but for a template).
+function literalEnd(s, i) {
+  const q = s[i];
+  let inClass = false;
+  for (let j = i + 1; j < s.length; j++) {
+    const c = s[j];
+    if (c === "\\") { j++; continue; }
+    if (c === "\n" && q !== "`") return -1;
+    if (q !== "/") {
+      if (c === q) return j + 1;
+    } else if (c === "[") {
+      inClass = true;
+    } else if (c === "]") {
+      inClass = false;
+    } else if (c === "/" && !inClass) {
+      j++;
+      while (j < s.length && /[A-Za-z]/.test(s[j])) j++;  // flags
+      return j;
+    }
+  }
+  return -1;
+}
+
+// The bracket that closes the one at `open`: the index just past it, or -1.
+function groupEnd(src, open) {
+  const o = src[open], c = o === "{" ? "}" : o === "[" ? "]" : ")";
+  for (let i = open, depth = 0; i < src.length; i++) {
+    if (src[i] === o) depth++;
+    else if (src[i] === c && --depth === 0) return i + 1;
+  }
+  return -1;
+}
+
+// The bracket that opens the one at `close`: its index, or -1.
+function groupStart(src, close) {
+  const c = src[close], o = c === "}" ? "{" : c === "]" ? "[" : "(";
+  for (let i = close, depth = 0; i >= 0; i--) {
+    if (src[i] === c) depth++;
+    else if (src[i] === o && --depth === 0) return i;
+  }
+  return -1;
+}
+
+// The end of the member chain from `i` on: .name, [k], (args).
+function chainEnd(src, i) {
+  for (;;) {
+    const m = /^\s*(?:\??\.\s*[A-Za-z_$][\w$]*|[[(])/.exec(src.slice(i, i + 256));
+    if (!m) return i;
+    if (!/[[(]$/.test(m[0])) {
+      i += m[0].length;
+      continue;
+    }
+    const end = groupEnd(src, i + m[0].length - 1);
+    if (end < 0) return i;
+    i = end;
+  }
+}
+
+// The target of an assignment that ends at `end`, from its first name on
+// ("out.items[0].name"); "" when it starts with an expression
+// ((await h.node(id)).name); null for a pattern ([a, b] = …).
+function assignTarget(src, end) {
+  let i = end;
+  for (let first = true; ; first = false) {
+    while (i > 0 && /\s/.test(src[i - 1])) i--;
+    const c = src[i - 1];
+    if (c === "]" || c === ")") {
+      i = groupStart(src, i - 1);
+      if (i < 0) return "";
+      let k = i;
+      while (k > 0 && /\s/.test(src[k - 1])) k--;
+      if (/[\w$)\]]/.test(src[k - 1] || "") && !KEYWORD_BEFORE.test(src.slice(Math.max(0, k - 8), k))) {
+        i = k;
+        continue;  // x[k], f(a): the chain goes on
+      }
+      return first && c === "]" ? null : "";
+    }
+    if (!/[\w$]/.test(c || "")) return "";
+    let j = i;
+    while (j > 0 && /[\w$]/.test(src[j - 1])) j--;
+    let k = j;
+    while (k > 0 && /\s/.test(src[k - 1])) k--;
+    if (src[k - 1] !== ".") return src.slice(j, end);
+    i = src[k - 2] === "?" ? k - 2 : k - 1;
+  }
+}
+
+// out.count, counts[n.type]: a slot of the script's own object. Not
+// rows[0].name: what an array or a map of its own holds may be a layer.
+function ownSlot(target, own) {
+  const base = (/^[A-Za-z_$][\w$]*/.exec(target) || [""])[0];
+  if (!own.has(base)) return false;
+  const rest = target.slice(base.length).trim();
+  if (/^\.\s*[A-Za-z_$][\w$]*$/.test(rest)) return true;
+  return rest[0] === "[" && groupEnd(rest, 0) === rest.length;
+}
+
+// Whether the value at `i` is the script's own and nothing more: an object or
+// array literal, a new Map, Set…, or a copy (JSON.parse, Array.from…) — not
+// [node][0], nor Array.from(nodes)[0].
+function ownValueAt(src, i) {
+  let j;
+  const literal = /^\s*[{[]/.exec(src.slice(i, i + 64));
+  if (literal) {
+    j = groupEnd(src, i + literal[0].length - 1);
+  } else {
+    const call = OWN_CALL.exec(src.slice(i, i + 64));
+    if (!call) return false;
+    j = i + call[0].length;
+    const args = /^\s*\(/.exec(src.slice(j, j + 16));
+    if (args) j = groupEnd(src, j + args[0].length - 1);
+  }
+  if (j < 0) return false;
+  // then the statement ends, or a line that doesn't go on with the value
+  const rest = /^[ \t]*(\n\s*)?([\s\S]?)/.exec(src.slice(j, j + 64));
+  if (!rest[2] || /[;,)\]}]/.test(rest[2])) return true;
+  return !!rest[1] && !/[.([?+\-*/%&|^<>=!`]/.test(rest[2]);
+}
+
+// The names the script binds (`bound`), and those of them that only ever
+// hold objects and arrays of its own (`own`).
+function bindings(src) {
+  const own = new Set(), other = new Set();
+  let m;
+  const decl = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(=(?![=>]))?/g;
+  while ((m = decl.exec(src))) (m[2] && ownValueAt(src, decl.lastIndex) ? own : other).add(m[1]);
+  const pattern = /\b(?:const|let|var)\s*([{[])/g;  // const { width: w, height: h } = …
+  while ((m = pattern.exec(src))) {
+    const open = m.index + m[0].length - 1;
+    const end = groupEnd(src, open);
+    const text = src.slice(open, end < 0 ? src.length : end).replace(/[A-Za-z_$][\w$]*\s*:/g, " ");
+    for (const name of text.match(/[A-Za-z_$][\w$]*/g) || []) other.add(name);
+  }
+  const params = /\(([^()]*)\)\s*=>|\bfunction\b[^(]*\(([^()]*)\)|([A-Za-z_$][\w$]*)\s*=>|\bcatch\s*\(([^()]*)\)/g;
+  while ((m = params.exec(src))) {
+    for (const name of (m[1] || m[2] || m[3] || m[4] || "").match(/[A-Za-z_$][\w$]*/g) || []) other.add(name);
+  }
+  const reset = new RegExp("([A-Za-z_$][\\w$]*)\\s*(" + ASSIGN_OP + ")", "g");  // x = …, x += …
+  while ((m = reset.exec(src))) {
+    if (/[\w$]/.test(src[m.index - 1] || "")) continue;
+    let k = m.index;
+    while (k > 0 && /\s/.test(src[k - 1])) k--;
+    if (/[\w$.]/.test(src[k - 1] || "")) continue;  // a property, or a declaration
+    if (m[2] !== "=" || !ownValueAt(src, reset.lastIndex)) other.add(m[1]);
+  }
+  for (const name of other) own.delete(name);
+  return { own, bound: new Set(Array.from(own).concat(Array.from(other))) };
+}
+
 function startRun(id, opts) {
+  const mayWriteVariables = VARIABLE_WRITES.test(opts.code || "");
   const run = {
     id, agent: opts.agent || null, readOnly: !!opts.readOnly, quiet: false,
-    mayWriteVariables: VARIABLE_WRITES.test(opts.code || ""),
+    mayWriteVariables,
+    // an undo has no code, and does write
+    mayWrite: opts.code === undefined || mayWriteVariables || codeMayWrite(opts.code, opts.libs),
     created: new Set(), createdNodes: new Map(), deleted: new Set(), changed: new Set(),
     styles: 0, props: {}, items: new Map(), itemsTotal: 0, remote: 0,
     overlap: RUNS.size > 0, settled: null, late: false,
@@ -594,20 +865,25 @@ function startRun(id, opts) {
 }
 
 function onDocumentChange(event) {
-  if (RUNS.size === 0) {
+  // A change no open run can have made — none is open, or their code only
+  // reads — was made in Figma itself: by Figma, or by someone in the file.
+  let scripted = false;
+  for (const run of RUNS.values()) if (run.mayWrite) scripted = true;
+  if (!scripted) {
     const now = Date.now();
     for (const c of event.documentChanges) {
       if (c.origin === "REMOTE") OUTSIDE.remote++; else OUTSIDE.local++;
       OUTSIDE.recent.push({ at: now, origin: c.origin, type: c.type, id: c.id, name: changeName(c) });
     }
     if (OUTSIDE.recent.length > OUTSIDE_MAX) OUTSIDE.recent.splice(0, OUTSIDE.recent.length - OUTSIDE_MAX);
-    return;
   }
   // Runs that overlap (parallel reads) each get every change: nobody can tell
   // whose it was, and such a run is marked `overlap`.
   for (const run of RUNS.values()) {
     if (!run.quiet) for (const c of event.documentChanges) record(run, c);
-    else if (run.seen) for (const c of event.documentChanges) run.seen.add(c.id);  // revertSteps
+    else if (run.seen) {  // revertSteps: what its undo changed — not what other people did meanwhile
+      for (const c of event.documentChanges) if (c.origin !== "REMOTE") run.seen.add(c.id);
+    }
     if (run.settled) run.settled();
   }
 }
@@ -681,6 +957,21 @@ function ownCount(run) {
   return run.created.size + run.deleted.size + run.changed.size + run.styles;
 }
 
+// What changed while a script whose code only reads ran is not its doing: it
+// is told in a notice and no longer counted as the script's.
+function disown(run) {
+  const n = ownCount(run);
+  if (!n) return null;
+  const names = Array.from(new Set(Array.from(run.items.values()).map((i) => i.name).filter(Boolean)));
+  run.created.clear(); run.createdNodes.clear(); run.deleted.clear(); run.changed.clear();
+  run.styles = 0; run.props = {}; run.items.clear(); run.itemsTotal = 0; run.touched = false;
+  const shown = names.slice(0, 3).join(", ") + (n > Math.min(names.length, 3) ? ", …" : "");
+  const list = names.length ? " (" + shown + ")" : "";
+  return (run.readOnly ? "read-only: " : "") + n + " changed in the file while the script ran" + list +
+    " — not by the script: its code only reads, so Figma itself" + (run.overlap ? ", another script" : "") +
+    " or someone in the file made them" + (run.readOnly ? "; nothing rolled back" : "");
+}
+
 function summarize(run) {
   const own = ownCount(run);
   if (!own && !run.remote && !run.late) return null;
@@ -743,8 +1034,10 @@ async function finishRun(run) {
   if (!run.readOnly) figma.commitUndo();  // the whole script is one Cmd+Z step
   await settle(run);
   dropRemovedCreated(run);
-  const own = ownCount(run);
   const out = { fields: {}, error: null };
+  const elsewhere = run.mayWrite ? null : disown(run);
+  if (elsewhere) out.fields.notice = elsewhere;
+  const own = ownCount(run);
   const changes = summarize(run);
   if (changes) out.fields.changes = changes;
   if (run.readOnly && own === 0 && !run.touched && run.mayWriteVariables) {
@@ -762,8 +1055,13 @@ async function finishRun(run) {
       const trace = traceOf(run);
       run.quiet = true;  // the reversal is not news
       const back = await revertSteps(run, trace);
-      out.fields.rolledBack = true;
-      out.error = "read-only: the script changed " + own + " — rolled back" + leftNote(back, trace);
+      if (back.foreign) {
+        out.error = "read-only: " + own + " changed in the file during the script, and the undo meant to " +
+          "roll that back " + FOREIGN_UNDO;
+      } else {
+        out.fields.rolledBack = true;
+        out.error = "read-only: the script changed " + own + " — rolled back" + leftNote(back, trace);
+      }
     }
   }
   RUNS.delete(run.id);
@@ -1018,6 +1316,7 @@ async function undoLast(msg) {
   const back = await revertSteps(run, trace);
   RUNS.delete(run.id);
   HISTORY.pop();
+  if (back.foreign) throw new Error("undo: Figma's undo " + FOREIGN_UNDO);
   const value = { undone: { agent: top.agent, ago: when, changes: top.brief }, left: HISTORY.length };
   if (back.steps > 1) value.steps = back.steps;
   const note = leftNote(back, trace);
@@ -1030,9 +1329,14 @@ async function undoLast(msg) {
 // Cmd+Z steps. Reverting goes back step by step while the script's traces are
 // still there: a layer it made exists, or one it removed is missing. Only its
 // own steps can hold those, and each step reverted must touch its layers, so
-// it does not go past the step the script started from.
+// it does not go past the step the script started from. A first undo that
+// touched none of its layers took back someone else's step: what Figma
+// reported was not on the undo stack as the script's. The Plugin API has no
+// redo, so the reply says how to bring that step back.
 const UNDO_STEPS_MAX = 20;
 const TRACE_MAX = 500;
+const FOREIGN_UNDO = "took back a step that was not the script's (it touched none of its layers) — " +
+  "press Cmd+Shift+Z in Figma at once to redo that step, before anything else changes the file";
 
 function traceOf(run) {
   return {
@@ -1041,6 +1345,7 @@ function traceOf(run) {
     changed: Array.from(run.changed).slice(0, TRACE_MAX),
     // properties of components that were there before: no layer to check them by
     props: (run.props.componentPropertyDefinitions || 0) > 0,
+    styles: run.styles > 0,  // their undo touches styles, not layers
   };
 }
 
@@ -1069,8 +1374,11 @@ async function revertSteps(run, trace) {
     steps++;
     await settle(run);
     const left = traceLeft(trace);
-    if (left === 0 || steps >= UNDO_STEPS_MAX) return { steps, left };
-    if (!Array.from(run.seen).some((id) => mine.has(id))) return { steps, left };
+    const touched = Array.from(run.seen).some((id) => mine.has(id));
+    if (steps === 1 && !touched && run.seen.size > 0 && mine.size > 0 && !trace.styles) {
+      return { steps, left, foreign: true };
+    }
+    if (left === 0 || steps >= UNDO_STEPS_MAX || !touched) return { steps, left };
   }
 }
 

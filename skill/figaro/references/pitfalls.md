@@ -137,6 +137,12 @@ order. If you write it by hand:
 - **`undone: … (3 Cmd+Z steps)`** — Figma recorded the script as several steps, and all of them were undone.
   `⚠ not everything was undone` — look at what is left and tell the user.
 - **Figma has one Cmd+Z for the whole file**: it undoes the last step, whoever made it.
+- **`… took back a step that was not the script's`** — Figma reported changes during the script that were
+  not its own, and the undo meant for them took back someone else's step. Only the user can bring it back:
+  ask them at once to press Cmd+Shift+Z in Figma.
+- **`⚠ N changed in the file while the script ran … not by the script`** — the code only reads, so Figma or
+  someone in the file made those changes, and nothing was rolled back. In a large file Figma updates
+  instances on a page the first time a script loads it; the same script once more gives a clean answer.
 - **`undo` remembers scripts only until the plugin restarts.**
 
 ## Pictures

@@ -107,7 +107,8 @@ JS
   with `setTimeout`.
 - `-R` — the script only reads: if it changed anything, the change is rolled back and the call fails. Run
   every script that only looks with `-R`; several of them in a row can also take `--parallel` and skip the
-  queue.
+  queue. What changes while code that only reads runs — Figma updating a page the script loaded for the
+  first time, the user at work — isn't the script's: a `⚠` line names it, and nothing is rolled back.
 - `--shot` — a picture right after the script: of the layer whose id the script returned (`return { id }`),
   or else of what it created. Put it after `--stdin` or `-f`, not before inline code, or it takes the code for
   an id.
@@ -125,7 +126,9 @@ JS
   sees. Before a risky bulk edit add `--checkpoint "before <what>"`.
 - **`figaro undo -T …`** undoes the file's last script only if it changed something, nothing in the file has
   changed since, and the script is yours. Otherwise it refuses — then tell the user: Cmd+Z in Figma, or a
-  version from the history. A `⚠` warning after `undone:` — read it and check the file.
+  version from the history. A `⚠` warning after `undone:` — read it and check the file. An answer that says
+  the undo took back a step that was not the script's (from `undo` or `-R`): ask the user at once to press
+  Cmd+Shift+Z in Figma, which brings that step back.
 - **Figma does not report changes to variables, nor deleted components**: the report won't show them, `-R`
   won't roll them back, and `undo` after such a script refuses. Check variables in the script itself, before
   and after; don't delete components or component sets unless the user asks.
@@ -137,8 +140,8 @@ JS
 - **Leave the user's screen alone**: `figma.setCurrentPageAsync`, `figma.viewport.*` and
   `figma.currentPage.selection = …` switch their page, camera and selection. Put a new node straight into its
   parent (`h.frame(page, …)`, `page.appendChild(node)`) and show the result with a link in the report.
-- **The user may edit the file while your script runs**, and their changes land in your report. Keep scripts
-  short.
+- **The user may edit the file while your script runs**, and when your code writes, their changes land in
+  your report. Keep scripts short.
 - **The user can press Stop** for you in the plugin's window. Your running script ends, and the call fails
   with `stopped: the user pressed Stop…` (409); what it changed before that stays in the file. Pressed
   between your scripts, it refuses your next one with the same 409, and nothing runs. Either way, don't run
