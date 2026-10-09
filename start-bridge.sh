@@ -87,7 +87,15 @@ fi
 # -u: without it Python block-buffers stdout into the log, and plugin
 # connect/disconnect events stay invisible exactly when you need them.
 if command -v tmux >/dev/null 2>&1; then
-    tmux new-session -d -s "$SESSION" "$PY -u bridge.py --port $PORT --idle-exit $IDLE 2>&1 | tee $LOG"
+    # tmux runs the command with its server's environment, which may be older
+    # than the FIGARO_* settings (FIGARO_UPDATE_BUTTON, FIGARO_TOKEN_FILE...):
+    # hand them over by name.
+    SETTINGS=(env)
+    for name in $(compgen -e); do
+        case "$name" in FIGARO_*) SETTINGS+=("$name=${!name}") ;; esac
+    done
+    tmux new-session -d -s "$SESSION" \
+        "$(printf '%q ' "${SETTINGS[@]}")$PY -u bridge.py --port $PORT --idle-exit $IDLE 2>&1 | tee $LOG"
     how="tmux session '$SESSION' — watch: tmux attach -t $SESSION"
 else
     nohup "$PY" -u bridge.py --port "$PORT" --idle-exit "$IDLE" >"$LOG" 2>&1 </dev/null &

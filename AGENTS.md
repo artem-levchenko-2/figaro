@@ -126,7 +126,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   folder — an .exe, because a .cmd file would hand Figma links to cmd.exe, which cuts them at `&`. The skill
   links are junctions, which need no admin rights.
   `start-bridge.sh` / `start-bridge.ps1` — start and stop the bridge (tmux or nohup; per-port session, log
-  and pid file).
+  and pid file). tmux starts a session's command with its server's environment, so `start-bridge.sh` hands
+  the `FIGARO_*` settings to the bridge by name.
 - `tests/` — pytest (`test_*.py`), Node (`*.test.js`), live (`live_*.py`, with `live_file.py`), and
   `plugin_fingerprint.json`.
 - `assets/banner.svg` — the README's banner, drawn by `assets/banner.py` (run it after changing the

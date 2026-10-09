@@ -36,6 +36,12 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 - The note about a new release in command answers asks the agent to tell the user, instead of pulling: an
   agent's pull lands under other agents' scripts, while Update waits until none runs.
 
+### Fixed
+
+- A bridge that `start-bridge.sh` runs in tmux gets the `FIGARO_*` settings even when a tmux server was
+  already running: tmux starts a session's command with its server's environment, so `FIGARO_TOKEN_FILE`,
+  `FIGARO_UPDATE_BUTTON` and the rest, set after the server started, never reached the bridge.
+
 ## [1.1.2] — 2026-10-09
 
 ### Fixed

@@ -595,6 +595,43 @@ def test_status_starts_a_real_bridge_that_outlives_the_call():
                        capture_output=True, timeout=30)
 
 
+# A tmux server older than the caller: a new session's command gets the
+# server's environment (here a bare one), not the caller's.
+FAKE_TMUX = """#!/usr/bin/env bash
+case "$1" in
+  new-session)
+    set -m
+    env -i HOME="$HOME" PATH="$PATH" bash -c "${@: -1}" >/dev/null 2>&1 &
+    echo $! > "$FAKE_TMUX_PID" ;;
+  has-session) [ -s "$FAKE_TMUX_PID" ] ;;
+  kill-session) kill -- "-$(cat "$FAKE_TMUX_PID")"; : > "$FAKE_TMUX_PID" ;;
+esac
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="start-bridge.sh is for macOS / Linux")
+def test_a_bridge_in_tmux_gets_the_figaro_settings(tmp_path):
+    fake = tmp_path / "bin" / "tmux"
+    fake.parent.mkdir()
+    fake.write_text(FAKE_TMUX)
+    fake.chmod(0o755)
+    token = tmp_path / "elsewhere" / "token"
+    env = dict(os.environ, PATH=f"{fake.parent}{os.pathsep}{os.environ['PATH']}",
+               HOME=str(tmp_path / "home"), FIGARO_PORT=str(free_port()),
+               FIGARO_TOKEN_FILE=str(token), FIGARO_IDLE_EXIT="120",
+               FAKE_TMUX_PID=str(tmp_path / "tmux.pid"))
+    try:
+        r = subprocess.run(["bash", str(ROOT / "start-bridge.sh")], env=env,
+                           capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "tmux session" in r.stdout
+        assert token.read_text(encoding="utf-8")  # saved where FIGARO_TOKEN_FILE said
+    finally:
+        r = subprocess.run(["bash", str(ROOT / "start-bridge.sh"), "--stop"], env=env,
+                           capture_output=True, text=True, timeout=30)
+    assert "stopped" in r.stdout, r.stdout + r.stderr
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="start-bridge.ps1 is for Windows")
 def test_status_starts_a_real_bridge_on_windows():
     port = free_port()
