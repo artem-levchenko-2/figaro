@@ -8,6 +8,11 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
+### Added
+
+- `FIGARO_AUTO_UPDATE=off` keeps the plugin's window from updating Figaro: no Update button, and the bridge
+  refuses the request. The release check and Reload are unchanged.
+
 ### Changed
 
 - **The bridge's HTTP API wants a token.** Each start of the bridge makes a secret and saves it, for the user

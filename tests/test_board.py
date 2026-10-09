@@ -441,6 +441,23 @@ def test_reload_refreshes_only_what_is_older(quick_update, monkeypatch):
     run(go())
 
 
+def test_update_now_is_refused_when_auto_update_is_off(quick_update, monkeypatch):
+    monkeypatch.setenv("FIGARO_AUTO_UPDATE", "off")
+
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, caps=CAPS) as p:
+            await p.ws.send_str(json.dumps({"type": "update-now"}))
+            await settle()
+            board = boards(p)[-1]
+            assert quick_update == [] and board["updating"] is None
+            assert board["update"] is None  # no offer, so no Update button
+            assert board["failed"]["error"] == "turned off"
+        await c.close()
+    run(go())
+    bridge_update.FAILED.clear()
+
+
 def test_a_pull_that_fails_says_why_and_offers_the_release(monkeypatch):
     async def pull(folder=None):
         return "local changes", "git pull: error: Your local changes would be overwritten by merge"

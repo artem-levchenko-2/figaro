@@ -182,7 +182,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 Every six hours a running bridge reads this repository's `vX.Y.Z` tags from GitHub (`REPO` in `bridge.py`)
 and, when there is a newer one, the plugin's window offers **Update to X.Y.Z** on its last line: it pulls the
 release and restarts the bridge and the plugins (`bridge_update.py`). A private repository answers 404, and
-the check stays silent.
+the check stays silent. `FIGARO_NO_UPDATE_CHECK=1` skips the check; `FIGARO_AUTO_UPDATE=off` keeps it but
+hides Update and makes the bridge refuse `update-now` (`bridge.update_allowed()`).
 
 ## Figma facts that cost time
 

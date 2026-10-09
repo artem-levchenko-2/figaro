@@ -383,6 +383,7 @@ Everything works without settings. When you need them:
 | `FIGARO_PLUGIN_WAIT` | `6` | Seconds the command waits for the plugin after starting the bridge |
 | `FIGARO_STATE_DIR` | `~/.cache/figaro` | Where the time of each file's last checkpoint is kept |
 | `FIGARO_NO_UPDATE_CHECK` | — | `1` stops the bridge from checking GitHub for a new release |
+| `FIGARO_AUTO_UPDATE` | `on` | `off` (or `0`, `false`, `no`) keeps the plugin's window from updating Figaro: no Update button, and the bridge refuses it. The check still runs and `figaro doctor` still names the new release; Reload, which pulls nothing, keeps working |
 
 The plugin talks to port 8788 only, as its manifest allows nothing else, so
 keep the bridge there.
@@ -526,6 +527,7 @@ scripts and the pictures it takes stay on your computer and in Figma.
   repository's release tags on GitHub, so the plugin's window can tell you about a
   new version. It sends nothing about you or your files, and
   `FIGARO_NO_UPDATE_CHECK=1` turns it off.
+  `FIGARO_AUTO_UPDATE=off` keeps the check but removes the window's Update button.
 
 ---
 
