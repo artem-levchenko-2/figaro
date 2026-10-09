@@ -8,6 +8,8 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-10-10
+
 ### Added
 
 - `FIGARO_UPDATE_BUTTON=off` takes the Update button out of the plugin's window (#2): the window only says
