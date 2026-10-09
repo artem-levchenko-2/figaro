@@ -104,5 +104,27 @@ check("sel maps selection", h.sel(), [
   { id: "1:2", name: "Btn", type: "FRAME", w: 100, h: 40 },
 ]);
 
-console.log(failed ? `\n${failed} FAILED` : "\nall helper checks passed");
-process.exit(failed ? 1 : 0);
+// annotations — only annotated layers, visible through the parents, the frame they sit in
+(async () => {
+  const mk = (id, name, extra, kids) => {
+    const n = Object.assign({ id, name, type: "FRAME", visible: true, children: kids || [] }, extra);
+    n.children.forEach((c) => { c.parent = n; });
+    return n;
+  };
+  const note = mk("3:1", "Note", { type: "TEXT", annotations: [{ label: "A", labelMarkdown: "**A**" }, { labelMarkdown: "B" }] });
+  const inHidden = mk("4:1", "Deep", { annotations: [{ label: "C" }] });
+  const hiddenBox = mk("4:0", "Box", { visible: false }, [inHidden]);
+  const plain = mk("5:1", "Plain", {});
+  const card = mk("2:1", "Card", {}, [note, hiddenBox, plain]);
+  const section = mk("1:5", "Sec", { type: "SECTION" }, [card]);
+  const page = mk("0:1", "Page", { type: "PAGE" }, [section]);
+  figma.currentPage = page; page.selection = [];
+  const r = await h.annotations();
+  check("annotations: only annotated layers", r.map((x) => x.node), ["3:1", "4:1"]);
+  check("annotations: label strings", r[0].labels, ["A", "B"]);
+  check("annotations: visible through a hidden parent", r.map((x) => x.visible), [true, false]);
+  check("annotations: frame inside a section", r.map((x) => x.frame), ["Card", "Card"]);
+  check("annotations: scoped to a node", (await h.annotations(hiddenBox)).map((x) => x.node), ["4:1"]);
+  console.log(failed ? `\n${failed} FAILED` : "\nall helper checks passed");
+  process.exit(failed ? 1 : 0);
+})();

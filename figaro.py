@@ -56,6 +56,7 @@ Helpers available inside exec'd code (as `h.*`):
     h.inspect(node, {depth})    h.shot(node, {format, scale, width, absolute})   h.link(node)
     h.fonts(node)  h.fa()       h.fill(node, axis)  h.hug(node, axis)  h.fixed(node, w, h)
     h.wrapText(node, w?)        h.find(root, {name, nameHas, type, text, textHas, hidden})
+    h.annotations(scope?)       Dev Mode notes: [{frame, node, name, visible, labels}]
 """
 
 import argparse

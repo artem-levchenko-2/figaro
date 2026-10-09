@@ -16,6 +16,8 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 - `figaro shot --absolute` and `h.shot(node, {absolute: true})` export a layer at exactly its own size (#2).
   Without it a shadow, an outside stroke or children that overflow a frame make the picture larger, and a
   text layer comes out cut to its letters: that matters when the picture is reused inside another mockup.
+- `h.annotations(scope)` reads the Dev Mode annotations under a layer: the frame, the layer, whether it
+  shows in Dev Mode, and the labels. The pitfalls list gains an Annotations part.
 
 ### Changed
 
