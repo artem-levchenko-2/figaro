@@ -111,20 +111,49 @@ check("sel maps selection", h.sel(), [
     n.children.forEach((c) => { c.parent = n; });
     return n;
   };
-  const note = mk("3:1", "Note", { type: "TEXT", annotations: [{ label: "A", labelMarkdown: "**A**" }, { labelMarkdown: "B" }] });
-  const inHidden = mk("4:1", "Deep", { annotations: [{ label: "C" }] });
+  // What Figma gives back: label and labelMarkdown both, or only properties.
+  const note = mk("3:1", "Note", { type: "TEXT", annotations: [
+    { label: "A", labelMarkdown: "A" }, { label: "B text", labelMarkdown: "**B** text" }] });
+  const inHidden = mk("4:1", "Deep", { annotations: [{ label: "C", labelMarkdown: "C" }] });
   const hiddenBox = mk("4:0", "Box", { visible: false }, [inHidden]);
   const plain = mk("5:1", "Plain", {});
-  const card = mk("2:1", "Card", {}, [note, hiddenBox, plain]);
+  const pinned = mk("6:1", "Pinned", { annotations: [{ properties: [{ type: "width" }, { type: "fills" }] }] });
+  const card = mk("2:1", "Card", {}, [note, hiddenBox, plain, pinned]);
   const section = mk("1:5", "Sec", { type: "SECTION" }, [card]);
-  const page = mk("0:1", "Page", { type: "PAGE" }, [section]);
+  const deep = mk("8:1", "D", { annotations: [{ label: "D", labelMarkdown: "D" }] });
+  const innerCard = mk("7:1", "Inner card", {}, [deep]);
+  const outer = mk("1:6", "Outer", { type: "SECTION" }, [mk("1:7", "Inner", { type: "SECTION" }, [innerCard])]);
+  const page = mk("0:1", "Page", { type: "PAGE" }, [section, outer]);
   figma.currentPage = page; page.selection = [];
   const r = await h.annotations();
-  check("annotations: only annotated layers", r.map((x) => x.node), ["3:1", "4:1"]);
-  check("annotations: label strings", r[0].labels, ["A", "B"]);
-  check("annotations: visible through a hidden parent", r.map((x) => x.visible), [true, false]);
-  check("annotations: frame inside a section", r.map((x) => x.frame), ["Card", "Card"]);
+  check("annotations: only annotated layers, the page by default", r.map((x) => x.node),
+        ["3:1", "4:1", "6:1", "8:1"]);
+  check("annotations: the plain labels", r[0].labels, ["A", "B text"]);
+  check("annotations: visible through a hidden parent", r.map((x) => x.visible), [true, false, true, true]);
+  check("annotations: the frame inside sections, nested ones too", r.map((x) => x.frame),
+        ["Card", "Card", "Card", "Inner card"]);
+  check("annotations: pinned properties, and no label for them", [r[2].labels, r[2].properties],
+        [[], ["width", "fills"]]);
+  check("annotations: no properties field without pinned ones", "properties" in r[0], false);
   check("annotations: scoped to a node", (await h.annotations(hiddenBox)).map((x) => x.node), ["4:1"]);
+  page.selection = [innerCard, card, note];  // the note is inside the card: listed once
+  check("annotations: every selected layer, each annotation once",
+        (await h.annotations()).map((x) => x.node), ["8:1", "3:1", "4:1", "6:1"]);
+  check("annotations: \"sel\" is the selection too", (await h.annotations("sel")).length, 4);
+  page.selection = [];
+  let why = null;
+  try { await h.annotations("sel"); } catch (e) { why = e.message; }
+  check("annotations: \"sel\" with nothing selected", why, "nothing selected in Figma");
+  // A long walk breathes and asks the script's h.ck() whether to stop.
+  const now = Date.now;
+  let clock = now();
+  Date.now = () => (clock += 100);
+  why = null;
+  try {
+    await h.annotations.call({ ck() { throw new Error("stopped"); } }, page);
+  } catch (e) { why = e.message; }
+  Date.now = now;
+  check("annotations: stops when h.ck() says so", why, "stopped");
   console.log(failed ? `\n${failed} FAILED` : "\nall helper checks passed");
   process.exit(failed ? 1 : 0);
 })();

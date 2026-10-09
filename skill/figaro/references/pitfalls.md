@@ -132,14 +132,19 @@ order. If you write it by hand:
 
 ## Annotations
 
-- **`node.annotations` returns a new array on every read**, so `array.includes(item)` with an item from an
-  earlier read never matches. Compare by label text, and read it once into a variable inside the script.
-- **An item comes back with both `label` and `labelMarkdown`.** When you write it back, pass one of them
-  (`{label}`), not the object you read.
-- **A layer inside an instance may refuse an annotation** (Figma refused a second one on an Input instance).
-  Put it on the nearest ancestor that accepts it.
-- **An annotation on a hidden layer, or inside a hidden parent, doesn't show in Dev Mode.** Check the
-  `visible` chain up to the frame; `h.annotations` reports it for you.
+- **`node.annotations` is a new array on every read**, with new items: `includes(item)` with an item from an
+  earlier read never matches. Compare by label text, and read the array once into a variable.
+- **`Only one of label or labelMarkdown should be given`** — an item read back has both, even one written as
+  `{label}`, so what you read can't be written back as it is. That is why `[...node.annotations, {label}]`
+  fails on a layer that already has an annotation, inside an instance or not. Drop `label` and keep the rest
+  (`labelMarkdown`, `properties`, `categoryId`):
+  `node.annotations = node.annotations.map(({label, ...rest}) => rest).concat([{label: "New"}])`.
+- **`Setting an annotation with no content is invalid`** — an annotation needs a label or pinned
+  `properties`. To remove them all: `node.annotations = []`.
+- **Groups, sections and boolean layers have no annotations**: writing them there does nothing, and no error
+  says so. `"annotations" in node` tells; put the note on a frame, a shape, a text or an instance.
+- **An annotation on a hidden layer, or inside a hidden parent, doesn't show in Dev Mode.** `h.annotations`
+  says `visible: false` for it.
 
 ## Undo
 

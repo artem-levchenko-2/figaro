@@ -273,6 +273,7 @@ function check(label, actual, expected) {
       'print("n.name = 1"); // n.visible = false\n/* n.remove() */ return 1;',
       "const [a, b] = [1, 2]; let x = 0; x += a; return x + b;",
       'const n = await h.node("1:1"); const data = await h.inspect(n); return [h.link(n), h.sel(), data];',
+      'const notes = await h.annotations("page"); return notes.filter((r) => !r.visible);',
       "return figma.currentPage.children.map((n) => n.name.replace(/\"/g, \"'\"));",
       "const half = figma.root.children.length / 2; const n = 10 / half; return n;",
       "const { width: w, height: h } = figma.currentPage.children[0]; return [{ w, h }];",
@@ -599,6 +600,25 @@ function check(label, actual, expected) {
     await env.figma.ui.onmessage({ type: "reload", id: "r2", code: "throw new Error('broken')", html: "" });
     const err = env.posted.find((m) => m.id === "r2");
     check("a broken reload says so", err && err.text, "reload: broken");
+  }
+
+  // ─── a helper's long walk ───────────────────────────────────────────────
+  {
+    const env = load();
+    const r = await exec(env, "return await h.annotations();");
+    check("h.annotations reads the page by default", [r.type, r.value], ["result", []]);
+    // Every clock reading jumps 100 ms: the walk stops to breathe at once, and
+    // the script's own h.ck() finds the deadline gone.
+    const now = Date.now;
+    let clock = now();
+    Date.now = () => (clock += 100);
+    let late;
+    try {
+      late = await exec(env, "return await h.annotations();", { timeout: 0.15 });
+    } finally {
+      Date.now = now;
+    }
+    check("…and stops when the script's time is up", [late.type, /^aborted:/.test(late.text)], ["error", true]);
   }
 
   await sleep(50);

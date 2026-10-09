@@ -228,6 +228,9 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   layers took back someone else's step: the answer asks for Cmd+Shift+Z.
 - **`documentchange` doesn't see variables:** `-R` can't roll their changes back, and `undo` refuses after a
   script that may have changed them.
+- **`documentchange` does report annotations**, as a `PROPERTY_CHANGE` with `annotations` in `properties`,
+  though the Plugin API typings don't list that property: `-R` and `undo` work for them (checked live). Groups,
+  sections and boolean layers have no `annotations`, and a script's write there does nothing, silently.
 - **Deleting a component or a component set isn't reported** in `documentchange`: it is missing from the
   report, `-R` can't roll it back, and `undo` refuses after a script that only deleted components
   (`.remove()` is in `VARIABLE_WRITES`).

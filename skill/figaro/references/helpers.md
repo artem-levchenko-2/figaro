@@ -31,7 +31,7 @@ A `figaro exec` script runs as the body of an async function with the parameters
 | `h.sel()` | the selection: `[{id, name, type, w, h, chars, url}]` |
 | `h.find(root, {name, nameHas, type, text, textHas, hidden})` | a fast search; returns **records** `{id, name, type, w, h, chars}`, not nodes — get the node with `h.node(r.id)`. Skips layers hidden in instances unless `hidden: true` |
 | `h.findByName(root, name)` · `h.findAllByName(root, name)` | the node, or the nodes, with this exact name |
-| `await h.annotations(scope)` | the Dev Mode annotations under a node, link or id (default: the selection, else the page): `[{frame, node, name, visible, labels}]`, one per annotated layer; `visible` is false when the layer or a parent is hidden |
+| `await h.annotations(scope)` | the Dev Mode annotations under a node, link or id; by default, or with `"sel"`, under every selected layer, else the page: `[{frame, node, name, visible, labels, properties?}]`, one per annotated layer. `labels` are the texts, `properties` the pinned ones (`width`, `fills`…); `visible` is false when the layer or a parent is hidden, and Dev Mode doesn't show it |
 | `h.dumpTree(node, {maxDepth, showSize, showText, showLayout})` | the tree as text, like `figaro tree` |
 | `h.link(nodeOrId)` | a link to the layer, for a report |
 

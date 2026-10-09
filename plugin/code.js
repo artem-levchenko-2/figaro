@@ -7,7 +7,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-09.8";
+const PLUGIN_VERSION = "2026-10-09.9";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -593,7 +593,7 @@ const VARIABLE_WRITES = /\b(setValueForMode|createVariable|createVariableCollect
 // Read wrong one way, a script keeps the rollback; the other way, a change it
 // did make stays, reported — so whatever is unclear counts as a write.
 const FIGMA_READS = /^(?:get\w*|load\w*|listAvailableFontsAsync|notify|on|once|off|base64Encode|base64Decode|setCurrentPageAsync|saveVersionHistoryAsync|commitUndo)$/;
-const HELPER_READS = /^(?:node|resolve|sel|find|findByName|findAllByName|dumpTree|link|inspect|shot|hex|solid|fonts|withFonts|fa|variantsOf|var_|ck|aborted)$/;
+const HELPER_READS = /^(?:node|resolve|sel|find|findByName|findAllByName|dumpTree|link|inspect|shot|hex|solid|fonts|withFonts|fa|variantsOf|var_|annotations|ck|aborted)$/;
 // Methods that change the file, called or bound on anything; a call by a
 // computed name; code that runs code.
 const WRITE_CALLS = /\.\s*(?:set(?!CurrentPageAsync\b|Timeout\b|Interval\b)[A-Z]\w*|create[A-Z]\w*|import\w*Async|(?:add|edit|delete|remove|reset|clear)[A-Z]\w*|remove|appendChild|insertChild|resize|resizeWithoutConstraints|rescale|clone|detachInstance|swapComponent|outlineStroke|insertCharacters|(?:lock|unlock)AspectRatio|group|ungroup|flatten|union|subtract|intersect|exclude|combineAsVariants|moveLocal\w*|triggerUndo|renameMode)\s*(?:\(|\.\s*(?:call|apply|bind)\b)|\]\s*\(|\b(?:eval|Function|import)\s*\(|(?:^|[;{}\n])\s*with\s*\(|\bReflect\s*\.|\bObject\s*\.\s*(?:defineProperty|defineProperties|setPrototypeOf)\b/;
@@ -2139,38 +2139,58 @@ Object.assign(HELPERS, {
     }
   },
 
-  // Dev Mode annotations under a node, link, id, "page" or "sel" (default: the
-  // selection, else the page): [{frame, node, name, visible, labels}] for each layer
-  // that has any. `frame` is the top-level frame holding it (inside a section, the
-  // frame in the section); `visible` is false when the layer or any parent is hidden,
-  // as Dev Mode shows nothing for those. `node` is the id.
+  // Dev Mode annotations under a node, link, id or "page"; by default, or with
+  // "sel", under every selected layer, else the page. One record per annotated
+  // layer: {frame, node, name, visible, labels, properties?}. `frame` is the
+  // top-level frame holding it (inside sections, the frame in them); `visible` is
+  // false when the layer or any parent is hidden, as Dev Mode shows nothing for
+  // those; `labels` are the texts, `properties` the pinned ones ("width"...).
   async annotations(scope) {
-    const page = figma.currentPage;
-    const sel = page.selection;
-    const root = scope == null
-      ? (sel.length ? sel[0] : page)
-      : typeof scope === "string" ? await HELPERS.resolve(scope) : scope;
+    const sel = figma.currentPage.selection;
+    let roots;
+    if (scope == null || scope === "sel") {
+      if (scope === "sel" && !sel.length) throw new Error("nothing selected in Figma");
+      roots = sel.length ? sel.slice().reverse() : [figma.currentPage];
+    } else {
+      roots = [typeof scope === "string" ? await HELPERS.resolve(scope) : scope];
+    }
+    // The script's own h: a long walk stops at the deadline or on Stop.
+    const ck = this && typeof this.ck === "function" ? this.ck : null;
     const out = [];
-    const stack = [root];
-    let seen = 0;
+    const listed = new Set();  // a selected layer and its parent, both selected
+    const stack = roots;
+    let breath = Date.now();
     while (stack.length) {
       const n = stack.pop();
-      // A big page takes long to walk: let the plugin breathe now and then.
-      if (++seen % 300 === 0) await wait(0);
-      // node.annotations is a new array on every read: read it once.
+      // A big page takes a while to walk: let the plugin take messages now and then.
+      if (Date.now() - breath > 50) {
+        await wait(0);
+        if (ck) ck();
+        breath = Date.now();
+      }
+      // Each read of annotations or children builds a new array: read them once.
       const notes = n.annotations;
-      if (notes && notes.length) {
+      if (notes && notes.length && !listed.has(n.id)) {
+        listed.add(n.id);
         const chain = [];
         for (let p = n; p && p.type !== "PAGE"; p = p.parent) chain.push(p);
-        const top = chain.length > 1 && chain[chain.length - 1].type === "SECTION"
-          ? chain[chain.length - 2] : chain[chain.length - 1];
-        out.push({
-          frame: top.name, node: n.id, name: n.name,
-          visible: chain.every((p) => p.visible !== false),
-          labels: notes.map((a) => a.label != null ? a.label : a.labelMarkdown),
-        });
+        let top = chain.length - 1;
+        while (top > 0 && chain[top].type === "SECTION") top--;
+        const rec = {
+          frame: chain[top].name, node: n.id, name: n.name,
+          visible: chain.every((p) => p.visible !== false), labels: [],
+        };
+        const pinned = [];
+        for (const a of notes) {
+          const text = a.label || a.labelMarkdown;
+          if (text) rec.labels.push(text);
+          if (a.properties) for (const prop of a.properties) pinned.push(prop.type);
+        }
+        if (pinned.length) rec.properties = pinned;
+        out.push(rec);
       }
-      if (n.children) for (let i = n.children.length - 1; i >= 0; i--) stack.push(n.children[i]);
+      const kids = n.children;
+      if (kids) for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
     }
     return out;
   },
