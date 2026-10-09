@@ -167,6 +167,18 @@ def test_a_restart_overwrites_the_file_and_fixes_a_loose_mode(tmp_path):
         p.wait(10)
 
 
+def test_a_bridge_that_cannot_save_the_token_says_where_and_exits(tmp_path):
+    blocker = tmp_path / "a-file"
+    blocker.write_text("")
+    f = blocker / "token"  # its folder is a file: neither the folder nor the token can be made
+    env = dict(os.environ, FIGARO_TOKEN_FILE=str(f), FIGARO_NO_UPDATE_CHECK="1")
+    p = subprocess.run([sys.executable, str(ROOT / "bridge.py"), "--port", str(free_port())],
+                       env=env, capture_output=True, text=True, encoding="utf-8", timeout=60)
+    assert p.returncode == 1
+    assert str(f) in p.stderr and "FIGARO_TOKEN_FILE" in p.stderr
+    assert "Traceback" not in p.stderr
+
+
 def test_two_ports_get_two_files_by_default(monkeypatch, tmp_path):
     monkeypatch.delenv("FIGARO_TOKEN_FILE")
     monkeypatch.setattr(Path, "home", lambda: tmp_path)

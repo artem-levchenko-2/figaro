@@ -1156,6 +1156,10 @@ def build_app() -> web.Application:
     return app
 
 
+class TokenNotSaved(Exception):
+    """The token file can't be written: main() says where and exits."""
+
+
 def _write_token(_text=""):
     """Save TOKEN for the CLI. web.run_app calls this once the port is bound.
 
@@ -1164,12 +1168,15 @@ def _write_token(_text=""):
     has modes; on Windows the file sits in the user's own profile.
     """
     path = figaro_token.token_path(PORT)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(TOKEN)
-    if os.name != "nt":
-        os.chmod(path, 0o600)  # a file that was there before keeps its old mode
+    try:
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            if os.name != "nt":
+                os.fchmod(fd, 0o600)  # a file that was there keeps its mode: fix it before writing
+            f.write(TOKEN)
+    except OSError as e:
+        raise TokenNotSaved(f"{path}: {e.strerror or e}") from None
 
 
 def main():
@@ -1225,7 +1232,12 @@ def main():
     if not os.environ.get("FIGARO_NO_UPDATE_CHECK"):
         app.on_startup.append(_start_update_checks)
         app.on_cleanup.append(_stop_update_checks)
-    web.run_app(app, host=hosts, port=args.port, print=_write_token, loop=loop)
+    try:
+        web.run_app(app, host=hosts, port=args.port, print=_write_token, loop=loop)
+    except TokenNotSaved as e:
+        # Without the file no command could use this bridge: better not to hold the port.
+        sys.exit(f"[bridge] can't save the token to {e}. Set FIGARO_TOKEN_FILE to a file "
+                 "you can write, for the bridge and the figaro command both, and start it again")
 
 
 def _bind_hosts(host, port):
