@@ -2,10 +2,12 @@
 
 `update-now` (Update, when a newer release is out) and `reload-all`
 (Reload, when this folder has newer code than what runs) come from any window.
-Both wait until no file runs a script. Then an update pulls the release:
-`git pull --ff-only` in the Figaro folder, and pip when requirements.txt
-changed. Then every plugin that runs older code gets the code on disk, and a
-bridge older than its files restarts in place.
+Both wait until no file runs a script. Then an update moves the Figaro folder
+to the release and nothing after it: `git fetch --tags`, then
+`git merge --ff-only vX.Y.Z`, and pip when requirements.txt changed. Then every
+plugin that runs older code gets the code on disk, and a bridge older than its
+files restarts in place. With FIGARO_UPDATE_BUTTON=off, or with no newer release
+known, the bridge refuses an update and pulls nothing.
 
 Every window shows the step. A script sent during the pull or the restart is
 refused with a 503: nothing was run, so running it again is safe. When the pull
@@ -52,9 +54,18 @@ def board():
 
 
 def start(pull):
-    """Begin an update (pull=True) or a reload, unless one is under way."""
+    """Begin an update (pull=True) or a reload, unless one is under way or the
+    update is refused; the windows say why."""
     global _task
     if STATE["step"]:
+        return False
+    if pull and not bridge.update_allowed():
+        _fail("update", "turned off", None,
+              "this bridge runs with FIGARO_UPDATE_BUTTON=off: update Figaro by hand")
+        return False
+    if pull and not bridge.UPDATE:
+        _fail("update", "no new release", None,
+              "the bridge knows of no release newer than this one: nothing was pulled")
         return False
     _task = asyncio.get_running_loop().create_task(run(pull))
     return True
@@ -107,7 +118,7 @@ async def run(pull):
             await asyncio.sleep(0.25)
         if pull:
             _set("pull", what, to)
-            failed = await pull_release()
+            failed = await pull_release(to)
             if failed:
                 return _fail(what, *failed[:1], to, *failed[1:])
         stale = [(cid, i) for cid, i in bridge._live_plugins()
@@ -115,7 +126,7 @@ async def run(pull):
         restart_bridge = bridge.bridge_outdated()
         if not stale and not restart_bridge:
             if pull:
-                return _fail(what, "nothing new", to, "git pull brought no new code")
+                return _fail(what, "nothing new", to, f"the Figaro folder already has v{to}")
             return _set(None)
         _set("restart", what, to)
         await asyncio.sleep(0.2)  # the windows show the step before they go
@@ -132,19 +143,28 @@ async def run(pull):
 
 # ─── the pull ─────────────────────────────────────────────────────────────
 
-async def pull_release(folder: Path | None = None):
-    """git pull --ff-only, then pip if the requirements changed. None when it
+async def pull_release(version, folder: Path | None = None):
+    """Move the folder to the release vX.Y.Z, never past it: the tip of main may
+    hold changes made since. Then pip if the requirements changed. None when it
     worked, else (why in two or three words, what git or pip said)."""
     folder = folder or bridge.HERE
     if not (folder / ".git").exists():
         return "not a git clone", f"{folder} has no .git: download the release by hand"
+    tag = f"v{version}"
     req = folder / "requirements.txt"
     before = _read(req)
-    code, out = await _run(["git", "-C", str(folder), "pull", "--ff-only"], 120)
+    git = ["git", "-C", str(folder)]
+    code, out = await _run(git + ["fetch", "--tags"], 120)
+    if code != 0:
+        return why_pull_failed(out), _first_line(out)
+    code, _ = await _run(git + ["rev-parse", "--verify", "--quiet", f"refs/tags/{tag}^{{commit}}"], 30)
+    if code != 0:
+        return "no such release", f"git fetch brought no tag {tag}: download the release by hand"
+    code, out = await _run(git + ["merge", "--ff-only", tag], 120)
     if code != 0:
         return why_pull_failed(out), _first_line(out)
     if out.strip():
-        print("[update] git pull: " + out.strip().splitlines()[-1], flush=True)
+        print(f"[update] git merge {tag}: " + out.strip().splitlines()[-1], flush=True)
     if _read(req) != before:
         code, out = await _run([sys.executable, "-m", "pip", "install", "-q", "-r", str(req)], 600)
         if code != 0:
@@ -156,7 +176,7 @@ async def pull_release(folder: Path | None = None):
 PULL_FAILURES = (
     (("would be overwritten", "commit your changes", "unmerged"), "local changes"),
     (("not possible to fast-forward", "diverg"), "local commits"),
-    (("no tracking information", "not currently on a branch"), "no upstream"),
+    (("no remote repository", "does not appear to be a git repository"), "no remote"),
     (("could not resolve", "unable to access", "connection"), "offline"),
 )
 
@@ -166,13 +186,13 @@ def why_pull_failed(out):
     for needles, why in PULL_FAILURES:
         if any(n in low for n in needles):
             return why
-    return "git pull failed"
+    return "git failed"
 
 
 def _first_line(out):
     lines = [ln.strip() for ln in (out or "").splitlines() if ln.strip()]
     useful = [ln for ln in lines if ln.lower().startswith(("error", "fatal"))] or lines
-    return ("git pull: " + useful[0])[:200] if useful else "git pull failed"
+    return ("git: " + useful[0])[:200] if useful else "git failed"
 
 
 def _read(path):

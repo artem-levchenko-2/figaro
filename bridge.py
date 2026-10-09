@@ -110,13 +110,14 @@ def bridge_outdated() -> bool:
 # ─── update check against GitHub releases ─────────────────────────────────
 # The checks above catch code that is older than this checkout. This one asks
 # whether a newer Figaro has been RELEASED — a `vX.Y.Z` tag on GitHub — so
-# the plugin bar can offer an Update button. Releases, not commits: a README
-# typo pushed to master is not a new version. It never blocks anything and
-# stays silent on any failure (a private repository answers 404 to it, too).
+# the plugin bar can offer an Update button, which installs that tag and
+# nothing after it (bridge_update.py). Releases, not commits: a README typo
+# pushed to main is not a new version. It never blocks anything and stays
+# silent on any failure (a private repository answers 404 to it, too).
 # Set FIGARO_NO_UPDATE_CHECK=1 to turn it off.
-# FIGARO_AUTO_UPDATE=off is different: the check still runs (figaro doctor
-# still says a release is out), but the window offers no Update button and
-# refuses the update-now message. Reload, which pulls nothing, keeps working.
+# FIGARO_UPDATE_BUTTON=off is different: the check still runs, and the window
+# says a release is out and links to it, but it has no Update button and the
+# bridge refuses update-now. Reload, which pulls nothing, keeps working.
 #
 # Releasing (see AGENTS.md → Releasing): bump VERSION here, move CHANGELOG's
 # "Unreleased" under the new version, tag vX.Y.Z and push the tag.
@@ -129,8 +130,8 @@ _SEMVER = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 
 
 def update_allowed():
-    """False when FIGARO_AUTO_UPDATE is off/0/false/no: the window must not pull code."""
-    return os.environ.get("FIGARO_AUTO_UPDATE", "").strip().lower() not in ("off", "0", "false", "no")
+    """False with FIGARO_UPDATE_BUTTON=off (or 0, false, no): the window must not pull code."""
+    return os.environ.get("FIGARO_UPDATE_BUTTON", "").strip().lower() not in ("off", "0", "false", "no")
 
 
 def parse_version(tag):
@@ -175,7 +176,8 @@ async def set_update(latest):
     UPDATE = new
     if new:
         print(f"[update] Figaro {latest} is released (this is {VERSION}) — "
-              f"git pull, restart the bridge, re-run the plugin")
+              + ("Update in the plugin's window installs it" if update_allowed()
+                 else "the Update button is off: update by hand"))
     for _, info in _live_plugins():
         await _send_update(info["ws"])
     bridge_board.changed()
@@ -1032,8 +1034,11 @@ def _version_notice(info):
                      f"{expected_plugin_version()}) — update it: figaro reload "
                      f"(or re-run it in Figma: Plugins → Development → Figaro)")
     if UPDATE:
-        parts.append(f"Figaro {UPDATE['latest']} is released (this is {VERSION}) — "
-                     f"git pull in {HERE}, then restart the bridge and run figaro reload")
+        # Not "git pull": an agent's pull lands under other agents' running scripts
+        # (with Hot reload on, Figma restarts the plugin at once). Update waits for them.
+        parts.append(f"Figaro {UPDATE['latest']} is released (this is {VERSION}) — tell the user: "
+                     + ("Update in the plugin's window installs it" if update_allowed()
+                        else "it is updated by hand here"))
     if bridge_outdated():
         # The full path — agents call figaro from other projects' folders
         parts.append("bridge.py changed since the bridge started — restart it when no other "

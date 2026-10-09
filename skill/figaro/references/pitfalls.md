@@ -18,6 +18,7 @@ Read the `hint:` in the answer first: the bridge knows most of the cases below.
 | `figma.…() did not answer before --timeout ran out — the script was stopped` | Figma never answered the call on the line it names | the file is free, but don't repeat that call. It happens with `figma.teamLibrary` and import by key — take what the file already has by id from `figaro inspect` |
 | `plugin disconnected mid-request` | the plugin restarted (Figma restarted it after a code change, or the user closed its window) | check what the script managed to do (`inspect`) and run it again; `undo` remembers nothing from before a restart |
 | `⚠ … runs an older build — figaro reload` | Figma runs old plugin code | `figaro reload -T <file>`; if that fails, ask the user to press Reload in the plugin's window or to restart the plugin |
+| `⚠ Figaro X is released (this is Y) — tell the user` | a new release is out | tell the user once, in your report. Don't update Figaro yourself unless they ask: the window's Update waits until no agent's script runs |
 | the first call is slow, "the plugin has not connected yet" | the bridge has just started, and a Figma window in the background takes up to a minute to connect | retry in a few seconds |
 | `zsh: no matches found: https://…` | a link without quotes | quote links |
 | `zsh: = not found` | the command line starts with `=` (`echo ======`) | use `echo ---` as a divider |

@@ -373,8 +373,9 @@ def quick_update(monkeypatch):
     """Update and Reload without git, pip or a real restart."""
     calls = []
 
-    async def pull(folder=None):
+    async def pull(version, folder=None):
         calls.append("pull")
+        assert version == NEWER  # the release the window offered, not the tip of main
         await asyncio.sleep(0.2)  # the windows see this step
         return None
 
@@ -441,8 +442,40 @@ def test_reload_refreshes_only_what_is_older(quick_update, monkeypatch):
     run(go())
 
 
-def test_update_now_is_refused_when_auto_update_is_off(quick_update, monkeypatch):
-    monkeypatch.setenv("FIGARO_AUTO_UPDATE", "off")
+@pytest.mark.parametrize("off", ["off", "0", "false", "No"])
+def test_update_now_is_refused_when_the_update_button_is_off(quick_update, monkeypatch, off):
+    monkeypatch.setenv("FIGARO_UPDATE_BUTTON", off)
+
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, caps=CAPS) as p:
+            await bridge.set_update(NEWER)
+            await p.ws.send_str(json.dumps({"type": "update-now"}))
+            await settle()
+            board = boards(p)[-1]
+            assert quick_update == [] and board["updating"] is None
+            assert board["update"] is None  # no offer, so no Update button
+            assert board["release"]["latest"] == NEWER  # the window links to it instead
+            assert not any(m["type"] == "update" for m in p.received)
+            assert board["failed"]["error"] == "turned off"
+        await c.close()
+    run(go())
+
+
+def test_the_update_button_is_on_unless_turned_off(monkeypatch):
+    for value in (None, "", "on", "1", "yes"):
+        if value is None:
+            monkeypatch.delenv("FIGARO_UPDATE_BUTTON", raising=False)
+        else:
+            monkeypatch.setenv("FIGARO_UPDATE_BUTTON", value)
+        assert bridge.update_allowed(), value
+        bridge.UPDATE = {"latest": NEWER, "current": bridge.VERSION, "url": bridge.release_url(NEWER)}
+        board = bridge_board.payload()
+        assert board["update"]["latest"] == NEWER and board["release"] is None
+
+
+def test_update_now_with_no_newer_release_pulls_nothing(quick_update):
+    bridge.UPDATE = None  # no check, or nothing newer: an old window's button, or anyone else
 
     async def go():
         c = await make_client()
@@ -451,16 +484,14 @@ def test_update_now_is_refused_when_auto_update_is_off(quick_update, monkeypatch
             await settle()
             board = boards(p)[-1]
             assert quick_update == [] and board["updating"] is None
-            assert board["update"] is None  # no offer, so no Update button
-            assert board["failed"]["error"] == "turned off"
+            assert board["failed"]["error"] == "no new release"
         await c.close()
     run(go())
-    bridge_update.FAILED.clear()
 
 
 def test_a_pull_that_fails_says_why_and_offers_the_release(monkeypatch):
-    async def pull(folder=None):
-        return "local changes", "git pull: error: Your local changes would be overwritten by merge"
+    async def pull(version, folder=None):
+        return "local changes", "git: error: Your local changes would be overwritten by merge"
     monkeypatch.setattr(bridge_update, "pull_release", pull)
     bridge.UPDATE = {"latest": NEWER, "current": bridge.VERSION, "url": bridge.release_url(NEWER)}
 
@@ -473,7 +504,7 @@ def test_a_pull_that_fails_says_why_and_offers_the_release(monkeypatch):
             assert board["updating"] is None
             assert board["failed"] == {
                 "what": "update", "error": "local changes", "url": bridge.release_url(NEWER),
-                "detail": "git pull: error: Your local changes would be overwritten by merge"}
+                "detail": "git: error: Your local changes would be overwritten by merge"}
         await c.close()
     run(go())
 
@@ -498,7 +529,7 @@ def _git(cwd, *args):
                     "-c", "commit.gpgsign=false", *args], cwd=str(cwd), check=True, capture_output=True)
 
 
-def test_pull_release_fast_forwards_and_refuses_local_changes(tmp_path):
+def test_pull_release_moves_to_the_release_and_never_past_it(tmp_path):
     origin, work, figaro = tmp_path / "origin.git", tmp_path / "work", tmp_path / "figaro"
     _git(tmp_path, "init", "--bare", str(origin))
     _git(tmp_path, "clone", str(origin), str(work))
@@ -507,22 +538,29 @@ def test_pull_release_fast_forwards_and_refuses_local_changes(tmp_path):
     (work / "a.txt").write_text("1\n")
     _git(work, "add", ".")
     _git(work, "commit", "-m", "1.0.0")
-    _git(work, "push", "-u", "origin", "main")
+    _git(work, "tag", "v1.0.0")
+    _git(work, "push", "-u", "origin", "main", "v1.0.0")
     _git(tmp_path, "clone", "-b", "main", str(origin), str(figaro))
 
-    def release(text):
+    def commit(text, tag=None):
         (work / "a.txt").write_text(text)
         _git(work, "commit", "-am", text)
-        _git(work, "push")
+        if tag:
+            _git(work, "tag", tag)
+        _git(work, "push", "origin", "main", *([tag] if tag else []))
 
-    release("2\n")
-    assert run(bridge_update.pull_release(figaro)) is None
-    assert (figaro / "a.txt").read_text() == "2\n"
-    release("3\n")
+    commit("2\n", "v1.0.1")
+    commit("3, not released yet\n")
+    assert run(bridge_update.pull_release("1.0.1", figaro)) is None
+    assert (figaro / "a.txt").read_text() == "2\n"  # the release, not the tip of main
+    assert run(bridge_update.pull_release("1.0.1", figaro)) is None  # once more: nothing to do
+    why, detail = run(bridge_update.pull_release("1.0.2", figaro))
+    assert why == "no such release" and "v1.0.2" in detail
+    commit("4\n", "v1.0.2")
     (figaro / "a.txt").write_text("mine\n")
-    why, detail = run(bridge_update.pull_release(figaro))
-    assert why == "local changes" and detail.startswith("git pull: error: Your local changes")
-    assert run(bridge_update.pull_release(tmp_path))[0] == "not a git clone"
+    why, detail = run(bridge_update.pull_release("1.0.2", figaro))
+    assert why == "local changes" and detail.startswith("git: error: Your local changes")
+    assert run(bridge_update.pull_release("1.0.2", tmp_path))[0] == "not a git clone"
 
 
 @pytest.mark.parametrize("out, why", [
@@ -530,9 +568,9 @@ def test_pull_release_fast_forwards_and_refuses_local_changes(tmp_path):
      "local changes"),
     ("hint: Diverging branches can't be fast-forwarded\nfatal: Not possible to fast-forward, aborting.",
      "local commits"),
-    ("There is no tracking information for the current branch.", "no upstream"),
+    ("fatal: No remote repository specified.  Please, specify either a URL or a\nremote name", "no remote"),
     ("fatal: unable to access 'https://github.com/x/y/': Could not resolve host: github.com", "offline"),
-    ("fatal: something new", "git pull failed"),
+    ("fatal: something new", "git failed"),
 ])
 def test_why_a_pull_failed(out, why):
     # few words: the window's row has room for about 30 letters

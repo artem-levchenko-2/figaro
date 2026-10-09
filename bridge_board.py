@@ -163,8 +163,14 @@ def payload():
                        for n, a in f["agents"].items()],
             "recent": f["recent"],
         })
+    # A newer release goes as `update` (the window's Update button) or, with the
+    # button off, as `release` (a link to it): a window too old to know `release`
+    # shows nothing.
+    button = bridge.update_allowed()
     board = {"type": "board", "now": time.time(), "active_for": ACTIVE_FOR,
-             "version": bridge.VERSION, "files": files, "update": bridge.UPDATE if bridge.update_allowed() else None,
+             "version": bridge.VERSION, "files": files,
+             "update": bridge.UPDATE if button else None,
+             "release": None if button else bridge.UPDATE,
              "stale": _bridge_stale()}
     board.update(bridge_update.board())
     return board
@@ -347,11 +353,7 @@ async def handle(conn_id, m):
         if doc:
             stop(doc, agent.strip()[:40] or None if isinstance(agent, str) else None)
     elif mtype == "update-now":
-        if bridge.update_allowed():
-            bridge_update.start(pull=True)
-        else:
-            bridge_update._fail("update", "turned off", None,
-                                "this bridge runs with FIGARO_AUTO_UPDATE=off: pull the release by hand")
+        bridge_update.start(pull=True)
     elif mtype == "reload-all":
         bridge_update.start(pull=False)
     else:

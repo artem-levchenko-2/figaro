@@ -335,6 +335,26 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("Reload asks the bridge", env.sent("reload-all").length, 1);
   }
 
+  // ─── a bridge with the Update button off ────────────────────────────────
+  {
+    const env = load();
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    const files = [file("KEY1", "Dashboard")];
+    env.board(files, { release: { latest: "1.2.0", current: "1.1.0", url: RELEASE } });
+    await env.clock.advance(400);
+    check("a new release: the last line links to it, with no Update",
+          [/<span class="what"><button[^>]*class="out"[^>]*data-act="release"[^>]*><span>1\.2\.0 is out<\/span>/.test(env.html()),
+           /data-act="update"/.test(env.html())], [true, false]);
+    env.click("release", null, { url: RELEASE });
+    check("…which opens in the browser and asks nothing of the bridge",
+          [env.posted.filter((m) => m.type === "open-url").map((m) => m.url), env.sent("update-now").length], [[RELEASE], 0]);
+    env.ws().receive({ type: "outdated", running: "2026-10-08.6", expected: "2026-10-08.7" });
+    env.board(files, { release: { latest: "1.2.0", url: RELEASE } });
+    await env.clock.advance(400);
+    check("newer plugin code on disk comes first: Reload", [/data-act="reload"/.test(env.html()), /is out/.test(env.html())], [true, false]);
+  }
+
   // ─── an older bridge, without boards ────────────────────────────────────
   {
     const env = load();

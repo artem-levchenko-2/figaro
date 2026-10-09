@@ -242,6 +242,20 @@ def test_outdated_plugin_is_told_to_rerun():
     run(go())
 
 
+def test_with_the_update_button_off_agents_hear_it_is_updated_by_hand(monkeypatch):
+    monkeypatch.setenv("FIGARO_UPDATE_BUTTON", "off")
+
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c):
+            await bridge.set_update("99.0.0")
+            r = await c.post("/exec", json={"code": "return 1"})
+            notice = (await r.json())["notice"]
+            assert "tell the user" in notice and "updated by hand" in notice
+        await c.close()
+    run(go())
+
+
 def test_new_release_is_offered_to_plugins():
     """When a newer vX.Y.Z is released, connected plugins get an `update`
     message (the window offers "Update to X.Y.Z"),
@@ -264,7 +278,10 @@ def test_new_release_is_offered_to_plugins():
             status = await (await c.get("/status")).json()
             assert status["update"]["latest"] == newer and status["version"] == bridge.VERSION
             r = await c.post("/exec", json={"code": "return 1"})
-            assert "git pull" in (await r.json())["notice"]
+            notice = (await r.json())["notice"]
+            # the agent tells the user rather than pulling under other agents' scripts
+            assert "tell the user" in notice and "Update in the plugin's window" in notice
+            assert "git pull" not in notice
 
             for not_newer in (bridge.VERSION, "0.9.0"):
                 await bridge.set_update(not_newer)

@@ -104,9 +104,10 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   first script until five quiet minutes or `figaro done`, its note, a failed last script, the user's Stop —
   and recent changes; a read leaves a done or a Stop on show, and `figaro doctor`'s checks (`probe`) stay
   off it), its buttons (Stop for one agent, Update, Reload) and `POST /done`.
-- `bridge_update.py` — the window's Update and Reload: waits until no file runs a script,
-  `git pull --ff-only`, reloads the plugins that run older code, restarts the bridge (`os.execv`; on Windows
-  `start-bridge.ps1 -Restart`). Scripts sent meanwhile get a 503 and run nothing.
+- `bridge_update.py` — the window's Update and Reload: waits until no file runs a script, moves the folder
+  to the release and never past it (`git fetch --tags`, `git merge --ff-only vX.Y.Z`), reloads the plugins
+  that run older code, restarts the bridge (`os.execv`; on Windows `start-bridge.ps1 -Restart`). Scripts sent
+  meanwhile get a 503 and run nothing. It refuses an update with the button off or no newer release known.
 - `bridge_exec.py` — the bridge's side of exec: the fields it sends (`readOnly`, `checkpoint`, `quick`,
   `libs` — a library's code goes once, then its hash), when checkpoints are due, links as targets,
   `POST /undo`, `POST /reload`.
@@ -180,10 +181,11 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
    ```
 
 Every six hours a running bridge reads this repository's `vX.Y.Z` tags from GitHub (`REPO` in `bridge.py`)
-and, when there is a newer one, the plugin's window offers **Update to X.Y.Z** on its last line: it pulls the
-release and restarts the bridge and the plugins (`bridge_update.py`). A private repository answers 404, and
-the check stays silent. `FIGARO_NO_UPDATE_CHECK=1` skips the check; `FIGARO_AUTO_UPDATE=off` keeps it but
-hides Update and makes the bridge refuse `update-now` (`bridge.update_allowed()`).
+and, when there is a newer one, the plugin's window offers **Update to X.Y.Z** on its last line: it installs
+that tag, not the tip of `main`, and restarts the bridge and the plugins (`bridge_update.py`), so a published
+tag must never move. A private repository answers 404, and the check stays silent. `FIGARO_NO_UPDATE_CHECK=1`
+skips the check; `FIGARO_UPDATE_BUTTON=off` keeps it, and the window only links to the new release: the board
+sends it as `release` instead of `update`, and the bridge refuses `update-now` (`bridge.update_allowed()`).
 
 ## Figma facts that cost time
 

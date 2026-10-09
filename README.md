@@ -153,8 +153,9 @@ overwrites a file it didn't make.
 Run `git pull` in Figaro's folder, or ask your agent to update Figaro. Then
 `figaro doctor` says what to restart. If `plugin/manifest.json` changed, import
 the plugin again (step 2). When a new release is out, the plugin's window says
-so at the bottom, next to the version: **Update** pulls it, restarts the bridge
-and reloads the plugin as soon as no script is running.
+so at the bottom, next to the version: **Update** installs exactly that
+release, restarts the bridge and reloads the plugin as soon as no script is
+running.
 
 To remove Figaro, run the installer with `--uninstall` (`-Uninstall` on
 Windows), remove the plugin under **Plugins → Development → Manage plugins in
@@ -383,7 +384,7 @@ Everything works without settings. When you need them:
 | `FIGARO_PLUGIN_WAIT` | `6` | Seconds the command waits for the plugin after starting the bridge |
 | `FIGARO_STATE_DIR` | `~/.cache/figaro` | Where the time of each file's last checkpoint is kept |
 | `FIGARO_NO_UPDATE_CHECK` | — | `1` stops the bridge from checking GitHub for a new release |
-| `FIGARO_AUTO_UPDATE` | `on` | `off` (or `0`, `false`, `no`) keeps the plugin's window from updating Figaro: no Update button, and the bridge refuses it. The check still runs and `figaro doctor` still names the new release; Reload, which pulls nothing, keeps working |
+| `FIGARO_UPDATE_BUTTON` | `on` | `off` takes the Update button out of the plugin's window: it only says that a new release is out and links to it, and the bridge refuses to update. You update by hand |
 
 The plugin talks to port 8788 only, as its manifest allows nothing else, so
 keep the bridge there.
@@ -526,8 +527,9 @@ scripts and the pictures it takes stay on your computer and in Figma.
 - Figaro makes one request on its own: every six hours the bridge reads this
   repository's release tags on GitHub, so the plugin's window can tell you about a
   new version. It sends nothing about you or your files, and
-  `FIGARO_NO_UPDATE_CHECK=1` turns it off.
-  `FIGARO_AUTO_UPDATE=off` keeps the check but removes the window's Update button.
+  `FIGARO_NO_UPDATE_CHECK=1` turns it off. Figaro never updates itself: its
+  code changes when you press **Update** or pull it yourself, and
+  `FIGARO_UPDATE_BUTTON=off` takes that button away.
 
 ---
 

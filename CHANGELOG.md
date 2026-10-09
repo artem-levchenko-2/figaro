@@ -10,8 +10,9 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ### Added
 
-- `FIGARO_AUTO_UPDATE=off` keeps the plugin's window from updating Figaro: no Update button, and the bridge
-  refuses the request. The release check and Reload are unchanged.
+- `FIGARO_UPDATE_BUTTON=off` takes the Update button out of the plugin's window (#2): the window only says
+  that a new release is out and links to it, and the bridge refuses to update. The release check,
+  `figaro doctor` and Reload work as before.
 
 ### Changed
 
@@ -22,6 +23,11 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
   code in your Figma file. `figaro` sends it by itself; a third-party client reads the file and sends the
   header (`curl -H "X-Figaro-Token: $(cat ~/.figaro/token-8788)" ...`). `GET /status`, `/targets` and `/`, and
   the plugin's socket, stay open; `figaro doctor` says when the token is missing or refused.
+- **Update installs exactly the release it names.** It used to `git pull` the tip of `main`, which could hold
+  changes made after the release; now it fetches the tags and moves the Figaro folder to that release, never
+  past it. The bridge updates only to a release it knows is newer, and refuses otherwise.
+- The note about a new release in command answers asks the agent to tell the user, instead of pulling: an
+  agent's pull lands under other agents' scripts, while Update waits until none runs.
 
 ## [1.1.2] — 2026-10-09
 
