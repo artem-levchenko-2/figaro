@@ -154,7 +154,9 @@ async def pull_release(version, folder: Path | None = None):
     req = folder / "requirements.txt"
     before = _read(req)
     git = ["git", "-C", str(folder)]
-    code, out = await _run(git + ["fetch", "--tags"], 120)
+    # --force: without it the whole fetch fails when any local tag differs from
+    # GitHub's, as in a clone older than a tag that was moved there (v1.1.0 was).
+    code, out = await _run(git + ["fetch", "--tags", "--force"], 120)
     if code != 0:
         return why_pull_failed(out), _first_line(out)
     code, _ = await _run(git + ["rev-parse", "--verify", "--quiet", f"refs/tags/{tag}^{{commit}}"], 30)

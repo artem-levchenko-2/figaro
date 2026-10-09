@@ -563,6 +563,34 @@ def test_pull_release_moves_to_the_release_and_never_past_it(tmp_path):
     assert run(bridge_update.pull_release("1.0.2", tmp_path))[0] == "not a git clone"
 
 
+def test_pull_release_gets_past_an_old_tag_moved_on_github(tmp_path):
+    # v1.1.0 was moved once on GitHub. A clone made before that keeps the old one,
+    # and a plain `git fetch --tags` then fails as a whole, though the new tag came.
+    origin, work, figaro = tmp_path / "origin.git", tmp_path / "work", tmp_path / "figaro"
+    _git(tmp_path, "init", "--bare", str(origin))
+    _git(tmp_path, "clone", str(origin), str(work))
+    _git(work, "symbolic-ref", "HEAD", "refs/heads/main")
+    (work / "a.txt").write_text("1\n")
+    _git(work, "add", ".")
+    _git(work, "commit", "-m", "1")
+    _git(work, "tag", "v1.0.0")
+    _git(work, "push", "-u", "origin", "main", "v1.0.0")
+    _git(tmp_path, "clone", "-b", "main", str(origin), str(figaro))
+    (work / "a.txt").write_text("2\n")
+    _git(work, "commit", "-am", "2")
+    _git(work, "tag", "-f", "v1.0.0")
+    _git(work, "push", "-f", "origin", "main", "v1.0.0")
+    (work / "a.txt").write_text("3\n")
+    _git(work, "commit", "-am", "3")
+    _git(work, "tag", "v1.1.0")
+    _git(work, "push", "origin", "main", "v1.1.0")
+
+    assert run(bridge_update.pull_release("1.1.0", figaro)) is None
+    assert (figaro / "a.txt").read_text() == "3\n"
+    why, detail = run(bridge_update.pull_release("1.2.0", figaro))
+    assert why == "no such release" and "v1.2.0" in detail
+
+
 @pytest.mark.parametrize("out, why", [
     ("Updating 1..2\nerror: Your local changes to the following files would be overwritten by merge:",
      "local changes"),
