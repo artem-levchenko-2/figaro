@@ -69,6 +69,7 @@ Free and open source, on macOS, Windows and Linux.
 - 🧰&nbsp; [What it can do](#what-it-can-do)
 - 🛟&nbsp; [Safety net](#safety-net)
 - ⚙️&nbsp; [How it works](#how-it-works)
+- 🎛️&nbsp; [Settings](#settings)
 - 🩺&nbsp; [If something is off](#if-something-is-off)
 - 🔒&nbsp; [Privacy](#privacy)
 - 🛠️&nbsp; [Development](#development)
@@ -155,7 +156,8 @@ Run `git pull` in Figaro's folder, or ask your agent to update Figaro. Then
 the plugin again (step 2). When a new release is out, the plugin's window says
 so at the bottom, next to the version: **Update** installs exactly that
 release, restarts the bridge and reloads the plugin as soon as no script is
-running.
+running. With `FIGARO_UPDATE_BUTTON=off` there is only a link to the release
+([Settings](#settings)).
 
 To remove Figaro, run the installer with `--uninstall` (`-Uninstall` on
 Windows), remove the plugin under **Plugins → Development → Manage plugins in
@@ -367,30 +369,6 @@ JS
 
 </details>
 
-<details>
-<summary>⚙️ <b>Settings</b></summary>
-
-<br>
-
-Everything works without settings. When you need them:
-
-| Variable | Default | What it does |
-| :-- | :-- | :-- |
-| `FIGARO_AGENT` | — | The caller's name in the plugin's window and the file's queue, the same as `-A` |
-| `FIGARO_AUTOSTART` | `1` | `0` keeps the command from starting the bridge |
-| `FIGARO_IDLE_EXIT` | `3h` | How long the bridge waits with no plugin and no requests before it exits |
-| `FIGARO_LIB` | — | `--lib` files for every `exec`, separated by `:` |
-| `FIGARO_SHOTS` | `/tmp/figaro/shots`, on Windows `%TEMP%\figaro\shots` | Where `shot` saves pictures |
-| `FIGARO_PLUGIN_WAIT` | `6` | Seconds the command waits for the plugin after starting the bridge |
-| `FIGARO_STATE_DIR` | `~/.cache/figaro` | Where the time of each file's last checkpoint is kept |
-| `FIGARO_NO_UPDATE_CHECK` | — | `1` stops the bridge from checking GitHub for a new release |
-| `FIGARO_UPDATE_BUTTON` | `on` | `off` takes the Update button out of the plugin's window: it only says that a new release is out and links to it, and the bridge refuses to update. You update by hand |
-
-The plugin talks to port 8788 only, as its manifest allows nothing else, so
-keep the bridge there.
-
-</details>
-
 ---
 
 ## Safety net
@@ -474,6 +452,40 @@ button when a new one is out.
   JavaScript and HTML, in `plugin/`.
 
 </details>
+
+---
+
+## Settings
+
+Everything works without settings. They are environment variables: put them in
+your shell's profile, such as `export FIGARO_UPDATE_BUTTON=off` in `~/.zshrc`
+or `~/.bashrc`, or on Windows run `setx FIGARO_UPDATE_BUTTON off`. Then every
+terminal you open, and every agent in it, sees them.
+
+**The bridge** reads these when it starts. After a change, restart it while no
+agent is at work: `bash start-bridge.sh` in Figaro's folder, or
+`.\start-bridge.ps1 -Restart` on Windows. The plugins reconnect by themselves.
+
+| Variable | Default | What it does |
+| :-- | :-- | :-- |
+| `FIGARO_UPDATE_BUTTON` | `on` | `off` takes the Update button out of the plugin's window: it only says that a new release is out and links to it, and the bridge refuses to update. You update by hand |
+| `FIGARO_NO_UPDATE_CHECK` | — | `1` stops the bridge from checking GitHub for a new release |
+| `FIGARO_TOKEN_FILE` | `~/.figaro/token-8788` | Where the bridge saves [its token](#privacy) and the command reads it: give both the same file |
+| `FIGARO_IDLE_EXIT` | `3h` | How long the bridge waits with no plugin and no requests before it exits: seconds, `30m` or `3h`; `0` keeps it running |
+| `FIGARO_STATE_DIR` | `~/.cache/figaro` | Where the time of each file's last checkpoint is kept |
+
+**The command** reads these on every call:
+
+| Variable | Default | What it does |
+| :-- | :-- | :-- |
+| `FIGARO_AGENT` | — | The caller's name in the plugin's window and the file's queue, the same as `-A` |
+| `FIGARO_LIB` | — | `--lib` files for every `exec`, separated by `:` (`;` on Windows) |
+| `FIGARO_SHOTS` | `/tmp/figaro/shots`, on Windows `%TEMP%\figaro\shots` | Where `shot` saves pictures |
+| `FIGARO_AUTOSTART` | `1` | `0` keeps the command from starting the bridge |
+| `FIGARO_PLUGIN_WAIT` | `6` | Seconds the command waits for the plugin after starting the bridge |
+
+The plugin talks to port 8788 only, as its manifest allows nothing else, so
+keep the bridge there.
 
 ---
 
