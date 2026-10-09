@@ -252,6 +252,10 @@ def test_with_the_update_button_off_agents_hear_it_is_updated_by_hand(monkeypatc
             r = await c.post("/exec", json={"code": "return 1"})
             notice = (await r.json())["notice"]
             assert "tell the user" in notice and "updated by hand" in notice
+            # figaro doctor says the same: it learns of the button from /status
+            assert (await (await c.get("/status")).json())["update_button"] is False
+        monkeypatch.delenv("FIGARO_UPDATE_BUTTON")
+        assert (await (await c.get("/status")).json())["update_button"] is True
         await c.close()
     run(go())
 

@@ -33,8 +33,8 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 - **Update installs exactly the release it names.** It used to `git pull` the tip of `main`, which could hold
   changes made after the release; now it fetches the tags and moves the Figaro folder to that release, never
   past it. The bridge updates only to a release it knows is newer, and refuses otherwise.
-- The note about a new release in command answers asks the agent to tell the user, instead of pulling: an
-  agent's pull lands under other agents' scripts, while Update waits until none runs.
+- The note about a new release, in command answers and in `figaro doctor`, asks the agent to tell the user
+  instead of pulling: an agent's pull lands under other agents' scripts, while Update waits until none runs.
 
 ### Fixed
 

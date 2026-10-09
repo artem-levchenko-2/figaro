@@ -1084,6 +1084,7 @@ async def status_handler(request: web.Request) -> web.Response:
         "plugin_version": expected_plugin_version(),
         "bridge_outdated": bridge_outdated(),
         "update": UPDATE,
+        "update_button": update_allowed(),
         "files": files,
         "pending": len(PENDING),
         "abandoned": [

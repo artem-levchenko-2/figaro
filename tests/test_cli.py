@@ -307,6 +307,20 @@ def test_doctors_checks_dont_show_in_the_plugin_window(monkeypatch, capsys):
     assert [(c["quick"], c["probe"]) for c in calls[1:]] == [(True, True), (True, True)]
 
 
+@pytest.mark.parametrize("button, how", [(True, "Update in the plugin's window installs it"),
+                                          (False, "it is updated by hand here"),
+                                          (None, "Update in the plugin's window installs it")])
+def test_doctor_asks_the_agent_to_tell_the_user_of_a_release(monkeypatch, capsys, button, how):
+    status = {"ok": True, "version": "1.1.0", "plugin_connected": True, "files": [],
+              "update": {"latest": "1.2.0", "current": "1.1.0", "url": "https://example.com/r"}}
+    if button is not None:  # None: a bridge older than the field
+        status["update_button"] = button
+    trip = lambda p: {"ok": True, "value": 2 if "1 + 1" in p["code"] else {"file": "Draft"}}  # noqa: E731
+    rc, out, _, _ = cli(monkeypatch, capsys, "doctor", bridge_reply=FakeBridge(status, trip))
+    assert rc == 0 and "Figaro 1.2.0 is released (this is 1.1.0)" in out
+    assert f"→ tell the user: {how}" in out and "git pull" not in out
+
+
 def test_created_names_the_outermost_new_layers():
     url = "https://www.figma.com/design/K/F?node-id="
     items = [{"op": "+", "id": "5:2", "name": "Icon", "url": url + "5-2"}]

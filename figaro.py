@@ -424,9 +424,12 @@ def cmd_doctor(args):
         ok(f"plugin build {current} everywhere")
     update = resp.get("update")
     if update:
-        # Not a failure — everything works, there is just something newer.
+        # Not a failure — everything works, there is just something newer. Not "git pull":
+        # an agent's pull lands under other agents' scripts, while Update waits for them.
         print(f"  !  Figaro {update.get('latest')} is released (this is {update.get('current')})")
-        print(f"     → git pull, restart the bridge, re-run the plugin   ({update.get('url')})")
+        how = ("Update in the plugin's window installs it" if resp.get("update_button", True)
+               else "it is updated by hand here")
+        print(f"     → tell the user: {how}   ({update.get('url')})")
 
     status, r = _exec("return 1 + 1;", 10, quick=True, probe=True)
     if status == 401:
