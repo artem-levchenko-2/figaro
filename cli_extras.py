@@ -242,6 +242,8 @@ def shot_opts(args):
                               ("width", args.width)) if v}
     if getattr(args, "svg_text", False):
         opts["outlineText"] = False  # an SVG for code keeps its text as <text>
+    if getattr(args, "absolute", False):
+        opts["absolute"] = True  # exactly the layer's size, overflow not included
     return opts
 
 
@@ -430,6 +432,8 @@ def add_parsers(sub, common):
     p.add_argument("--width", type=int, help="picture width in px")
     p.add_argument("--format", choices=["png", "jpg", "svg", "pdf"], default="png")
     p.add_argument("--svg-text", action="store_true", help="SVG: keep text as <text>, not outlines")
+    p.add_argument("--absolute", action="store_true",
+                   help="exactly the layer's size, even if children or effects stick out of it")
     p.add_argument("--tile", type=int, default=TILE, help=f"cut taller pictures into parts (default {TILE} px)")
     p.add_argument("-o", "--out", metavar="DIR", help=f"folder (default {SHOTS}/<file key>)")
 

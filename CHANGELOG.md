@@ -8,6 +8,10 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
+### Added
+
+- `figaro shot --absolute` and `h.shot(node, {absolute: true})` export a layer at exactly its own size: a frame whose children or effects overflow it otherwise comes out larger, which matters when the picture is reused inside another mockup. (Part of #2.)
+
 ## [1.1.1] — 2026-10-09
 
 ### Changed

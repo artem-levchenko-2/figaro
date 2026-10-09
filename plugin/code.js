@@ -7,7 +7,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-09.4";
+const PLUGIN_VERSION = "2026-10-09.5";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -1476,6 +1476,9 @@ async function shotOf(node, opts) {
   } else {
     throw new Error("h.shot: the format is png, jpg, svg or pdf, not " + JSON.stringify(opts.format));
   }
+  // A layer whose children or effects stick out of it exports larger than the layer;
+  // absolute bounds give exactly its own size (for a picture reused inside a mockup).
+  if (opts.absolute) settings.useAbsoluteBounds = true;
   const bytes = await node.exportAsync(settings);
   return {
     kind: "shot", id: node.id, name: node.name, type: node.type,
@@ -1704,7 +1707,7 @@ Object.assign(HELPERS, {
     return await inspectTree(n, opts, this);
   },
 
-  // A picture: {format: png|jpg|svg|pdf, scale, width}; base64 in `data`.
+  // A picture: {format: png|jpg|svg|pdf, scale, width, absolute}; base64 in `data`.
   async shot(node, opts) {
     const n = typeof node === "string" ? await HELPERS.resolve(node) : node;
     return await shotOf(n, opts);

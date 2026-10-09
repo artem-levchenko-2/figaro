@@ -53,7 +53,7 @@ Helpers available inside exec'd code (as `h.*`):
     h.frame(parent, {layout, w, h, spacing, padding, align, fill, radius, name})
     h.node(id)                  h.var_(idOrKey)
     h.importComp(key)           h.importVar(key)
-    h.inspect(node, {depth})    h.shot(node, {format, scale, width})   h.link(node)
+    h.inspect(node, {depth})    h.shot(node, {format, scale, width, absolute})   h.link(node)
     h.fonts(node)  h.fa()       h.fill(node, axis)  h.hug(node, axis)  h.fixed(node, w, h)
     h.wrapText(node, w?)        h.find(root, {name, nameHas, type, text, textHas, hidden})
 """

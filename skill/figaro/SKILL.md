@@ -56,7 +56,7 @@ The references next to this file — read each one when you reach its step:
 | Command | What it does |
 |---|---|
 | `figaro inspect <layer> [--depth N]` | everything about a layer: auto-layout, sizes, padding, radii, fills with style and variable names, texts with their styles and segments, instances with their component and properties; at the end, the keys of the components, styles and variables it uses. `--json` or `-o file.json` for data |
-| `figaro shot <layer>… [--width N] [--format svg]` | a picture in `/tmp/figaro/shots/<file key>/`; prints the path — open the PNG to see it. A tall layer comes in parts `-p1`, `-p2`…; SVG turns text into outlines, `--svg-text` keeps it text |
+| `figaro shot <layer>… [--width N] [--format svg] [--absolute]` | a picture in `/tmp/figaro/shots/<file key>/`; prints the path — open the PNG to see it. A tall layer comes in parts `-p1`, `-p2`…; SVG turns text into outlines, `--svg-text` keeps it text; `--absolute` exports exactly the layer's size when children or effects overflow it, for a picture reused in another mockup |
 | `figaro tree <layer> [--depth 2] [--layout]` | the layer tree: name, type, id, size; `--layout` adds auto-layout |
 | `figaro find <layer> name=X` · `name~X` · `type=INSTANCE` · `text~X` | search inside a layer; `--hidden` includes layers hidden in instances |
 | `figaro sel` | what the user has selected, with links |
