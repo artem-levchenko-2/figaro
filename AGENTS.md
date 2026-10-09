@@ -136,6 +136,10 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 
 ## Rules
 
+- **`main` is what people install.** A new clone and a manual `git pull` take its tip, so no change goes
+  there straight away: it lives in a branch of its own (push it, CI tests every branch), another agent reviews
+  it in a fresh session, and it reaches `main` as a fast-forward once the maintainer approves, usually with a
+  release. No squash: commits keep their authors.
 - **Changed a command, a helper or a behaviour — update the skill in the same commit.** `tests/test_install.py`
   checks that the skill names every CLI command. The installed skill is a symlink to `skill/figaro/`, so an
   uncommitted edit there is live in every agent's session at once: don't leave it half done.
@@ -171,7 +175,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 1. Move the notes under `## [Unreleased]` in `CHANGELOG.md` to a new `## [X.Y.Z] — YYYY-MM-DD` section.
 2. Set `VERSION` in `bridge.py` and `version` in `pyproject.toml` to `X.Y.Z` (`tests/test_bridge.py` checks
    both against the changelog).
-3. Commit, then tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+3. Commit that as the last commit of the release's branch. Once the maintainer approves it, fast-forward
+   `main` to the branch (`git merge --ff-only <branch>` on `main`), then tag and push:
+   `git tag vX.Y.Z && git push origin main vX.Y.Z`.
 4. Publish the release on GitHub with its changelog section as the notes, each bullet on one line (release
    notes turn every line break into a break on the page):
 
