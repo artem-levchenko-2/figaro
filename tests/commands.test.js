@@ -308,6 +308,13 @@ const kit = () => ({
     check("svg outlines text by default", mid.exported, { format: "SVG", svgOutlineText: true, svgIdAttribute: false });
     await exec(env, "return await h.shot('2:2', {format: 'jpeg', width: 400})");
     check("jpg by width", mid.exported, { format: "JPG", constraint: { type: "WIDTH", value: 400 } });
+    await exec(env, "return await h.shot('2:2', {width: 400, absolute: true})");
+    check("absolute bounds only when asked", mid.exported,
+      { format: "PNG", constraint: { type: "WIDTH", value: 400 }, useAbsoluteBounds: true });
+    for (const f of ["svg", "pdf"]) {
+      await exec(env, "return await h.shot('2:2', {format: '" + f + "', absolute: true})");
+      check(f + " takes absolute bounds too", mid.exported.useAbsoluteBounds, true);
+    }
     r = await exec(env, "return await h.shot('2:2', {format: 'gif'})");
     check("an unknown format", [r.type, /png, jpg, svg/.test(r.text)], ["error", true]);
   }

@@ -293,7 +293,7 @@ picks the file by its link, its key or a part of its name.
 ```text
 Look
   figaro inspect <layer>          everything about a layer; --json for data
-  figaro shot <layer>…            a PNG of each layer, tall ones in parts; --format svg
+  figaro shot <layer>…            a PNG of each layer, tall ones in parts; --format svg; --absolute for the layer's exact size
   figaro tree <layer>             the layer tree; --layout adds auto-layout
   figaro find <layer> name~Card   search by name=, name~, type=, text= and text~
   figaro sel                      what you have selected, with links

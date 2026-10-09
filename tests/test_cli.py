@@ -357,6 +357,14 @@ def test_svg_text_keeps_text_as_text(monkeypatch, capsys):
     assert "outlineText" not in code
 
 
+def test_shot_absolute_is_sent_only_when_asked(monkeypatch, capsys):
+    reply = {"ok": True, "value": []}
+    code = cli(monkeypatch, capsys, "shot", "1:2", "--absolute", bridge_reply=reply)[3][0]["code"]
+    assert '"absolute": true' in code
+    code = cli(monkeypatch, capsys, "shot", "1:2", bridge_reply=reply)[3][0]["code"]
+    assert "absolute" not in code
+
+
 def test_shot_sel_takes_every_selected_layer(monkeypatch, capsys):
     calls = cli(monkeypatch, capsys, "shot", "sel", bridge_reply={"ok": True, "value": []})[3]
     assert "id === 'sel' ? figma.currentPage.selection" in calls[0]["code"]
