@@ -8,6 +8,8 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-10-09
+
 ### Changed
 
 - The plugin's window shows every file where Figaro runs, quiet or not: its own file first, then the others in
