@@ -43,7 +43,7 @@ failed = 0
 def post(body):
     body = {"target": DRAFT, "checkpoint": False, "timeout": 120, "queue_timeout": 300, **body}
     req = urllib.request.Request(f"{BRIDGE}/exec", data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
+                                 headers=live_file.HEADERS)
     try:
         with urllib.request.urlopen(req, timeout=400) as r:
             return r.status, json.load(r)

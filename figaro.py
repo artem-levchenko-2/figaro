@@ -70,6 +70,7 @@ import urllib.request
 # Python outside this folder: the modules next to this file are found anyway.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cli_extras  # noqa: E402  links, autostart, inspect / shot / link, --lib
+import figaro_token  # noqa: E402  the bridge's shared secret
 
 
 # 127.0.0.1, not "localhost": on Windows "localhost" tries ::1 first, and against a
@@ -131,6 +132,9 @@ def _request(method, path, payload=None, timeout=65):
     url = f"http://{HOST}:{PORT}{path}"
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Content-Type": "application/json"} if data else {}
+    token = figaro_token.read_token(PORT)  # read each time: a restarted bridge has a new one
+    if token:
+        headers["X-Figaro-Token"] = token
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -386,6 +390,14 @@ def cmd_doctor(args):
         return 1
     ok(f"bridge answering on {HOST}:{PORT}"
        + (f" — Figaro {resp['version']}" if resp.get("version") else ""))
+    token_file = figaro_token.token_path(PORT)
+    if figaro_token.read_token(PORT) is None:
+        # /status is open, so only this line tells the cause of the 401 every other command gets.
+        fail(f"no token in {token_file}",
+             "the bridge writes it when it starts: restart it with  "
+             + cli_extras.start_hint(restart=True)
+             + "  (another home folder or sandbox? set FIGARO_TOKEN_FILE to that file)")
+        return 1
     stale = False
     if resp.get("bridge_outdated"):
         stale = True
@@ -416,6 +428,11 @@ def cmd_doctor(args):
         print(f"     → git pull, restart the bridge, re-run the plugin   ({update.get('url')})")
 
     status, r = _exec("return 1 + 1;", 10, quick=True, probe=True)
+    if status == 401:
+        fail(f"the bridge refused the token in {token_file}",
+             "it is from another bridge run: restart this one with  "
+             + cli_extras.start_hint(restart=True))
+        return 1
     if status == 409 and r.get("abandoned"):
         fail(f"file is interlocked: {r.get('error')}",
              "wait for that script to finish, or:  figaro clear -T <file>")

@@ -8,6 +8,16 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
+### Changed
+
+- **The bridge's HTTP API wants a token.** Each start of the bridge makes a secret and saves it, for the user
+  alone (mode 0600), in `~/.figaro/token-<port>` — `FIGARO_TOKEN_FILE` names another file, for the bridge and
+  the command both. `POST /exec`, `/clear`, `/undo`, `/reload` and `/done` answer 401 unless the header
+  `X-Figaro-Token` has it, so a web page or another local program that can't read the file can no longer run
+  code in your Figma file. `figaro` sends it by itself; a third-party client reads the file and sends the
+  header (`curl -H "X-Figaro-Token: $(cat ~/.figaro/token-8788)" ...`). `GET /status`, `/targets` and `/`, and
+  the plugin's socket, stay open; `figaro doctor` says when the token is missing or refused.
+
 ## [1.1.1] — 2026-10-09
 
 ### Changed
