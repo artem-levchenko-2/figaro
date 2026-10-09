@@ -8,6 +8,8 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
+## [1.1.2] — 2026-10-09
+
 ### Fixed
 
 - A read-only script (`-R`) no longer rolls back what it didn't change (#1). Figma reports every change made
