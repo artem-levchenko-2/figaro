@@ -246,6 +246,9 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   the plugin. A background Figma window can take a minute to connect — then the first call says "run it
   again". `FIGARO_AUTOSTART=0` keeps the bridge stopped. The bridge exits after 3 idle hours.
 - **`shot` captures what Figma shows:** a layer that sticks out of a frame with `clipsContent` comes out cut.
+  An export also takes in what sticks out of the layer (a shadow, an outside stroke, the children of a frame
+  that doesn't clip: a 200×100 card with a shadow gives 248×148), and a text layer comes out cut to its
+  letters; `useAbsoluteBounds` (`--absolute`) gives the layer's own box in PNG, JPG, SVG and PDF alike.
   Cutting tall pictures into parts needs Pillow; without it there is one file and a warning.
 - **Figma's official skills call `figma.createAutoLayout()`, `node.query()` and `node.set()`** — APIs of their
   MCP server only, not the public Plugin API. Check against the Plugin API typings before porting a recipe.

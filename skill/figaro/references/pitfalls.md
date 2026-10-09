@@ -150,6 +150,11 @@ order. If you write it by hand:
 ## Pictures
 
 - **`shot` captures what Figma shows**: a layer that sticks out of a frame with `clipsContent` comes out cut.
+- **A picture takes in what sticks out of the layer**: a shadow, an outside stroke, the children of a frame
+  that doesn't clip. A 200×100 card with a shadow comes out 248×148, and a text layer is cut to its letters
+  (a 300×40 box holding "Hi" gives 10×9). `--absolute` (`h.shot(node, {absolute: true})`) gives exactly the
+  layer's own box in every format: for a picture that goes into another mockup or must match the layer.
+  To check that nothing sticks out, shoot without it.
 - **Don't shoot a whole long page** — shoot it in sections: each one reads better. The CLI cuts a tall layer
   into parts of up to 1600 px.
 - **Don't group or ungroup layers for an export**: that once dropped sections out of their frame. `shot`

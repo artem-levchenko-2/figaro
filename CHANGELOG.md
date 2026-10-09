@@ -13,9 +13,9 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 - `FIGARO_UPDATE_BUTTON=off` takes the Update button out of the plugin's window (#2): the window only says
   that a new release is out and links to it, and the bridge refuses to update. The release check,
   `figaro doctor` and Reload work as before.
-- `figaro shot --absolute` and `h.shot(node, {absolute: true})` export a layer at exactly its own size: a
-  frame whose children or effects overflow it otherwise comes out larger, which matters when the picture is
-  reused inside another mockup. (Part of #2.)
+- `figaro shot --absolute` and `h.shot(node, {absolute: true})` export a layer at exactly its own size (#2).
+  Without it a shadow, an outside stroke or children that overflow a frame make the picture larger, and a
+  text layer comes out cut to its letters: that matters when the picture is reused inside another mockup.
 
 ### Changed
 
