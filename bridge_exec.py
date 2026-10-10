@@ -128,27 +128,11 @@ def _lib_fields(conn_id, libs):
     return out
 
 
-# A build with the "gate" cap ends a script stuck in a Figma call at the
-# script's own deadline (makeGate in plugin/code.js) and replies ~0.2 s after
-# it. Waiting that much longer gets the caller its error — which call hung —
-# instead of a 504, and the file is not interlocked.
+# The plugin ends a script stuck in a Figma call at the script's own deadline
+# (makeGate in plugin/code.js) and replies ~0.2 s after it. Waiting that much
+# longer gets the caller its error — which call hung — instead of a 504, and
+# the file is not interlocked.
 GATE_GRACE = 1.0
-
-
-def reply_wait(info, timeout):
-    """How long the bridge waits for a script's reply."""
-    return timeout + GATE_GRACE if "gate" in (info.get("caps") or []) else timeout
-
-
-def check_plugin(info, opts):
-    """A 409 when the request needs something this plugin build cannot do."""
-    if opts.libs and "libs" not in (info.get("caps") or []):
-        return web.json_response({
-            "ok": False,
-            "error": (f"the plugin in \"{info.get('name')}\" runs an older build without --lib — "
-                      f"update it first: figaro reload"),
-        }, status=409)
-    return None
 
 
 def resolve_target(target):
@@ -264,9 +248,6 @@ def _shot_text(body):
 # ─── /undo ────────────────────────────────────────────────────────────────
 
 async def undo_handler(request: web.Request) -> web.Response:
-    blocked = bridge._guard(request)
-    if blocked is not None:
-        return blocked
     body, error = await _body(request)
     if error:
         return error
@@ -277,8 +258,6 @@ async def undo_handler(request: web.Request) -> web.Response:
     conn_id, info = _target(body)
     if conn_id is None:
         return info
-    if "undo" not in (info.get("caps") or []):
-        return _old_plugin(info)
     ws = info["ws"]
     fields = {"agent": agent, "force": force}
     return await bridge._queued(
@@ -293,12 +272,8 @@ async def reload_handler(request: web.Request) -> web.Response:
     """Run plugin/code.js and ui.html from disk inside the open plugin.
 
     The new code replaces the old one as a re-Run would: its window takes the
-    old one's place and connects again. A build from before this exists gets
-    the same as a plain script, which works there too.
+    old one's place and connects again.
     """
-    blocked = bridge._guard(request)
-    if blocked is not None:
-        return blocked
     body, error = await _body(request)
     if error:
         return error
@@ -311,12 +286,7 @@ async def reload_handler(request: web.Request) -> web.Response:
     except OSError as e:
         return web.json_response({"ok": False, "error": f"cannot read plugin/: {e}"}, status=500)
 
-    if "reload" in (info.get("caps") or []):
-        message = {"type": "reload", "code": code, "html": html}
-    else:
-        boot = (f"new Function('figma', '__html__', {json.dumps(code)})"
-                f"(figma, {json.dumps(html)}); return 'reloading';")
-        message = {"type": "exec", "code": boot, "timeout": 30}
+    message = {"type": "reload", "code": code, "html": html}
 
     async def run(meta):
         t0 = time.time()
@@ -402,14 +372,6 @@ def _target(body):
         status = 503 if not bridge._live_plugins() else 409
         return None, web.json_response({"ok": False, "error": info}, status=status)
     return conn_id, info
-
-
-def _old_plugin(info):
-    return web.json_response({
-        "ok": False,
-        "error": (f"the plugin in \"{info.get('name')}\" runs an older build without undo — "
-                  f"update it first: figaro reload"),
-    }, status=409)
 
 
 def install(app: web.Application):

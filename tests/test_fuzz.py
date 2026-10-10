@@ -187,6 +187,25 @@ def test_guard_refuses_browser_and_rebinding_requests(headers):
     run(go())
 
 
+def test_every_route_goes_through_the_guard():
+    """The guard is one middleware, so a new route can't miss it: a web page
+    gets a 403 everywhere, and every POST wants the token."""
+    async def go():
+        c = await make_client()
+        routes = {(r.method, r.resource.canonical) for r in c.server.app.router.routes()
+                  if r.method != "HEAD"}
+        assert {("POST", "/exec"), ("POST", "/undo"), ("POST", "/done"), ("GET", "/plugin")} <= routes
+        for method, path in sorted(routes):
+            r = await c.request(method, path, headers={"Origin": "https://evil.example"})
+            assert r.status == 403, (method, path, r.status)
+        del c.session.headers["X-Figaro-Token"]
+        for method, path in sorted(routes):
+            if method == "POST":
+                assert (await c.post(path, json={})).status == 401, path
+        await c.close()
+    run(go())
+
+
 def test_websocket_from_a_web_page_is_refused():
     async def go():
         c = await make_client()

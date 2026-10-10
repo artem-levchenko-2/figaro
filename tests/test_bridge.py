@@ -510,7 +510,7 @@ def test_batched_log_lines_arrive_in_order():
             await asyncio.sleep(0.1)
             rid = p.exec_ids[0]
             await p.ws.send_str(json.dumps({"type": "log", "id": rid, "lines": ["a", "b"]}))
-            await p.ws.send_str(json.dumps({"type": "log", "id": rid, "text": "c"}))  # old plugin
+            await p.ws.send_str(json.dumps({"type": "log", "id": rid, "lines": ["c"]}))
             await p.ws.send_str(json.dumps({"type": "result", "id": rid, "value": 1}))
             body = await (await task).json()
             assert body["logs"] == ["a", "b", "c"] and body["result"] == "1"

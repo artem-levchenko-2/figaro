@@ -298,18 +298,6 @@ def test_each_plugin_window_gets_the_lib_code():
     run(go())
 
 
-def test_libs_need_a_build_that_has_them():
-    async def go():
-        c = await make_client()
-        async with FakePlugin(c, caps=CAPS[:5]) as p:
-            r = await post(c, libs=[LIB])
-            assert r.status == 409 and "figaro reload" in (await r.json())["error"]
-            assert p.of("exec") == []
-            assert (await post(c)).status == 200  # without --lib it still works
-        await c.close()
-    run(go())
-
-
 def test_an_error_inside_a_lib_names_its_line():
     lib_error = {"name": "grid.js", "line": 3, "source": "return n.width * k;"}
 
@@ -523,17 +511,6 @@ def test_plugin_refusal_comes_back_as_the_error():
     run(go())
 
 
-def test_undo_needs_a_build_that_can_undo():
-    async def go():
-        c = await make_client()
-        async with FakePlugin(c, caps=()) as p:
-            r = await c.post("/undo", json={})
-            assert r.status == 409 and "figaro reload" in (await r.json())["error"]
-            assert p.of("undo") == []
-        await c.close()
-    run(go())
-
-
 def test_undo_is_refused_while_a_timed_out_script_may_still_run():
     async def go():
         c = await make_client()
@@ -547,15 +524,15 @@ def test_undo_is_refused_while_a_timed_out_script_may_still_run():
     run(go())
 
 
-def test_a_build_that_ends_a_stuck_call_gets_a_moment_past_the_timeout():
-    """A build with "gate" ends a script stuck in a Figma call at its own
-    deadline and answers a moment later: the caller gets that error, not a 504,
-    and the file is not interlocked. An older build gets a 504 at the timeout."""
+def test_a_stuck_call_gets_a_moment_past_the_timeout():
+    """The plugin ends a script stuck in a Figma call at its own deadline and
+    answers a moment later: the caller gets that error, not a 504, and the file
+    is not interlocked."""
     stuck = {"type": "error", "text": "aborted: figma.teamLibrary.x() did not answer before --timeout ran out — …"}
 
     async def go():
         c = await make_client()
-        async with FakePlugin(c, caps=CAPS + ("gate",), reply=lambda m: stuck, delay=0.5):
+        async with FakePlugin(c, reply=lambda m: stuck, delay=0.5):
             t0 = time.time()
             r = await c.post("/exec", json={"code": "x", "timeout": 0.3})
             body = await r.json()
@@ -563,9 +540,6 @@ def test_a_build_that_ends_a_stuck_call_gets_a_moment_past_the_timeout():
             assert "inspect" in body["hint"]
             assert time.time() - t0 < 0.3 + bridge_exec.GATE_GRACE
             assert bridge.ABANDONED == {}
-        async with FakePlugin(c, reply=lambda m: stuck, delay=0.5):
-            r = await c.post("/exec", json={"code": "x", "timeout": 0.3})
-            assert r.status == 504
         await c.close()
     run(go())
 
@@ -599,23 +573,6 @@ def test_reload_sends_the_code_on_disk_and_waits_for_the_new_window():
         assert m["type"] == "reload"
         assert m["code"] == bridge.PLUGIN_CODE.read_text(encoding="utf-8")
         assert m["html"] == (bridge.PLUGIN_CODE.parent / "ui.html").read_text(encoding="utf-8")
-        await holder["new"].__aexit__()
-        await c.close()
-    run(go())
-
-
-def test_reload_starts_a_build_without_reload_through_a_plain_script():
-    async def go():
-        c = await make_client()
-        holder = {}
-        old = FakePlugin(c, plugin="2000-01-01.1", caps=(), on_reload=reloader(c, holder))
-        holder["old"] = await old.__aenter__()
-        r = await c.post("/reload", json={})
-        assert r.status == 200
-        m = holder["message"]
-        assert m["type"] == "exec"
-        assert m["code"].startswith("new Function('figma', '__html__', ")
-        assert m["code"].endswith("return 'reloading';")
         await holder["new"].__aexit__()
         await c.close()
     run(go())

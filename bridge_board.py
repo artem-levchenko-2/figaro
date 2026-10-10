@@ -367,9 +367,6 @@ async def done_handler(request: web.Request) -> web.Response:
     """An agent is done in a file, for now: its row in the window says so, with
     the note it leaves the user, until its next script there that can change
     the file."""
-    blocked = bridge._guard(request)
-    if blocked is not None:
-        return blocked
     body, error = await bridge_exec._body(request)
     if error:
         return error

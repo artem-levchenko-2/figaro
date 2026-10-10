@@ -122,7 +122,7 @@ async def run(pull):
             if failed:
                 return _fail(what, *failed[:1], to, *failed[1:])
         stale = [(cid, i) for cid, i in bridge._live_plugins()
-                 if i.get("hello") and bridge.plugin_outdated(i) and "reload" in (i.get("caps") or [])]
+                 if i.get("hello") and bridge.plugin_outdated(i)]
         restart_bridge = bridge.bridge_outdated()
         if not stale and not restart_bridge:
             if pull:

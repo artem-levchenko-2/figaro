@@ -7,7 +7,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-09.9";
+const PLUGIN_VERSION = "2026-10-11.1";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -248,42 +248,6 @@ const HELPERS = {
     return lines.join("\n");
   },
 
-  // Load every unique font in subtree, then run async fn
-  async withFonts(rootNode, asyncFn) {
-    const texts = rootNode.findAll
-      ? rootNode.findAll((n) => n.type === "TEXT")
-      : (rootNode.type === "TEXT" ? [rootNode] : []);
-    const seen = new Set();
-    const fonts = [];
-    const skipped = [];
-    for (const t of texts) {
-      // Mixed-font nodes can't be loaded wholesale; editing one later throws a
-      // confusing "font not loaded" far from here, so say it out loud now.
-      if (typeof t.fontName === "symbol") { skipped.push(t.name); continue; }
-      const fn = t.fontName;
-      const key = fn.family + "|" + fn.style;
-      if (!seen.has(key)) { seen.add(key); fonts.push(fn); }
-    }
-    if (skipped.length) {
-      CURRENT_PRINT(
-        "h.withFonts: skipped " + skipped.length + " mixed-font text node(s): " +
-        skipped.slice(0, 5).join(", ") + (skipped.length > 5 ? ", …" : "") +
-        " — editing them will fail unless you load each range manually"
-      );
-    }
-    await Promise.all(fonts.map((f) => loadFont(f)));  // cached, see loadFont
-    return await asyncFn();
-  },
-
-  // Set a text node's characters with auto font load (single-font texts only)
-  async setText(node, text) {
-    if (typeof node.fontName === "symbol") {
-      throw new Error("h.setText: text '" + node.name + "' has mixed fonts; load each range manually");
-    }
-    await loadFont(node.fontName);  // cached, see loadFont
-    node.characters = text;
-  },
-
   // Clone node and place it next to the original
   cloneNext(node, opts) {
     opts = opts || {};
@@ -299,12 +263,6 @@ const HELPERS = {
     return c;
   },
 
-  // Set instance variant properties
-  async variant(instance, props) {
-    await instance.setProperties(props);
-    return instance;
-  },
-
   // Available variants for an instance's component
   async variantsOf(instance) {
     const main = await instance.getMainComponentAsync();
@@ -313,16 +271,6 @@ const HELPERS = {
     return set
       ? { current: main.name, groups: set.variantGroupProperties, all: set.children.map(c => c.name) }
       : { current: main.name, groups: null, all: null };
-  },
-
-  // What the user has selected right now — the bridge between "this one here"
-  // and a node id you can act on.
-  sel() {
-    return figma.currentPage.selection.map((n) => ({
-      id: n.id, name: n.name, type: n.type,
-      w: n.width, h: n.height,
-      chars: n.type === "TEXT" ? n.characters : undefined,
-    }));
   },
 
   // Hex string -> {r,g,b}. Hand-rolling this is where the missing /255 lives.
@@ -1989,8 +1937,8 @@ function libPositions(stack) {
 }
 
 // ─── more helpers ────────────────────────────────────────────────────────
-// h.withFonts, h.setText and h.sel: mixed fonts and a missing one do not stop
-// them, and sel gives a link to each layer.
+// h.withFonts and h.setText take mixed fonts, and a missing font doesn't stop
+// them; h.sel gives a link to each layer.
 
 Object.assign(HELPERS, {
   // A link to a layer, for reports to people: h.link(node) or h.link("1:11").
@@ -1999,6 +1947,7 @@ Object.assign(HELPERS, {
     return nodeLink(id) || null;
   },
 
+  // What the user has selected right now, with a link to each layer.
   sel() {
     return figma.currentPage.selection.map((n) => ({
       id: n.id, name: n.name, type: n.type,

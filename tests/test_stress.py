@@ -496,7 +496,8 @@ def test_interlock_covers_every_tab_of_the_document():
         async with SandboxPlugin(c, "A", "docAAAAAA", doc) as tab1, \
                    SandboxPlugin(c, "A", "docAAAAAA", doc) as tab2:
             conns = [f["conn"] for f in (await (await c.get("/targets")).json())["files"]]
-            r = await call(c, {"op": "sleep", "s": 0.6}, target=conns[0], timeout=0.2)
+            # past the timeout and the second the bridge waits on for a stuck call
+            r = await call(c, {"op": "sleep", "s": 1.6}, target=conns[0], timeout=0.2)
             assert r.status == 504
             r = await call(c, {"op": "rmw", "pause": 0}, target=conns[1], timeout=1)
             assert r.status == 409, "the other tab let a writer in beside the orphan"

@@ -257,8 +257,7 @@ def _guard(request: web.Request, *, allow_null_origin: bool = False, need_token:
     Then the token: every endpoint that changes a file or runs code wants the
     secret the bridge wrote to its token file (figaro_token.py). A local process
     of another user, or a page that got past the checks above, can't read it.
-    The read-only status endpoints and the plugin's socket (the plugin can't
-    read files) pass need_token=False.
+    The `guard` middleware below runs this before every handler.
     """
     if ALLOWED_HOSTS:
         host = (request.headers.get("Host") or "").lower()
@@ -292,6 +291,24 @@ def _guard(request: web.Request, *, allow_null_origin: bool = False, need_token:
                 status=401,
             )
     return None
+
+
+@web.middleware
+async def guard(request: web.Request, handler):
+    """_guard before every handler, so a new route can't go without it.
+
+    A GET only reads, so it needs no token; the plugin's socket can't send one
+    either (the plugin can't read files), and its window reports Origin "null".
+    """
+    plugin = request.path == "/plugin"
+    blocked = _guard(request, allow_null_origin=plugin,
+                     need_token=not plugin and request.method not in ("GET", "HEAD"))
+    if blocked is None:
+        return await handler(request)
+    if plugin:
+        print(f"[plugin] refused connection from {request.remote} "
+              f"(origin={request.headers.get('Origin')!r})")
+    return blocked
 
 
 ERROR_HINTS = [
@@ -393,11 +410,6 @@ async def _still_alive(info, timeout: float = SLOT_PROBE_TIMEOUT) -> bool:
         info.pop("pong", None)
 
 
-def _label(conn_id: str) -> str:
-    info = PLUGINS.get(conn_id) or {}
-    return info.get("name") or f"({conn_id[:8]})"
-
-
 async def _broadcast_peers():
     """Tell every connected plugin its position and the total, for the "1/2" badge.
 
@@ -414,13 +426,6 @@ async def _broadcast_peers():
 
 
 async def plugin_ws_handler(request: web.Request):
-    # CSRF/rebinding guard: the plugin UI iframe reports Origin "null".
-    blocked = _guard(request, allow_null_origin=True, need_token=False)
-    if blocked is not None:
-        print(f"[plugin] refused connection from {request.remote} "
-              f"(origin={request.headers.get('Origin')!r})")
-        return blocked
-
     # 64 MB: a shot of a long page at 2× is past 16 MB.
     ws = web.WebSocketResponse(heartbeat=20, max_msg_size=64 * 1024 * 1024)
     await ws.prepare(request)
@@ -539,11 +544,8 @@ async def plugin_ws_handler(request: web.Request):
                 continue
 
             if mtype == "log":
-                # Batched `lines` from current plugins; one `text` from older ones.
                 if isinstance(m.get("lines"), list):
                     entry["logs"].extend(str(x) for x in m["lines"])
-                else:
-                    entry["logs"].append(m.get("text", ""))
             elif mtype in ("result", "error"):
                 # Remember the script ended even if nobody is waiting any more:
                 # the timeout may have cancelled the future a moment ago, and the
@@ -649,10 +651,6 @@ def resolve_target(target):
 
 
 async def exec_handler(request: web.Request) -> web.Response:
-    blocked = _guard(request)
-    if blocked is not None:
-        return blocked
-
     def bad(msg):
         return web.json_response({"ok": False, "error": msg}, status=400)
 
@@ -699,9 +697,6 @@ async def exec_handler(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": info},
                                  status=503 if no_plugins else 409)
     target_ws = info["ws"]
-    refused = bridge_exec.check_plugin(info, opts)  # e.g. --lib on an older build
-    if refused is not None:
-        return refused
 
     # Reads are safe to fan out; anything that mutates must take the file's lock.
     # So a parallel script is read-only — the plugin rolls back its changes.
@@ -928,9 +923,8 @@ async def _dispatch(target_ws, conn_id, code, timeout, force, meta=None,
                 {"ok": False, "error": f"send to plugin failed: {e}"}, status=500)
 
         try:
-            # A little longer for a build that ends a stuck Figma call itself
-            result = await asyncio.wait_for(
-                fut, timeout=bridge_exec.reply_wait(PLUGINS.get(conn_id) or {}, timeout))
+            # A moment past the deadline: the plugin ends a stuck Figma call itself
+            result = await asyncio.wait_for(fut, timeout=timeout + bridge_exec.GATE_GRACE)
         except asyncio.CancelledError:
             # Client vanished mid-request (aiohttp cancels the handler). If the
             # script is still running, the file stays interlocked until it ends;
@@ -1073,10 +1067,6 @@ def _files_payload():
 
 
 async def status_handler(request: web.Request) -> web.Response:
-    blocked = _guard(request, need_token=False)
-    if blocked is not None:
-        return blocked
-
     files = _files_payload()
     return web.json_response({
         "version": VERSION,
@@ -1096,10 +1086,6 @@ async def status_handler(request: web.Request) -> web.Response:
 
 async def clear_handler(request: web.Request) -> web.Response:
     """Drop the abandoned-script interlock for one file, after a 504."""
-    blocked = _guard(request)
-    if blocked is not None:
-        return blocked
-
     try:
         body = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -1124,18 +1110,10 @@ async def clear_handler(request: web.Request) -> web.Response:
 
 
 async def targets_handler(request: web.Request) -> web.Response:
-    blocked = _guard(request, need_token=False)
-    if blocked is not None:
-        return blocked
-
     return web.json_response({"files": _files_payload()})
 
 
 async def root_handler(request: web.Request) -> web.Response:
-    blocked = _guard(request, need_token=False)
-    if blocked is not None:
-        return blocked
-
     return web.json_response({
         "service": "figaro-bridge",
         "version": VERSION,
@@ -1158,7 +1136,8 @@ async def root_handler(request: web.Request) -> web.Response:
 
 
 def build_app() -> web.Application:
-    app = web.Application(client_max_size=64 * 1024 * 1024)  # 16 → 64 MB, like the WebSocket
+    app = web.Application(client_max_size=64 * 1024 * 1024,  # 16 → 64 MB, like the WebSocket
+                          middlewares=[guard])
     app.router.add_get("/", root_handler)
     app.router.add_get("/status", status_handler)
     app.router.add_get("/targets", targets_handler)

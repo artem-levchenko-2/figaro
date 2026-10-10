@@ -73,7 +73,7 @@ powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Uninstall
 ```
 
 The bridge saves a fresh token to `~/.figaro/token-<port>` once its port is bound; every POST wants it in the
-`X-Figaro-Token` header (`_guard`). `tests/conftest.py` gives every test client the right one and points
+`X-Figaro-Token` header (`_guard`, which the `guard` middleware runs before every handler). `tests/conftest.py` gives every test client the right one and points
 `FIGARO_TOKEN_FILE` at a temp file; a test of the check removes it from `client.session.headers`. Run a
 third-party script against a bridge with `-H "X-Figaro-Token: $(cat ~/.figaro/token-8788)"`.
 
@@ -150,6 +150,10 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   and counter, `2026-10-08.1`) and add its line to `tests/plugin_fingerprint.json` — the failing
   `pytest tests/test_plugin_version.py` prints it. Without that the bridge can't tell that Figma runs an
   older plugin. A changed `manifest.json` has to be imported in Figma again.
+- **A window and a bridge of different releases meet during an update by hand** (`git pull`, then a re-run of
+  the plugin or a restart of the bridge). Builds from before 1.0.0 need nothing, but the 1.0.0 window and
+  bridge have no `board`: keep the bridge's `update`, `outdated` and `peers` messages, the window's view
+  without a board, and `figaro done`'s answer to a 404.
 - **`plugin/ui.html` passes the exec fields to the sandbox by name.** A new field in
   `bridge_exec.exec_fields` must be added there too, or it never arrives; `tests/test_exec.py` catches it.
 - **The plugin never writes to the document.** The document id is `figma.fileKey`, which a development
@@ -244,8 +248,6 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
 - **Checkpoints go to the file's version history**, visible to everyone with access. The time of the last one
   per file is kept in `~/.cache/figaro/checkpoints.json`; the tests use a temporary folder
   (`tests/conftest.py`).
-- **`figaro reload` into a build without `reload` in its `caps`** runs as an ordinary script; on an error or a
-  504, restart the plugin by hand.
 - **The CLI starts the bridge** when nothing listens on 8788 (`cli_extras.autostart`) and waits up to 6 s for
   the plugin. A background Figma window can take a minute to connect — then the first call says "run it
   again". `FIGARO_AUTOSTART=0` keeps the bridge stopped. The bridge exits after 3 idle hours.
