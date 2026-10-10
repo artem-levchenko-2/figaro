@@ -1,43 +1,8 @@
 # Craft: building in Figma so it passes review
 
-These rules come from real reviews of agents' work in Figma. Where Figma's own advice (its skills, its MCP
-server) disagrees with them, these rules win. A reviewer judges the result: crooked spacing, lost formatting
-and needless variants show at a glance.
-
-## House rules
-
-1. **Variants only for real differences**: style, size, state. The rest are properties: BOOLEAN (show an
-   icon), TEXT (a label), INSTANCE_SWAP (which icon), a nested instance. A tag in 12 colours with an optional
-   icon is 12 variants and an `Icon` property, not 36 variants.
-2. **A one-off state — detach the instance and edit inside it**, with no overlays on top of copies.
-3. **Use what exists**: tokens, styles, components, finished screens. Nothing new unless asked. When a page
-   like the one you need already exists, start from it instead of building from tokens from scratch.
-4. **Text as in the source**: bold, italic, code and links inside the line, the same heading level, a quote
-   stays a quote. If the level you need has no style, say so — don't take the next one.
-5. **An even grid, equal neighbours.** Stickers between 220 and 270 px wide look scattered; four columns of
-   280 px don't.
-6. **Real text, not "TBC"** and not "Lorem".
-7. **Icons the way the file draws them**: icon components, or an icon font (Font Awesome and the like) where
-   an icon is a text layer holding the glyph's name. A broken icon — change the font, keep the glyph name
-   (`pitfalls.md`).
-8. **One component or block first — then stop.** Don't ask permission for every step, but don't build the
-   whole screen before the first review either.
-9. **Comments in Figma only when the user asks.** Don't delete or recreate frames that have comments. What
-   you don't know (a text, an icon, a state) — ask, don't invent.
-
-## A good run
-
-A navigation component that passed review on the first try, built in about 16 minutes:
-
-1. The agent looked at the source screens and built the navigation rows from their real layers (clones), not
-   from scratch.
-2. It made variants for the states only (Collapsed/Expanded) and private subcomponents for the rows.
-3. It added TEXT and BOOLEAN properties and exposed the nested instance.
-4. It shot the result and the source and compared them side by side, pixel by pixel.
-5. It saved a checkpoint and stopped for review: a link, a shot, what was done.
-
-After the yes it rolled the component out as instances on 17 screens in 18 minutes, keeping the frames that
-had comments.
+How to keep the house rules of `SKILL.md` (section 6). They come from real reviews of agents' work in Figma;
+where Figma's own advice (its skills, its MCP server) disagrees with them, they win. A reviewer judges the
+result: crooked spacing, lost formatting and needless variants show at a glance.
 
 ## What is already there
 
@@ -72,13 +37,13 @@ try {
 ```
 
 Library styles and variables don't show here: `figaro inspect` of the layers that use them prints their
-names, ids and keys. Library variables can also be listed through `figma.teamLibrary` (`helpers.md`), but
-sometimes it never answers.
+names, ids and keys. Library variables can also be listed through `figma.teamLibrary` (`helpers.md`).
 
 ## Start from the UI that exists
 
 - **A screen or block like one that exists** — clone it (`figaro clone <layer> --right`) and edit the copy.
-  That keeps the spacing, styles and instances you would otherwise guess at.
+  That keeps the spacing, styles and instances you would otherwise guess at. Start from a finished page like
+  the one you need, not from tokens.
 - **A page that lives in a library as one instance** — instance → copy → `detachInstance()` → edit the
   sections. After detaching, the ids inside change: find layers again from the copy.
 - **Put new things next to the old, not on top**: `h.cloneNext`, or `x` = the neighbour's right edge + 100.
@@ -104,7 +69,7 @@ sometimes it never answers.
   width (1440) and icons.
 - Text that wraps — `h.wrapText(text)`; a one-line label — HUG.
 - Neighbours of one size: cards in a row — FILL with the same gap, or GRID (`layoutMode = "GRID"`,
-  `gridColumnCount`).
+  `gridColumnCount`). Stickers between 220 and 270 px wide look scattered; four columns of 280 px don't.
 - After building — `shot`, and look at the picture: cut-off text, spacing that collapsed and layers that stick
   out of their frame show only in a picture.
 
@@ -171,20 +136,13 @@ return { id: set.id };
 - A nested instance with its own properties (an `icon` instance from a UI kit) —
   `nested.isExposedInstance = true`, and its properties show on the parent.
 - Figma records every `addComponentProperty` as a separate Cmd+Z step; `undo` and `-R` already allow for it.
+- A tag in 12 colours with an optional icon is 12 variants and an `Icon` property, not 36 variants.
 - Size × style × state beyond ~30 combinations — split it into a base component and wrappers.
 
 ## Moving a design over from code or a live page
 
 - When the code's tokens mirror the file's variables, take the variable with the same name.
 - Copy the text word for word, with its formatting — as ranges (`helpers.md`, "Formatting inside a line"),
-  with the same heading levels. If the level you need has no style, say so instead of taking the next one.
+  with the same heading levels; a quote stays a quote. If the level you need has no style, say so instead of
+  taking the next one.
 - Compare a shot of the result with the source side by side, block by block.
-
-## Before the review
-
-- [ ] `figaro shot` of the new work, and look at it: nothing cut off, collapsed or sticking out of its frame.
-- [ ] `figaro inspect`: colours and texts use styles or variables wherever the file has them.
-- [ ] Neighbours are equal, the grid is even, no "TBC" or "Lorem".
-- [ ] Variants only along real axes, the rest are properties.
-- [ ] Layer names say what the layers are.
-- [ ] The report: links (`created:`), a shot, what was done, open questions. Then stop.

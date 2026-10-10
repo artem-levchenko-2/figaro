@@ -237,7 +237,7 @@ that agent's work.
 [`SKILL.md`](skill/figaro/SKILL.md) is the playbook: look, change, look again,
 and stop for review. Its `references/` hold the
 [helpers](skill/figaro/references/helpers.md), the
-[craft rules](skill/figaro/references/craft.md) (real components, tokens
+[craft recipes](skill/figaro/references/craft.md) (real components, tokens
 instead of hex, an even grid) and the
 [pitfalls](skill/figaro/references/pitfalls.md), each with its fix.
 

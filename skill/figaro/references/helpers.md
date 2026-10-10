@@ -56,7 +56,7 @@ the recipes below).
 
 | Helper | What it does |
 |---|---|
-| `h.frame(parent, opts)` | an auto-layout frame set up in the right order: into the tree → `layoutMode` → size → HUG → padding. `opts`: `layout` (`"V"`, `"H"`), `w`, `h`, `spacing`, `padding` (a number, `[vertical, horizontal]` or `{top, right, bottom, left}`), `align: {primary, counter}`, `fill` (a hex or `false`), `radius`, `name`. An axis without a number HUGs |
+| `h.frame(parent, opts)` | an auto-layout frame, set up in the order Figma needs (`pitfalls.md`, "Auto-layout"). `opts`: `layout` (`"V"`, `"H"`), `w`, `h`, `spacing`, `padding` (a number, `[vertical, horizontal]` or `{top, right, bottom, left}`), `align: {primary, counter}`, `fill` (a hex or `false`), `radius`, `name`. An axis without a number HUGs |
 | `await h.fill(node, "x" \| "y" \| "xy")` | FILL; only for a child of an auto-layout frame, so `parent.appendChild(node)` first. Warns if the parent HUGs on that axis |
 | `await h.hug(node, "x" \| "y" \| "xy")` | HUG; only an auto-layout frame or a text |
 | `await h.fixed(node, w, h)` | a fixed size; `null` leaves that axis as it was (a bare `resize()` makes both axes FIXED) |
@@ -99,10 +99,9 @@ A text's font to a variable: `text.setBoundVariable("fontSize", v)` — and the 
 
 ## Control
 
-`h.ck()` throws as soon as the script's `--timeout` has passed. Call it on every iteration of a long loop:
-`figma.*Async` calls check the deadline themselves, but node methods and `h.*` don't, so without `h.ck()` the
-loop keeps going while the next script waits for the file. `h.aborted()` is the same without throwing: `true`
-or `false`.
+`h.ck()` throws as soon as the script's `--timeout` has passed. Call it on every iteration of a long loop,
+or the loop keeps going while the next script waits for the file. `h.aborted()` is the same without
+throwing: `true` or `false`.
 
 ## Recipes
 
@@ -156,9 +155,8 @@ Import by key takes only what is published in an enabled library, and sometimes 
 all: give the script `--timeout 20`.
 
 **The variables of the enabled libraries** (the collections list holds variables only; components can't be
-listed this way). Give it `--timeout 20`: sometimes Figma never answers `teamLibrary` at all — then the script
-ends with an error, and you take the variables' keys from the layers that already use them
-(`figaro inspect`).
+listed this way). Give it `--timeout 20`: when Figma doesn't answer `teamLibrary`, take the variables' keys
+from `figaro inspect` of the layers that already use them.
 
 ```js
 const cols = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();

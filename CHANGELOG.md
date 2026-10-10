@@ -10,6 +10,9 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ### Changed
 
+- The skill says each rule once (#3): the house rules live in `SKILL.md` and `craft.md` keeps the recipes
+  that follow them; what `SKILL.md` already says left `pitfalls.md` and `helpers.md`. The skill is 63 lines
+  shorter, and no rule has two versions.
 - Cleaner code, with no change in what Figaro does (#3): the bridge checks every request in one place, so a
   new endpoint can't go without the check; the first copies of `h.withFonts`, `h.setText`, `h.variant` and
   `h.sel`, which never ran, are gone, and so is the code for plugin builds from before Figaro 1.0.0.

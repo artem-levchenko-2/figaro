@@ -17,13 +17,13 @@ its own queue: one script runs in it at a time, so several agents never mix up t
 
 The references next to this file — read each one when you reach its step:
 - `references/helpers.md` — the `h.*` helpers, the script environment, code recipes;
-- `references/craft.md` — how to build well: house rules, auto-layout, tokens, components, text;
+- `references/craft.md` — how to build well: what is already there, auto-layout, tokens, components, text;
 - `references/pitfalls.md` — errors and traps, with fixes.
 
 ## 1. The file
 
 - The user gives a Figma link — pass it as is: `-T "<link>"` in every call, or a layer link in place of an
-  id. Always quote links: without quotes zsh breaks on the `?`.
+  id. Always quote links: without quotes zsh breaks on the `?` (`zsh: no matches found`).
 - No link: `figaro targets` lists the connected files (name, fileKey). `-T` takes a key, a link or a name.
   Without `-T` a call goes to the only connected file, and with several connected it fails with 409. So
   always `-T`.
@@ -47,9 +47,9 @@ The references next to this file — read each one when you reach its step:
    prints: spacing, alignment, cut-off text and fonts show only in a picture. Numbers (sizes, spacing) come
    from `inspect` or an `-R` script. If you can't open images, say so and ask the user to look.
 5. **Fix in place.** Don't rebuild what is already right.
-6. **Stop for review** after the first component or block: a link, a shot, what was done. Say it in Figma
-   too, `figaro done "Check the card, then answer in the chat"`: the user may be looking at Figma, not at
-   the chat. Go on once the user answers.
+6. **Stop for review** after the first component or block, not after the whole screen: a link, a shot, what
+   was done. Say it in Figma too, `figaro done "Check the card, then answer in the chat"`: the user may be
+   looking at Figma, not at the chat. Go on once the user answers. Smaller steps need no permission.
 
 ## 3. Commands
 
@@ -131,7 +131,8 @@ JS
   Cmd+Shift+Z in Figma, which brings that step back.
 - **Figma does not report changes to variables, nor deleted components**: the report won't show them, `-R`
   won't roll them back, and `undo` after such a script refuses. Check variables in the script itself, before
-  and after; don't delete components or component sets unless the user asks.
+  and after; don't delete components or component sets unless the user asks, and check with `figaro tree`
+  after you do.
 - **Shared libraries (a team UI kit) are read-only**, even when the task is about the kit: build in a working
   file or a draft and stop for review — what goes into the library is the user's call. Never publish. What
   the file already uses from the kit, take by id from `inspect`; the rest by key (`helpers.md`).
@@ -154,7 +155,7 @@ JS
 
 ## 6. House rules
 
-In detail, with recipes — `references/craft.md`. In short:
+The recipes that keep them are in `references/craft.md`.
 
 1. Use what exists: the components, styles and variables of the file and its libraries, the UI already built.
    Don't invent new tokens or components unless asked.
@@ -163,12 +164,12 @@ In detail, with recipes — `references/craft.md`. In short:
 3. Bind colours, spacing and radii to variables and styles as you build. A hex only where there is no
    token — not "hard-code first, bind later".
 4. Text as in the source: text styles, with bold, italic, code and links inside the line.
-5. An even grid, neighbours of one size, real text instead of "TBC".
+5. An even grid, neighbours of one size, real text instead of "TBC". A text, an icon or a state you don't
+   know — ask, don't invent it.
 6. Icons the way the file draws them: icon components or an icon font. A broken icon-font glyph — change the
    font, keep the glyph name.
 7. A one-off state — detach the instance and edit inside it, no overlays on top.
-8. One component or block first — then stop for review.
-9. Comments in Figma only when the user asks for them.
+8. Comments in Figma only when the user asks for them.
 
 ## 7. The report
 
