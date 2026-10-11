@@ -281,12 +281,9 @@ async def reload_handler(request: web.Request) -> web.Response:
     if conn_id is None:
         return info
     try:
-        code = bridge.PLUGIN_CODE.read_text(encoding="utf-8")
-        html = (bridge.PLUGIN_CODE.parent / "ui.html").read_text(encoding="utf-8")
+        message = reload_message()
     except OSError as e:
         return web.json_response({"ok": False, "error": f"cannot read plugin/: {e}"}, status=500)
-
-    message = {"type": "reload", "code": code, "html": html}
 
     async def run(meta):
         t0 = time.time()
@@ -312,6 +309,14 @@ async def reload_handler(request: web.Request) -> web.Response:
                                   "elapsed_ms": int((time.time() - t0) * 1000), **meta})
 
     return await bridge._queued(request, conn_id, None, 30.0, run, script=False)
+
+
+def reload_message():
+    """plugin/code.js and ui.html from disk, for a running plugin to run in its
+    own place. OSError when they can't be read."""
+    return {"type": "reload",
+            "code": bridge.PLUGIN_CODE.read_text(encoding="utf-8"),
+            "html": (bridge.PLUGIN_CODE.parent / "ui.html").read_text(encoding="utf-8")}
 
 
 async def _send(info, conn_id, message, timeout):

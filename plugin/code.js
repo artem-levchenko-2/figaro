@@ -7,7 +7,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-11.1";
+const PLUGIN_VERSION = "2026-10-12.1";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -17,11 +17,9 @@ const CAPS = ["changes", "readOnly", "undo", "reload", "checkpoint",
 // Tell the UI which file we're in, so it can register this connection with the
 // bridge by name (figma.root.name). The bridge routes --target by that name.
 function postIdentity() {
-  let fileKey = null;
-  try { fileKey = figma.fileKey || null; } catch (e) { /* not always available */ }
   figma.ui.postMessage({
     type: "identity",
-    fileKey: fileKey,
+    fileKey: fileKey(),
     name: figma.root.name,
     docSig: docSignature(),
     pluginVersion: PLUGIN_VERSION,
@@ -42,10 +40,7 @@ function postIdentity() {
 const RUN_ID = "r" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
 function docSignature() {
-  try {
-    if (figma.fileKey) return figma.fileKey;
-  } catch (e) { /* not always available */ }
-  return RUN_ID;
+  return fileKey() || RUN_ID;
 }
 postIdentity();
 

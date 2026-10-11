@@ -127,7 +127,7 @@ def test_skill_frontmatter():
 def test_skill_names_every_command_and_reference():
     _, _, text = frontmatter()
     every = text + "".join(p.read_text(encoding="utf-8") for p in (SKILL / "references").glob("*.md"))
-    for cmd in figaro.KNOWN_CMDS - {"import-component"}:  # icomp is its short name
+    for cmd in set(figaro.DISPATCH) - {"import-component"}:  # icomp is its short name
         assert f"figaro {cmd}" in every or f"`{cmd}`" in every, cmd
     for ref in re.findall(r"`references/([\w-]+\.md)`", text):
         assert (SKILL / "references" / ref).exists(), ref

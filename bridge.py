@@ -692,12 +692,9 @@ async def exec_handler(request: web.Request) -> web.Response:
     except ValueError as e:
         return bad(str(e))
 
-    conn_id, info = bridge_exec.resolve_target(target)  # a Figma link works too
+    conn_id, info = bridge_exec._target(body)  # a Figma link works too
     if conn_id is None:
-        # info holds the human-readable reason. 503 if nothing connected at all.
-        no_plugins = not _live_plugins()
-        return web.json_response({"ok": False, "error": info},
-                                 status=503 if no_plugins else 409)
+        return info
     target_ws = info["ws"]
 
     # Reads are safe to fan out; anything that mutates must take the file's lock.
@@ -918,8 +915,6 @@ async def _dispatch(target_ws, conn_id, code, timeout, force, meta=None,
                 if delivered:
                     _abandon(rid, conn_id, timeout, target_ws)
                 raise
-        except asyncio.CancelledError:
-            raise
         except Exception as e:
             return web.json_response(
                 {"ok": False, "error": f"send to plugin failed: {e}"}, status=500)
@@ -1088,20 +1083,12 @@ async def status_handler(request: web.Request) -> web.Response:
 
 async def clear_handler(request: web.Request) -> web.Response:
     """Drop the abandoned-script interlock for one file, after a 504."""
-    try:
-        body = await request.json()
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        body = {}
-    target = body.get("target") if isinstance(body, dict) else None
-    if target is not None and not isinstance(target, str):
-        return web.json_response(
-            {"ok": False, "error": "'target' must be a string: a file name or doc id"}, status=400)
-
-    conn_id, info = bridge_exec.resolve_target(target)
+    body, error = await bridge_exec._body(request)
+    if error:
+        return error
+    conn_id, info = bridge_exec._target(body)
     if conn_id is None:
-        no_plugins = not _live_plugins()
-        return web.json_response({"ok": False, "error": info},
-                                 status=503 if no_plugins else 409)
+        return info
 
     doc = _doc_key(conn_id)
     dropped = [r for r, o in list(ABANDONED.items()) if o.get("doc", o.get("conn")) == doc]

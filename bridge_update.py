@@ -30,6 +30,7 @@ from aiohttp import web
 
 import bridge
 import bridge_board
+import bridge_exec
 import bridge_idle
 
 WAIT_MAX = 10 * 60    # seconds to wait for the files to go quiet
@@ -228,12 +229,10 @@ async def reload_plugins(items):
     a little for the windows to go, so the bridge restarts after they did."""
     if not items:
         return
-    code = bridge.PLUGIN_CODE.read_text(encoding="utf-8")
-    html = (bridge.PLUGIN_CODE.parent / "ui.html").read_text(encoding="utf-8")
+    message = bridge_exec.reload_message()
     for _, info in items:
         try:
-            await info["ws"].send_str(json.dumps(
-                {"id": str(uuid.uuid4()), "type": "reload", "code": code, "html": html}))
+            await info["ws"].send_str(json.dumps({"id": str(uuid.uuid4()), **message}))
         except Exception:
             pass
     deadline = time.time() + RELOAD_WAIT

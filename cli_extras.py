@@ -227,14 +227,20 @@ def cmd_inspect(args):
 
 # ─── shot ────────────────────────────────────────────────────────────────
 
-def shot_code(ids, opts):
+def each_layer(ids, value):
+    """JS that returns `value` (an expression of `n`) for each layer: an id, a
+    link or `sel`, the selected layers."""
     return ("const out = [];"
             f"for (const id of {json.dumps(ids)}) {{"
             "  const nodes = id === 'sel' ? figma.currentPage.selection : [await h.resolve(id)];"
             "  if (!nodes.length) throw new Error('nothing is selected in Figma');"
-            f"  for (const n of nodes) out.push(await h.shot(n, {json.dumps(opts)}));"
+            f"  for (const n of nodes) out.push({value});"
             "}"
             "return out;")
+
+
+def shot_code(ids, opts):
+    return each_layer(ids, f"await h.shot(n, {json.dumps(opts)})")
 
 
 def shot_opts(args):
@@ -374,13 +380,7 @@ def _safe(text):
 # ─── link ────────────────────────────────────────────────────────────────
 
 def cmd_link(args):
-    code = ("const out = [];"
-            f"for (const id of {json.dumps(args.node_ids)}) {{"
-            "  const nodes = id === 'sel' ? figma.currentPage.selection : [await h.resolve(id)];"
-            "  if (!nodes.length) throw new Error('nothing is selected in Figma');"
-            "  for (const n of nodes) out.push({id: n.id, name: n.name, url: h.link(n)});"
-            "}"
-            "return out;")
+    code = each_layer(args.node_ids, "{id: n.id, name: n.name, url: h.link(n)}")
     status, resp = CLI._exec(code, args.timeout, quick=True)
     if args.raw or not resp.get("ok"):
         return CLI._emit(resp, raw=args.raw)

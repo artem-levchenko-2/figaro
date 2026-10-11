@@ -93,13 +93,6 @@ CHECKPOINT = None  # a label forces a checkpoint, False skips it, None = hourly 
 SANDBOXED = ("a sandbox keeps this command off the network, 127.0.0.1 included. Run figaro "
              "outside the sandbox: ask the user to approve that, or to allow figaro for good")
 
-KNOWN_CMDS = {
-    "exec", "status", "targets", "clear", "doctor", "sel", "tree", "find", "text", "variant",
-    "clone", "rm", "import-component", "icomp", "undo", "reload", "done",
-    "inspect", "shot", "link",
-}
-
-
 def force_utf8_output():
     """Windows consoles default to cp1252 and raise on anything outside it.
 
@@ -755,6 +748,31 @@ def build_parser():
     return ap
 
 
+# Every command. A first word that is none of them is a script: `figaro "<js>"`.
+DISPATCH = {
+    "status": cmd_status,
+    "targets": cmd_targets,
+    "clear": cmd_clear,
+    "doctor": cmd_doctor,
+    "sel": cmd_sel,
+    "exec": cmd_exec,
+    "tree": cmd_tree,
+    "find": cmd_find,
+    "text": cmd_text,
+    "variant": cmd_variant,
+    "clone": cmd_clone,
+    "rm": cmd_rm,
+    "import-component": cmd_import_component,
+    "icomp": cmd_import_component,
+    "undo": cmd_undo,
+    "reload": cmd_reload,
+    "done": cmd_done,
+    "inspect": cli_extras.cmd_inspect,
+    "shot": cli_extras.cmd_shot,
+    "link": cli_extras.cmd_link,
+}
+
+
 def main():
     force_utf8_output()
 
@@ -763,7 +781,7 @@ def main():
     # Backward-compat shorthand: `figaro "<js>"` → `figaro exec "<js>"`
     if (
         len(sys.argv) >= 2
-        and sys.argv[1] not in KNOWN_CMDS
+        and sys.argv[1] not in DISPATCH
         and not sys.argv[1].startswith("-")
     ):
         sys.argv.insert(1, "exec")
@@ -788,29 +806,7 @@ def main():
     CHECKPOINT = (False if getattr(args, "no_checkpoint", False)
                   else getattr(args, "checkpoint", None))
 
-    dispatch = {
-        "status": cmd_status,
-        "targets": cmd_targets,
-        "clear": cmd_clear,
-        "doctor": cmd_doctor,
-        "sel": cmd_sel,
-        "exec": cmd_exec,
-        "tree": cmd_tree,
-        "find": cmd_find,
-        "text": cmd_text,
-        "variant": cmd_variant,
-        "clone": cmd_clone,
-        "rm": cmd_rm,
-        "import-component": cmd_import_component,
-        "icomp": cmd_import_component,
-        "undo": cmd_undo,
-        "reload": cmd_reload,
-        "done": cmd_done,
-        "inspect": cli_extras.cmd_inspect,
-        "shot": cli_extras.cmd_shot,
-        "link": cli_extras.cmd_link,
-    }
-    sys.exit(dispatch[args.cmd](args))
+    sys.exit(DISPATCH[args.cmd](args))
 
 
 cli_extras.attach(sys.modules[__name__])
