@@ -17,8 +17,10 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
   new endpoint can't go without the check; the first copies of `h.withFonts`, `h.setText`, `h.variant` and
   `h.sel`, which never ran, are gone, and so is the code for plugin builds from before Figaro 1.0.0.
 - The plugin asks Figma for nothing but the team library (#3): `currentuser`, `activeusers` and `fileusers`
-  are gone from `plugin/manifest.json`, so a script can't read who is in the file. Nothing used them, and
-  there is no need to import the plugin again this time.
+  are gone from `plugin/manifest.json`, so a script can't read who is in the file. Nothing used them. Figma
+  takes the new list when the plugin is run again from its menu: after the update, close the plugin's window
+  and run Plugins → Development → Figaro once in each file. Update, Reload and `figaro reload` keep the old
+  list, and nothing breaks meanwhile. There is no need to import the plugin again.
 
 ### Fixed
 

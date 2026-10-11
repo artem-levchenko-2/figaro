@@ -150,7 +150,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - **Any change to `plugin/code.js` or `plugin/ui.html`** → bump `PLUGIN_VERSION` in `plugin/code.js` (date
   and counter, `2026-10-08.1`) and add its line to `tests/plugin_fingerprint.json` — the failing
   `pytest tests/test_plugin_version.py` prints it. Without that the bridge can't tell that Figma runs an
-  older plugin. A changed `manifest.json` has to be imported in Figma again.
+  older plugin. A changed `manifest.json` reaches Figma no sooner than the plugin's next run from its menu:
+  Hot reload and `figaro reload` keep the one it started with. For a new list of `permissions` that run was
+  enough (checked live); for other fields, import it again.
 - **A window and a bridge of different releases meet during an update by hand** (`git pull`, then a re-run of
   the plugin or a restart of the bridge). Builds from before 1.0.0 need nothing, but the 1.0.0 window and
   bridge have no `board`: keep the bridge's `update`, `outdated` and `peers` messages, the window's view
