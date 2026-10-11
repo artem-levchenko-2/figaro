@@ -8,6 +8,8 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-10-12
+
 ### Changed
 
 - The skill says each rule once (#3): the house rules live in `SKILL.md` and `craft.md` keeps the recipes
