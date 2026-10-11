@@ -133,7 +133,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - `assets/banner.svg` — the README's banner, drawn by `assets/banner.py` (run it after changing the
   letters or the colours).
 - `assets/hero.png` — the README's picture: the plugin's real window (`plugin/ui.html` with a made-up board)
-  and notes pointing at it, shot at 2x; its corners match the banner's. Redo it when the window changes.
+  and notes pointing at it, shot at 2x; its corners match the banner's. It leaves out the window's last line,
+  the version, so a release needs no new picture. Redo it when the window changes.
 
 ## Rules
 
