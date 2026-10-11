@@ -468,7 +468,7 @@ def test_two_documents_sharing_a_name_stay_ambiguous():
 @pytest.mark.parametrize("error_text,expected", [
     ("Cannot assign to read only property 'fills'", "h.bF()"),
     ("in an unloaded font Inter Bold", "h.setText"),
-    ("teamlibrary permission not specified in manifest", "manifest.json"),
+    ('in get_currentUser: "currentuser" permission not specified in manifest.json', "figma.currentUser"),
     ("Unable to find a variant matching", "h.variantsOf"),
     ("something entirely unrecognised", None),
 ])

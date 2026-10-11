@@ -352,7 +352,9 @@ ERROR_HINTS = [
     ("Cannot assign to read only property",
      "node.fills/strokes is frozen — copy via JSON.parse(JSON.stringify(...)) before mutating, or use h.bF()/h.bS()"),
     ("permission not specified in manifest",
-     "manifest.json missing a permission — edit plugin/manifest.json (the file Figma loads directly), then re-import the plugin in Figma"),
+     "Figaro asks Figma for nothing but the team library: figma.currentUser, figma.activeUsers "
+     "and the authors of FigJam stamps are off for scripts. Leave them out, and don't edit "
+     "Figaro's manifest.json"),
     ("font has not been loaded",
      "use h.setText(node, text) or h.withFonts(root, fn) — they autoload fonts"),
     ("Cannot find font",

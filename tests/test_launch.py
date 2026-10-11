@@ -1,11 +1,12 @@
 """The pieces agree on how they find each other, and launching is safe.
 
 The bridge, the CLI, both launchers and the plugin must agree on one default
-port. The plugin must be able to read figma.fileKey and must never write into a
-document by itself. The update check looks at this project's own releases. The
-launcher must never suggest killing whatever holds the port: that list includes
-Figma itself. The Windows scripts stay readable for Windows PowerShell 5.1,
-and figaro.exe, which pip makes from pyproject.toml, runs figaro.py.
+port. The plugin must be able to read figma.fileKey, asks Figma for nothing but
+the team library and must never write into a document by itself. The update
+check looks at this project's own releases. The launcher must never suggest
+killing whatever holds the port: that list includes Figma itself. The Windows
+scripts stay readable for Windows PowerShell 5.1, and figaro.exe, which pip
+makes from pyproject.toml, runs figaro.py.
 """
 import json
 import re
@@ -34,6 +35,13 @@ def test_plugin_can_read_the_file_key():
     manifest = json.loads(read("plugin/manifest.json"))
     assert manifest["name"] == "Figaro"
     assert manifest.get("enablePrivatePluginApi") is True
+
+
+def test_plugin_asks_figma_only_for_the_team_library():
+    # Scripts can't see who is in the file: figma.currentUser, figma.activeUsers
+    # and the authors of FigJam stamps stay off.
+    manifest = json.loads(read("plugin/manifest.json"))
+    assert manifest["permissions"] == ["teamlibrary"]
 
 
 def test_plugin_never_writes_into_the_document_by_itself():

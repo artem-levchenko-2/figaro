@@ -110,6 +110,9 @@ order. If you write it by hand:
   `setTextStyleIdAsync`, `getMainComponentAsync`). Check the name.
 - **`figma.createAutoLayout()`, `node.query()`, `node.set()` and `node.screenshot()`** from Figma's own advice
   exist only in its MCP server — the Plugin API doesn't have them.
+- **`… permission not specified in manifest`** — Figaro doesn't let scripts see who is in the file:
+  `figma.currentUser`, `figma.activeUsers` and the authors of FigJam stamps are off. Leave them out, and don't
+  edit Figaro's `manifest.json`.
 - **Building needs no `figma.setCurrentPageAsync`**: `figma.create*()` puts a node on the current page, and
   `page.appendChild(node)` or `h.frame(page, …)` moves it where it belongs; to read another page,
   `await page.loadAsync()`. A switched page jumps on the user's screen — don't switch it unless they ask.
