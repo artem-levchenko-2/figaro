@@ -20,6 +20,12 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
   are gone from `plugin/manifest.json`, so a script can't read who is in the file. Nothing used them, and
   there is no need to import the plugin again this time.
 
+### Fixed
+
+- An import by key in `h.importComp`, `h.importVar`, `h.var_`, `h.bF`, `h.bS` or `h.bN` stops at `--timeout`
+  when Figma never answers it, as the script's own `figma` calls do (#3). Before, the agent got a 504 and the
+  file stayed blocked until `figaro clear`.
+
 ## [1.2.0] — 2026-10-10
 
 ### Added

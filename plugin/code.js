@@ -7,7 +7,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-12.1";
+const PLUGIN_VERSION = "2026-10-12.2";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -92,29 +92,45 @@ function asText(value, logs) {
 // same `print()` the user's code gets. No-op outside an exec.
 let CURRENT_PRINT = () => {};
 
-async function resolveVar(varOrId) {
+// The `figma` of the script whose h called a helper: its calls end at the
+// script's deadline (scriptFigma), so an import by key that Figma never
+// answers can't hold the file past --timeout. Without that h, the plain one.
+const SCRIPT_FIGMA = Symbol("figma");
+function figmaOf(h) {
+  return (h && h[SCRIPT_FIGMA]) || figma;
+}
+
+// The script's deadline or the bridge's abort, not an answer from Figma.
+function stopped(e) {
+  return !!e && typeof e.message === "string" && e.message.indexOf("aborted: ") === 0;
+}
+
+async function resolveVar(varOrId, fig) {
   if (varOrId == null) return null;
   if (typeof varOrId !== "string") return varOrId;
+  fig = fig || figma;
 
   // Local variables are addressed as "VariableID:1:23"; anything else is a
   // library key, which has to be imported rather than looked up.
   if (varOrId.indexOf("VariableID:") === 0) {
-    return await figma.variables.getVariableByIdAsync(varOrId);
+    return await fig.variables.getVariableByIdAsync(varOrId);
   }
   // A library key is not a well-formed id, and getVariableByIdAsync rejects
   // those by throwing rather than returning null — so this has to be guarded,
   // otherwise the import below is unreachable for the very case it exists for.
   let local = null;
   try {
-    local = await figma.variables.getVariableByIdAsync(varOrId);
+    local = await fig.variables.getVariableByIdAsync(varOrId);
   } catch (e) {
+    if (stopped(e)) throw e;
     local = null;
   }
   if (local) return local;
 
   try {
-    return await figma.variables.importVariableByKeyAsync(varOrId);
+    return await fig.variables.importVariableByKeyAsync(varOrId);
   } catch (e) {
+    if (stopped(e)) throw e;  // the deadline, not a key Figma refused
     return null;
   }
 }
@@ -176,7 +192,7 @@ function noVar(who, varOrId) {
 const HELPERS = {
   // Bind fill paint at index to a variable (id or instance)
   async bF(node, idx, varOrId) {
-    const v = await resolveVar(varOrId);
+    const v = await resolveVar(varOrId, figmaOf(this));
     if (!v) throw noVar("h.bF", varOrId);
     const f = copyPaints(node, "fills", "h.bF");
     if (!f[idx]) throw new Error("h.bF: '" + node.name + "' has no fill at index " + idx);
@@ -187,7 +203,7 @@ const HELPERS = {
 
   // Bind stroke paint at index
   async bS(node, idx, varOrId) {
-    const v = await resolveVar(varOrId);
+    const v = await resolveVar(varOrId, figmaOf(this));
     if (!v) throw noVar("h.bS", varOrId);
     const s = copyPaints(node, "strokes", "h.bS");
     if (!s[idx]) throw new Error("h.bS: '" + node.name + "' has no stroke at index " + idx);
@@ -198,7 +214,7 @@ const HELPERS = {
 
   // Bind numeric property (radii, padding, sizes, itemSpacing, etc.)
   async bN(node, prop, varOrId) {
-    const v = await resolveVar(varOrId);
+    const v = await resolveVar(varOrId, figmaOf(this));
     if (!v) throw noVar("h.bN", varOrId);
     node.setBoundVariable(prop, v);
     return v;
@@ -350,9 +366,9 @@ const HELPERS = {
     }
     return found || await figma.getNodeByIdAsync(id);
   },
-  async var_(idOrKey) { return await resolveVar(idOrKey); },
-  async importComp(key) { return await figma.importComponentByKeyAsync(key); },
-  async importVar(key)  { return await figma.variables.importVariableByKeyAsync(key); },
+  async var_(idOrKey) { return await resolveVar(idOrKey, figmaOf(this)); },
+  async importComp(key) { return await figmaOf(this).importComponentByKeyAsync(key); },
+  async importVar(key)  { return await figmaOf(this).variables.importVariableByKeyAsync(key); },
 };
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -475,6 +491,7 @@ figma.ui.onmessage = async (msg) => {
   const gate = makeGate(id, deadline);
   try {
     const fig = scriptFigma(h.aborted, print, gate);
+    h[SCRIPT_FIGMA] = fig;  // a helper's import by key ends at the deadline too
     const lib = loadLibs(msg.libs, fig, print, h, libErrors);  // --lib files
     const fn = compileScript(code);
     result = await fn(fig, print, h, lib);

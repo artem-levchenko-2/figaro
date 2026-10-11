@@ -72,7 +72,14 @@ function makeFigma() {
     showUI(h) { shown.push(h); },
     ui: { onmessage: null, postMessage(m) { posted.push(m); } },
     currentPage: { selection: [] },
-    variables: { setValueForMode() {} },
+    variables: {
+      setValueForMode() {},
+      getVariableByIdAsync: () => Promise.resolve(null),
+      // An import by key that never settles, as in a draft; "gone" is a key Figma refuses.
+      importVariableByKeyAsync: (key) => key === "gone"
+        ? Promise.reject(new Error("could not find variable with key")) : new Promise(() => {}),
+    },
+    importComponentByKeyAsync: () => new Promise(() => {}),
     // A library call that never settles, as figma.teamLibrary sometimes does.
     teamLibrary: { getAvailableLibraryVariableCollectionsAsync: () => new Promise(() => {}) },
     on(event, fn) { if (event === "documentchange") handlers.push(fn); },
@@ -568,6 +575,19 @@ function check(label, actual, expected) {
     const caught = await exec(env, "try { await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync(); }" +
       ' catch (e) { return "caught"; }', { timeout: 0.05 });
     check("a script may catch it and still answer", caught.value, "caught");
+    // Without the deadline these would never answer: give up on them after a second.
+    const within = (p) => Promise.race([p, sleep(1000).then(() => ({ type: "no answer", text: "" }))]);
+    const comp = await within(exec(env, 'return await h.importComp("KEY");', { timeout: 0.05 }));
+    check("a helper's import by key ends at the deadline too",
+      [comp.type, /^aborted: figma\.importComponentByKeyAsync\(\) did not answer before --timeout ran out/.test(comp.text)],
+      ["error", true]);
+    const bound = await within(exec(env, 'return await h.bF({name: "Box", fills: []}, 0, "KEY");', { timeout: 0.05 }));
+    check("…and h.bF with a library key, which imports it",
+      [bound.type, /^aborted: figma\.variables\.importVariableByKeyAsync\(\) did not answer/.test(bound.text)],
+      ["error", true]);
+    const refused = await exec(env, 'return await h.var_("gone");');
+    check("a key Figma refuses is still null, not an error", [refused.type, refused.value], ["result", null]);
+    check("no gate outlives a helper's script either", env.api.GATES.size, 0);
 
     for (let i = 0; i < 150; i++) env.api.markAborted("x" + i);
     check("aborted ids are bounded", [env.api.ABORTED.size, env.api.ABORTED.has("x0"), env.api.ABORTED.has("x149")],

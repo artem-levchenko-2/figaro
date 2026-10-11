@@ -223,8 +223,10 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
 - **A Figma call that never answers ends at the deadline.** Every `*Async` call through the script's `figma`
   races `makeGate`: on `--timeout` or abort the script fails with "did not answer before --timeout ran out",
   and the bridge waits `GATE_GRACE` (1 s) more, so the agent gets that error rather than a 504 and the file
-  isn't blocked. Node methods (`getMainComponentAsync`) aren't covered. `figma.teamLibrary` and import by key
-  are the usual culprits; in a draft, import by key may fail even for what the file already uses.
+  isn't blocked. The helpers that import by key (`h.importComp`, `h.importVar`, and `h.var_`, `h.bF`, `h.bS`,
+  `h.bN` with a key) call through it too (`figmaOf`); node methods (`getMainComponentAsync`) and the other
+  helpers aren't covered. `figma.teamLibrary` and import by key are the usual culprits; in a draft, import by
+  key may fail even for what the file already uses.
 - **`documentchange` doesn't say who made a change**, only `origin` LOCAL or REMOTE: Figma's own updates
   (instances on a page that a script loads for the first time in a large file) and the user's edits during
   a script come as the script's, though they aren't its undo step — and the Plugin API has no redo. So the

@@ -9,9 +9,10 @@ A `figaro exec` script runs as the body of an async function with the parameters
   `ui.onmessage` throw, because they would cut the plugin off from the bridge.
 - **`--timeout`** (60 s) — the script's deadline. Calls to `figma.*Async`, `figma.variables.*` and
   `figma.teamLibrary.*` check it themselves: after the deadline a new call throws, and a call Figma never
-  answered ends with the error "did not answer before --timeout ran out". Node methods
-  (`getMainComponentAsync`, `exportAsync`, `setTextStyleIdAsync`…) and the `h.*` helpers don't know the
-  deadline — call `h.ck()` in a long loop.
+  answered ends with the error "did not answer before --timeout ran out". So does an import by key in
+  `h.importComp`, `h.importVar`, `h.var_`, `h.bF`, `h.bS` and `h.bN`. Node methods (`getMainComponentAsync`,
+  `exportAsync`, `setTextStyleIdAsync`…) and the other helpers don't know the deadline — call `h.ck()` in a
+  long loop.
 - **`print(...)`** — lines in the answer's `logs`; the CLI prints them as `log: …`.
 - **`return`** — the result: a string, a number or JSON. Return ids, names and numbers. A Figma node does not
   turn into JSON.
