@@ -3,8 +3,8 @@
 Figaro lets AI agents work in Figma Desktop. `figaro.py` (the CLI) sends a script over HTTP to `bridge.py`
 (aiohttp on 127.0.0.1:8788), and the bridge passes it over a WebSocket to the Figma development plugin in
 `plugin/` (`code.js` runs in Figma's sandbox, `ui.html` is the plugin's window). The plugin runs the script as
-`new Function("figma", "print", "h", body)`. Each Figma file has its own queue: one script at a time per
-file, so parallel agents never interleave their edits.
+the body of an async function in strict mode that gets `figma`, `print`, `h` and `lib` (`compileScript`). Each
+Figma file has its own queue: one script at a time per file, so parallel agents never interleave their edits.
 
 How agents *use* Figaro is the skill in `skill/figaro/` (`SKILL.md` and `references/`), in the open Agent
 Skills format. `tools/install.sh` (macOS, Linux) and `tools/install.ps1` (Windows) install the `figaro` command
@@ -223,9 +223,9 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   edge on a grey-blue ground in the light one.
 - **The keep-awake tone.** While scripts run, the window plays an inaudible tone (20 Hz, −66 dBFS); without it
   Chromium throttles a background Figma to up to a minute per step. Meanwhile macOS doesn't sleep
-  (`pmset -g assertions` shows Figma "Playing audio"). The tone stops 3 minutes after the last script or
-  ~2 s after the bridge goes away — that is why the bridge closes the plugins' connections on exit
-  (`bridge_idle.close_plugins`).
+  (`pmset -g assertions` shows Figma "Playing audio"). The tone stops 3 minutes after the last script ends
+  (a script whose answer never comes, after its `--timeout` and those 3 minutes) or ~2 s after the bridge
+  goes away — that is why the bridge closes the plugins' connections on exit (`bridge_idle.close_plugins`).
 - **`getNodeByIdAsync` for a layer inside an instance** (`I2:1068;2:1041`) once hung for 10 s ("Unable to
   establish connection") while `figma.getNodeById` found it. So `h.node` and the script's
   `figma.getNodeByIdAsync` ask synchronously first (`nodeHere`).

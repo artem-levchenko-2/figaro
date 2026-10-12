@@ -73,8 +73,9 @@ order. If you write it by hand:
 
 ## Fills, variables, styles
 
-- **`Cannot assign to read only property`** — `fills`/`strokes` are frozen: copy the array
-  (`JSON.parse(JSON.stringify(node.fills))`), change it and assign it whole. To bind — `h.bF`/`h.bS`.
+- **`'color' is read-only`**, **`object is not extensible`** — `fills`, `strokes`, `effects` and the paints in
+  them are frozen: copy the array (`JSON.parse(JSON.stringify(node.fills))`), change it and assign it whole.
+  To bind — `h.bF`/`h.bS`.
 - **`setBoundVariableForPaint` returns a new paint** — it has to be assigned; `h.bF` does that itself.
 - **Empty `fills`** — nothing to bind: first `node.fills = h.solid("#000")`, then `h.bF(node, 0, v)`.
 - **A fill's opacity** lives in `paint.opacity`, not in the variable's colour: don't lose it when you
@@ -106,10 +107,12 @@ order. If you write it by hand:
 ## Scripts
 
 - **The answer is `Done` or `null`** — you forgot the `return`.
+- **Scripts run in strict mode.** `'x' is not defined` — declare it first (`const`, `let`). `no setter for
+  property` — the property can only be read: `width` and `height` change with `resize()` or `h.fixed`.
 - **`not a function`** — the method was renamed or exists only as an async version (`getNodeByIdAsync`,
   `setTextStyleIdAsync`, `getMainComponentAsync`). Check the name.
 - **`figma.createAutoLayout()`, `node.query()`, `node.set()` and `node.screenshot()`** from Figma's own advice
-  exist only in its MCP server — the Plugin API doesn't have them.
+  exist only in its MCP server — the Plugin API doesn't have them, and calling one fails with `not a function`.
 - **`… permission not specified in manifest`** — Figaro doesn't let scripts see who is in the file:
   `figma.currentUser`, `figma.activeUsers` and the authors of FigJam stamps are off. Leave them out, and don't
   edit Figaro's `manifest.json`.

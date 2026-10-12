@@ -21,15 +21,33 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ### Changed
 
+- **Scripts run in strict mode.** A write that can't happen fails instead of doing nothing:
+  `node.fills[0].color = …` says `'color' is read-only`, `node.width = 100` says `no setter for property`.
+  A variable needs `const` or `let` before its first use. The hints say what to do in each case.
 - `figaro rm sel` removes every selected layer, as `shot` and `link` take them. Before, it removed the first.
 
 ### Fixed
 
+- `h.frame` left an axis hugging when its number was 100, the size of a new frame: `{layout: "V", w: 200,
+  h: 100}` came out 200 × 15. An axis with a number is FIXED now.
+- `figaro clone page` copied the whole page and then failed, leaving the copy. `h.cloneNext` refuses a page
+  now. In auto-layout the copy goes right after the original, not to the end. `RIGHT` works as `right`, and
+  an unknown direction fails.
+- A `-R` script took a write named in a comment or a string (`// .remove()`) for a real one, so changes Figma
+  made meanwhile were rolled back as the script's, and `undo` refused. `n.remove?.()` and a write inside a
+  template's `${…}` count as writes now.
+- `print(error)` printed `{}`. It prints the error now, and an object with a cycle or a BigInt no longer
+  fails the script.
+- The keep-awake tone stopped 3 minutes after a script began, even while it still ran. It plays until the
+  last script ends, and 3 minutes more.
 - Several commands at once, with no bridge running, each started one. Now one starts it and the others wait.
 - An emoji cut in half in a note left every plugin window without its board. A failed Update's line stays
   10 minutes, as meant, and two presses at once start one update.
 - A plugin window that sent odd fields made `/status`, `/targets` and `/exec` answer 500. A malformed body
   or a token that isn't text gets a 400 or a 401.
+- `h.find` with `textHas` failed on layers that aren't text, and `hidden: true` missed layers after a script
+  had turned on `figma.skipInvisibleInstanceChildren`. `padding` takes the CSS forms `[top, horizontal,
+  bottom]` and `[top, right, bottom, left]`. `tree` keeps a text with line breaks on its layer's line.
 - Commands end with a message, not a traceback: `exec -f` with a missing or non-UTF-8 file, `-o` into a
   folder you can't write, `--tile 0`, `--timeout -5`, an empty `FIGARO_PORT`, a token file that isn't text,
   output into a closed pipe (`figaro tree page | head -1`), a lost connection, an answer that isn't JSON.

@@ -236,26 +236,39 @@ function send(msg) {
 // of `await figma.loadFontAsync` stalls ~50 s per call and changes arrive long
 // after the script ended. A page that plays sound is never throttled, so while
 // agents work this window plays a 20 Hz tone at -66 dBFS: nobody hears it, and
-// Chromium counts it as sound (a silent stream does not count). After
-// AWAKE_IDLE_MS without a script it stops, because a playing page also keeps
-// macOS from idle sleep, and it stops at once when the bridge goes away: it
-// plays only while the bridge is up (tests/ui.test.js).
+// Chromium counts it as sound (a silent stream does not count). It plays
+// while scripts run and stops AWAKE_IDLE_MS after the last one ends, because a
+// playing page also keeps macOS from idle sleep, and it stops at once when the
+// bridge goes away: it plays only while the bridge is up (tests/ui.test.js).
 const AWAKE_IDLE_MS = 3 * 60 * 1000;
 const AWAKE_SETTLE_MS = 250;  // until Chromium notices the sound and lifts throttling
 const AWAKE_RESUME_MS = 500;  // a page not allowed to play sound never resumes — don't wait for it
 let audio = null;
 let awakeSince = 0;
 let awakeTimer = null;
+// Requests in the sandbox, until their answer: id -> when the tone stops at
+// the latest should the answer never come, AWAKE_IDLE_MS after its time is up.
+const running = new Map();
 
 function awakeState() {
   if (!audio) return "off";
   return audio.state === "running" ? "on" : audio.state;
 }
 
-// Start (or keep) the tone; resolves once the window has had time to wake up.
-function wake() {
+// When to stop the tone: AWAKE_IDLE_MS from now, or later while a request
+// still runs.
+function quietLater() {
   clearTimeout(awakeTimer);
-  awakeTimer = setTimeout(hush, AWAKE_IDLE_MS);
+  let until = Date.now() + AWAKE_IDLE_MS;
+  for (const latest of running.values()) until = Math.max(until, latest);
+  awakeTimer = setTimeout(hush, until - Date.now());
+}
+
+// Start (or keep) the tone for a request; resolves once the window has had
+// time to wake up.
+function wake(msg) {
+  running.set(msg.id, Date.now() + (Number(msg.timeout) || 60) * 1000 + AWAKE_IDLE_MS);
+  quietLater();
   try {
     if (!audio) {
       audio = new AudioContext();
@@ -287,13 +300,14 @@ function wake() {
 // Stop the tone: no script for AWAKE_IDLE_MS, or the bridge is gone.
 function hush() {
   clearTimeout(awakeTimer);
+  running.clear();
   if (audio) audio.suspend();
   awakeSince = 0;
 }
 
 // Hand a request from the bridge to the sandbox once the window is awake.
 function toSandbox(msg) {
-  const ready = wake();
+  const ready = wake(msg);
   const send = () => parent.postMessage({ pluginMessage: msg }, "*");
   if (ready) ready.then(send, send); else send();
 }
@@ -432,7 +446,8 @@ function clock(ts) {
 const clockSpan = (ts) => `<span data-clock="${ts}">${clock(ts)}</span>`;
 const agoSpan = (ts) => `<span data-ago="${ts}" data-long="1">${agoLong(ts)}</span>`;
 const agoShort = (ts) => `<span data-ago="${ts}">${ago(ts)}</span>`;
-const av = (name) => `<span class="av" style="--av: ${color(name)}">${esc(String(name)[0].toUpperCase())}</span>`;
+// The first letter, or the whole emoji: a name may start with one.
+const av = (name) => `<span class="av" style="--av: ${color(name)}">${esc((Array.from(String(name))[0] || "?").toUpperCase())}</span>`;
 
 // What a closed island shows: the file, then what matters most in it.
 function headline(f) {
@@ -864,7 +879,10 @@ window.onmessage = (e) => {
     schedule();
     return;
   }
-  if ((m.type === "result" || m.type === "error") && local.delete(m.id) && !board) schedule();
+  if (m.type === "result" || m.type === "error") {
+    if (running.delete(m.id) && audio) quietLater();
+    if (local.delete(m.id) && !board) schedule();
+  }
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     log(`[drop] ws not open, ${m.type} id=${shortId(m.id)}`);
     return;

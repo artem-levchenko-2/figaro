@@ -7,7 +7,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-12.2";
+const PLUGIN_VERSION = "2026-10-12.3";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -150,18 +150,17 @@ function hexToRgb(value) {
   };
 }
 
-// Normalise padding given as a number, [v, h], or {top,right,bottom,left}.
+// Padding as a number, or as in CSS: [all], [vertical, horizontal], [top,
+// horizontal, bottom], [top, right, bottom, left]; or {top, right, bottom, left}.
 function paddingOf(p) {
   if (p == null) return null;
-  if (typeof p === "number") return { top: p, right: p, bottom: p, left: p };
+  const n = (v) => Number(v) || 0;
+  if (typeof p !== "object") return { top: n(p), right: n(p), bottom: n(p), left: n(p) };
   if (Array.isArray(p)) {
-    const v = p[0], hz = p.length > 1 ? p[1] : p[0];
-    return { top: v, right: hz, bottom: v, left: hz };
+    const [top = 0, right = top, bottom = top, left = right] = p.map(n);
+    return { top, right, bottom, left };
   }
-  return {
-    top: p.top || 0, right: p.right || 0,
-    bottom: p.bottom || 0, left: p.left || 0,
-  };
+  return { top: n(p.top), right: n(p.right), bottom: n(p.bottom), left: n(p.left) };
 }
 
 // Copy a paint array before mutating it — node.fills/strokes are frozen.
@@ -251,7 +250,7 @@ const HELPERS = {
           " pad:" + n.paddingTop + "," + n.paddingRight + "," + n.paddingBottom + "," + n.paddingLeft +
           " " + n.primaryAxisSizingMode + "/" + n.counterAxisSizingMode + "}";
       }
-      if (showText && n.type === "TEXT") line += ' "' + n.characters + '"';
+      if (showText && n.type === "TEXT") line += " " + JSON.stringify(n.characters);  // a line break as \n
       lines.push(line);
       if (n.children) for (const c of n.children) walk(c, d + 1);
     };
@@ -259,13 +258,21 @@ const HELPERS = {
     return lines.join("\n");
   },
 
-  // Clone node and place it next to the original
+  // Clone node and place it next to the original: in an auto-layout frame,
+  // right after it.
   cloneNext(node, opts) {
     opts = opts || {};
-    const direction = opts.direction || "right";
+    const direction = String(opts.direction || "right").toLowerCase();
+    if (!["right", "left", "down", "up"].includes(direction)) {
+      throw new Error(`h.cloneNext: direction is right, left, down or up, not "${opts.direction}"`);
+    }
+    // A page's clone is a whole new page, made before x and y fail on it.
+    if (!node.parent || node.type === "PAGE") {
+      throw new Error(`h.cloneNext copies a layer, not a ${node.type.toLowerCase()}: name a layer on the page`);
+    }
     const gap = opts.gap == null ? 100 : opts.gap;
     const c = node.clone();
-    node.parent.appendChild(c);
+    node.parent.insertChild(node.parent.children.indexOf(node) + 1, c);
     if (direction === "right") { c.x = node.x + node.width + gap; c.y = node.y; }
     else if (direction === "left")  { c.x = node.x - node.width - gap; c.y = node.y; }
     else if (direction === "down")  { c.x = node.x; c.y = node.y + node.height + gap; }
@@ -314,14 +321,16 @@ const HELPERS = {
     }
 
     if (f.layoutMode && f.layoutMode !== "NONE") {
-      // Hug by default on axes the caller didn't pin to a number.
-      if (opts.hug !== false) {
-        const horizontalIsPrimary = f.layoutMode === "HORIZONTAL";
-        const primaryFixed = horizontalIsPrimary ? opts.w != null : opts.h != null;
-        const counterFixed = horizontalIsPrimary ? opts.h != null : opts.w != null;
-        if (!primaryFixed) f.primaryAxisSizingMode = "AUTO";
-        if (!counterFixed) f.counterAxisSizingMode = "AUTO";
-      }
+      // An axis pinned to a number is FIXED: resize() fixes only an axis whose
+      // size changes, and a new frame is 100 × 100, so h: 100 kept hugging.
+      // Hug by default on the others.
+      const horizontalIsPrimary = f.layoutMode === "HORIZONTAL";
+      const primaryFixed = horizontalIsPrimary ? opts.w != null : opts.h != null;
+      const counterFixed = horizontalIsPrimary ? opts.h != null : opts.w != null;
+      if (primaryFixed) f.primaryAxisSizingMode = "FIXED";
+      else if (opts.hug !== false) f.primaryAxisSizingMode = "AUTO";
+      if (counterFixed) f.counterAxisSizingMode = "FIXED";
+      else if (opts.hug !== false) f.counterAxisSizingMode = "AUTO";
       if (opts.spacing != null) f.itemSpacing = opts.spacing;
       if (opts.align) {
         if (opts.align.primary) f.primaryAxisAlignItems = opts.align.primary;
@@ -455,9 +464,7 @@ figma.ui.onmessage = async (msg) => {
     }
   };
   const print = (...args) => {
-    const text = args.map((a) =>
-      typeof a === "object" ? JSON.stringify(a, null, 2) : String(a)
-    ).join(" ");
+    const text = args.map(printable).join(" ");
     logs.push(text);
     unsent.push(text);
     if (unsent.length >= 200) flushLogs();
@@ -538,7 +545,7 @@ const OUTSIDE = { local: 0, remote: 0, recent: [] };  // changes made while no r
 // component or a component set. A script that may make them
 // is kept in HISTORY even when Figma reported nothing, so `undo` stops there
 // instead of reverting the wrong step.
-const VARIABLE_WRITES = /\b(setValueForMode|createVariable|createVariableCollection|addMode|removeMode|renameMode|setVariableCodeSyntax|removeVariableCodeSyntax)\b|\.remove\(\)/;
+const VARIABLE_WRITES = /\b(setValueForMode|createVariable|createVariableCollection|addMode|removeMode|renameMode|setVariableCodeSyntax|removeVariableCodeSyntax)\b|\.\s*remove\s*(?:\?\.\s*)?\(\s*\)/;
 
 // Figma reports every local change made while a script runs without saying
 // who made it: Figma's own updates (in a large file that was just opened) and
@@ -556,7 +563,7 @@ const FIGMA_READS = /^(?:get\w*|load\w*|listAvailableFontsAsync|notify|on|once|o
 const HELPER_READS = /^(?:node|resolve|sel|find|findByName|findAllByName|dumpTree|link|inspect|shot|hex|solid|fonts|withFonts|fa|variantsOf|var_|annotations|ck|aborted)$/;
 // Methods that change the file, called or bound on anything; a call by a
 // computed name; code that runs code.
-const WRITE_CALLS = /\.\s*(?:set(?!CurrentPageAsync\b|Timeout\b|Interval\b)[A-Z]\w*|create[A-Z]\w*|import\w*Async|(?:add|edit|delete|remove|reset|clear)[A-Z]\w*|remove|appendChild|insertChild|resize|resizeWithoutConstraints|rescale|clone|detachInstance|swapComponent|outlineStroke|insertCharacters|(?:lock|unlock)AspectRatio|group|ungroup|flatten|union|subtract|intersect|exclude|combineAsVariants|moveLocal\w*|triggerUndo|renameMode)\s*(?:\(|\.\s*(?:call|apply|bind)\b)|\]\s*\(|\b(?:eval|Function|import)\s*\(|(?:^|[;{}\n])\s*with\s*\(|\bReflect\s*\.|\bObject\s*\.\s*(?:defineProperty|defineProperties|setPrototypeOf)\b/;
+const WRITE_CALLS = /\.\s*(?:set(?!CurrentPageAsync\b|Timeout\b|Interval\b)[A-Z]\w*|create[A-Z]\w*|import\w*Async|(?:add|edit|delete|remove|reset|clear)[A-Z]\w*|remove|appendChild|insertChild|resize|resizeWithoutConstraints|rescale|clone|detachInstance|swapComponent|outlineStroke|insertCharacters|(?:lock|unlock)AspectRatio|group|ungroup|flatten|union|subtract|intersect|exclude|combineAsVariants|moveLocal\w*|triggerUndo|renameMode)\s*(?:\?\.\s*)?(?:\(|\.\s*(?:call|apply|bind)\b)|\]\s*\(|\b(?:eval|Function|import)\s*\(|(?:^|[;{}\n])\s*with\s*\(|\bReflect\s*\.|\bObject\s*\.\s*(?:defineProperty|defineProperties|setPrototypeOf)\b/;
 const ASSIGN_OP = "(?:(?:[-+*/%&|^]|\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?)?=(?![=>])|\\+\\+|--)";
 // Not the file: the page on show, the selection, the view, a speed-up for reads.
 const NOT_THE_FILE = /^figma\.(?:currentPage|skipInvisibleInstanceChildren|viewport\..+)$|\.selection$/;
@@ -569,9 +576,9 @@ function codeMayWrite(code, libs) {
   const src = codeOnly(code);
   if (VARIABLE_WRITES.test(src) || WRITE_CALLS.test(src)) return true;
   let m;
-  const figmaCall = /\bfigma\s*\.\s*([A-Za-z_$][\w$]*)\s*\(/g;
+  const figmaCall = /\bfigma\s*\??\.\s*([A-Za-z_$][\w$]*)\s*(?:\?\.\s*)?\(/g;
   while ((m = figmaCall.exec(src))) if (!FIGMA_READS.test(m[1])) return true;
-  const helperCall = /\bh\s*\.\s*([A-Za-z_$][\w$]*)\s*\(/g;
+  const helperCall = /\bh\s*\??\.\s*([A-Za-z_$][\w$]*)\s*(?:\?\.\s*)?\(/g;
   while ((m = helperCall.exec(src))) if (!HELPER_READS.test(m[1])) return true;
   const { own, bound } = bindings(src);
   for (const name of ["figma", "h"]) {  // passed on: what is called on it under another name is unknown
@@ -609,7 +616,8 @@ function codeMayWrite(code, libs) {
 }
 
 // The code without its comments, strings and regular expressions, which say
-// nothing about what it does: a comment becomes a space, the others "".
+// nothing about what it does: a comment becomes a space, the others "". A
+// template keeps the code of its ${…} parts, in brackets: that code runs.
 function codeOnly(code) {
   const s = String(code || "");
   const parts = [];
@@ -632,6 +640,10 @@ function codeOnly(code) {
       end = s.indexOf("*/", i + 2);
       end = end < 0 ? s.length : end + 2;
       text = " ";
+    } else if (c === "`") {
+      const t = templateAt(s, i);
+      end = t.end;
+      if (t.code.length) text = "(" + t.code.map(codeOnly).join(", ") + ")";
     } else if (c !== "/" || regexHere(tail + s.slice(Math.max(from, i - 64), i))) {
       end = literalEnd(s, i);
     } else {
@@ -656,6 +668,33 @@ function regexHere(before) {
   if (/(?:\+\+|--)$/.test(t)) return false;
   return k === 0 || /[(,=:[!&|?{};+\-*%<>~^]$/.test(t) ||
     /(?:^|[^\w$.])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|instanceof|yield|await)$/.test(t);
+}
+
+// The template that starts at `i`: the index just past it (-1 if it doesn't
+// end), and the code of its ${…} parts.
+function templateAt(s, i) {
+  const code = [];
+  for (let j = i + 1; j < s.length; j++) {
+    const c = s[j];
+    if (c === "\\") { j++; continue; }
+    if (c === "`") return { end: j + 1, code };
+    if (c !== "$" || s[j + 1] !== "{") continue;
+    let k = j + 2;
+    for (let depth = 1; depth; k++) {
+      if (k >= s.length) return { end: -1, code };
+      const d = s[k];
+      if (d === "{") depth++;
+      else if (d === "}") depth--;
+      else if (d === '"' || d === "'" || d === "`") {
+        const e = d === "`" ? templateAt(s, k).end : literalEnd(s, k);
+        if (e < 0) return { end: -1, code };
+        k = e - 1;
+      }
+    }
+    code.push(s.slice(j + 2, k - 1));
+    j = k - 1;
+  }
+  return { end: -1, code };
 }
 
 // The end of the string, template or regular expression that starts at `i`,
@@ -809,7 +848,8 @@ function bindings(src) {
 }
 
 function startRun(id, opts) {
-  const mayWriteVariables = VARIABLE_WRITES.test(opts.code || "");
+  // Read in the code alone: "addMode" in a comment or a string writes nothing.
+  const mayWriteVariables = VARIABLE_WRITES.test(codeOnly(opts.code));
   const run = {
     id, agent: opts.agent || null, readOnly: !!opts.readOnly, quiet: false,
     mayWriteVariables,
@@ -1058,10 +1098,13 @@ function wait(ms) {
 
 // The script's line 1 starts on its own line, so a trailing `// comment` no
 // longer swallows the closing `})();`. `lib` is what the --lib files define.
+// Strict mode, on the first line so the lines don't move: a write that can't
+// happen (node.fills[0].color = …, a frozen array) fails instead of doing
+// nothing, silently.
 const SCRIPT_PARAMS = ["figma", "print", "h", "lib"];
 
 function compileScript(code) {
-  return new Function(...SCRIPT_PARAMS, "return (async () => {\n" + code + "\n})();");
+  return new Function(...SCRIPT_PARAMS, '"use strict"; return (async () => {\n' + code + "\n})();");
 }
 
 // A script line in a stack trace: "<input>:L:C" in Figma's sandbox (QuickJS),
@@ -1070,7 +1113,7 @@ function compileScript(code) {
 const STACK_POS = /<(?:input|anonymous)>:(\d+):(\d+)/g;
 const SCRIPT_LINE_OFFSET = (() => {
   try {
-    new Function(...SCRIPT_PARAMS, "return (() => {\nthrow new Error('probe')\n})();")();
+    new Function(...SCRIPT_PARAMS, '"use strict"; return (() => {\nthrow new Error(\'probe\')\n})();')();
   } catch (e) {
     STACK_POS.lastIndex = 0;
     const m = STACK_POS.exec(String(e && e.stack));
@@ -1092,6 +1135,32 @@ function scriptPositions(stack, lineCount) {
   }
   STACK_POS.lastIndex = 0;
   return out;
+}
+
+// What print() writes for a value: an object as JSON, an error as its name
+// and text (JSON makes it "{}"), and what JSON can't hold, an object that
+// leads back to itself or a BigInt, as well as it can, never failing the script.
+function printable(a) {
+  const isError = (v) => v instanceof Error || Object.prototype.toString.call(v) === "[object Error]";
+  if (isError(a) || a === null || typeof a !== "object") return String(a);
+  const plain = (v) => (typeof v === "bigint" || isError(v) ? String(v) : v);
+  try {
+    return JSON.stringify(a, (key, v) => plain(v), 2);
+  } catch (e) {
+    const seen = new Set();
+    try {
+      return JSON.stringify(a, (key, v) => {
+        v = plain(v);
+        if (v && typeof v === "object") {
+          if (seen.has(v)) return "[Circular]";
+          seen.add(v);
+        }
+        return v;
+      }, 2);
+    } catch (e2) {
+      return String(a);
+    }
+  }
 }
 
 function errorText(e) {
@@ -2081,12 +2150,14 @@ Object.assign(HELPERS, {
     q = q || {};
     if (!root || typeof root.findAll !== "function") throw new Error("h.find: " + nodeLabel(root) + " has no children");
     const type = q.type ? String(q.type).toUpperCase() : q.text != null || q.textHas != null ? "TEXT" : null;
+    const text = (n) => (typeof n.characters === "string" ? n.characters : null);
     const match = (n) => (q.name == null || n.name === q.name)
       && (q.nameHas == null || n.name.indexOf(q.nameHas) !== -1)
-      && (q.text == null || n.characters === q.text)
-      && (q.textHas == null || n.characters.indexOf(q.textHas) !== -1);
+      && (q.text == null || text(n) === q.text)
+      && (q.textHas == null || (text(n) !== null && text(n).indexOf(q.textHas) !== -1));
+    // Set either way: a script before may have left it on.
     const was = figma.skipInvisibleInstanceChildren;
-    if (!q.hidden) figma.skipInvisibleInstanceChildren = true;
+    figma.skipInvisibleInstanceChildren = !q.hidden;
     try {
       const found = type && typeof root.findAllWithCriteria === "function"
         ? root.findAllWithCriteria({ types: [type] }).filter(match)

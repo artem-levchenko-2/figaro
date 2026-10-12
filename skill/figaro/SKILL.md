@@ -98,6 +98,8 @@ JS
 - A script is the body of an async function. It gets `figma`, `h` (`helpers.md`), `print(...)` (`log:` lines
   in the answer) and `lib` (`--lib`). Its result is what `return` gives back: ids, names and numbers, not
   nodes or whole trees.
+- It runs in strict mode: declare every variable (`const`, `let`). A write that can't happen, such as to the
+  frozen `node.fills[0].color`, fails with an error instead of doing nothing.
 - `<<'JS'` in quotes keeps the shell away from `$` and backticks in the code. Or use `-f script.js`: when the
   user allowed `figaro` by a command rule (Codex), a plain `figaro …` line runs without asking and a heredoc
   doesn't. PowerShell has no heredoc, and its pipe loses letters outside ASCII: there, always use `-f`.

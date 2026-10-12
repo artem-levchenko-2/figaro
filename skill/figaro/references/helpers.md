@@ -57,7 +57,7 @@ the recipes below).
 
 | Helper | What it does |
 |---|---|
-| `h.frame(parent, opts)` | an auto-layout frame, set up in the order Figma needs (`pitfalls.md`, "Auto-layout"). `opts`: `layout` (`"V"`, `"H"`), `w`, `h`, `spacing`, `padding` (a number, `[vertical, horizontal]` or `{top, right, bottom, left}`), `align: {primary, counter}`, `fill` (a hex or `false`), `radius`, `name`. An axis without a number HUGs |
+| `h.frame(parent, opts)` | an auto-layout frame, set up in the order Figma needs (`pitfalls.md`, "Auto-layout"). `opts`: `layout` (`"V"`, `"H"`), `w`, `h`, `spacing`, `padding` (a number; as in CSS, `[vertical, horizontal]`, `[top, horizontal, bottom]` or `[top, right, bottom, left]`; or `{top, right, bottom, left}`), `align: {primary, counter}`, `fill` (a hex or `false`), `radius`, `name`. An axis with a number is FIXED, one without HUGs |
 | `await h.fill(node, "x" \| "y" \| "xy")` | FILL; only for a child of an auto-layout frame, so `parent.appendChild(node)` first. Warns if the parent HUGs on that axis |
 | `await h.hug(node, "x" \| "y" \| "xy")` | HUG; only an auto-layout frame or a text |
 | `await h.fixed(node, w, h)` | a fixed size; `null` leaves that axis as it was (a bare `resize()` makes both axes FIXED) |
@@ -81,7 +81,7 @@ The auto-layout helpers load the text's fonts themselves and explain what Figma 
 | `await h.variant(inst, props)` | `inst.setProperties(props)`. Property names short (`"Label"`, `"Size"`) or full (`"Label#12:0"`); `"true"`/`"false"` for a BOOLEAN become booleans |
 | `await h.variantsOf(inst)` | `{current, groups, all}` — which variants the set has |
 | `await h.importComp(key)` | a component of a **published** library, by key |
-| `h.cloneNext(node, {direction, gap, name})` | a copy next to the node: `right`, `left`, `up`, `down` |
+| `h.cloneNext(node, {direction, gap, name})` | a copy right after the node in its parent, `gap` px (100) to the `right`, `left`, `up` or `down`; in auto-layout it takes the next place. Not for a page |
 
 A component the file already has (its own or a library's; `inspect` prints its id) needs no import:
 `(await h.node(id)).createInstance()`.

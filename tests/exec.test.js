@@ -189,6 +189,20 @@ function check(label, actual, expected) {
 
     const bare = await exec(env, "throw {};");
     check("an error without text is explained", /^an error with no text/.test(bare.text), true);
+
+    // Strict mode: a write that can't happen fails instead of doing nothing.
+    const frozen = await exec(env, "const paint = Object.freeze({ color: 1 });\npaint.color = 2;\nreturn paint.color;");
+    check("a write to a frozen object fails, on its line",
+      [frozen.type, frozen.line, /read.only/.test(frozen.text)], ["error", 2, true]);
+    const undeclared = await exec(env, "total = 1;\nreturn total;");
+    check("…and so does a variable never declared",
+      [undeclared.type, /total is not defined/.test(undeclared.text)], ["error", true]);
+
+    const printed = await exec(env, 'const loop = { name: "a" }; loop.self = loop;\n' +
+      'print(new Error("boom"), { e: new TypeError("t"), n: 10n });\nprint(loop, null, 1n);\nreturn 1;');
+    check("print shows an error's text, a BigInt and a loop back to itself", printed.logs,
+      ['Error: boom {\n  "e": "TypeError: t",\n  "n": "10"\n}',
+       '{\n  "name": "a",\n  "self": "[Circular]"\n} null 1']);
   }
 
   // ─── what a script changed ──────────────────────────────────────────────
@@ -286,6 +300,7 @@ function check(label, actual, expected) {
       "const { width: w, height: h } = figma.currentPage.children[0]; return [{ w, h }];",
       "let a = 1, b = 2; [a, b] = [b, a]; return a;",
       'const stats = new Map()\nfor (const n of figma.currentPage.children) stats.set(n.id, n.name)\nreturn [...stats]',
+      "return `${figma.root.name}: ${figma.root.children.map((p) => `${p.name}`).join(\", \")}`;",
     ];
     check("code that only reads", reads.map((c) => may(c)), reads.map(() => false));
     const writes = [
@@ -320,6 +335,11 @@ function check(label, actual, expected) {
       "const n = figma.currentPage.children[0]; n.removeOverrides();",
       "const H = h; await H.fill(figma.currentPage.children[0]);",
       "const n = figma.currentPage.children[0]; with (n) { name = \"x\"; }",
+      // optional calls, and code inside a template
+      "const n = figma.currentPage.children[0]; n.remove?.();",
+      "figma.createFrame?.();",
+      "return `removed: ${figma.currentPage.children[0].remove()}`;",
+      "return `${figma.root.name} ${`${(figma.currentPage.children[0].name = \"x\")}`}`;",
     ];
     check("code that may write", writes.map((c) => may(c)), writes.map(() => true));
     check("…and so does code with --lib files", may("return 1;", [{ name: "a", hash: "x" }]), true);
@@ -342,6 +362,18 @@ function check(label, actual, expected) {
     check("…but told", r.notice, "read-only: 1 changed in the file while the script ran (Card) — not by the " +
       "script: its code only reads, so Figma itself or someone in the file made them; nothing rolled back");
     check("…and counted as made in Figma itself", env.api.OUTSIDE.local, 3);
+  }
+  {
+    // A write named only in a comment or a string is no write: Figma's own
+    // changes during this read-only script are not rolled back as its own.
+    const env = load();
+    const run = exec(env, "// no addMode here, no .remove()\nconst note = 'n.remove()';" +
+      " await new Promise((r) => setTimeout(r, 60)); return note;", { readOnly: true });
+    await sleep(20);
+    env.figmaEdit("~1:1 Card width");
+    const r = await run;
+    check("a write named in a comment or a string is no write",
+      [r.type, r.rolledBack, env.undo.log.includes("undo")], ["result", undefined, false]);
   }
   {
     const env = load();

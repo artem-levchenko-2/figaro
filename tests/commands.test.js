@@ -389,6 +389,17 @@ const kit = () => ({
     check("a hidden layer outside an instance is found", r.value, ["1:4"]);
     r = await exec(env, "return h.find(await h.node('1:1'), {textHas: 'wor'})");
     check("by text", r.value, [{ id: "1:2", name: "Title", type: "TEXT", w: 288, h: 24, chars: "Hello world" }]);
+    r = await exec(env, "return h.find(await h.node('1:1'), {type: 'frame', textHas: 'x', hidden: true})");
+    check("text asked of a type that has none finds nothing", [r.type, r.value], ["result", []]);
+    env.figma.skipInvisibleInstanceChildren = true;
+    r = await exec(env, "return h.find(await h.node('1:1'), {nameHas: 'S', hidden: true}).map((n) => n.name)");
+    check("hidden: true finds them though a script before left the flag on",
+      [r.value, env.figma.skipInvisibleInstanceChildren], [["Spinner"], true]);
+    env.figma.skipInvisibleInstanceChildren = false;
+    env.nodes.get("1:2").characters = "Hello\nworld";
+    r = await exec(env, "return h.dumpTree(await h.node('1:1'), {maxDepth: 1})");
+    check("tree: a text of two lines stays on its layer's line", r.value.split("\n")[1],
+      '  Title [TEXT] 1:2 288×24 "Hello\\nworld"');
   }
 
   console.log(failed ? `\n${failed} FAILED` : "\nall command checks passed");

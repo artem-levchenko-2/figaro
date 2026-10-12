@@ -326,6 +326,9 @@ async def guard(request: web.Request, handler):
     return blocked
 
 
+FROZEN_HINT = ("node.fills, node.strokes, node.effects and their paints are frozen: copy the array "
+               "(JSON.parse(JSON.stringify(node.fills))), change the copy and assign it whole, "
+               "or use h.solid(), h.bF(), h.bS()")
 ERROR_HINTS = [
     # The errors agents hit most come first, so they win over the broader
     # matches below.
@@ -364,8 +367,17 @@ ERROR_HINTS = [
      "use h.bF(node, idx, varId) to bind a fill paint to a variable"),
     ("strokes variable bindings must be set on paints directly",
      "use h.bS(node, idx, varId) to bind a stroke paint to a variable"),
-    ("Cannot assign to read only property",
-     "node.fills/strokes is frozen — copy via JSON.parse(JSON.stringify(...)) before mutating, or use h.bF()/h.bS()"),
+    # A write that can't happen: scripts run in strict mode, so it fails.
+    # QuickJS, in Figma, says "'color' is read-only"; V8 the longer form.
+    ("is read-only", FROZEN_HINT),
+    ("Cannot assign to read only property", FROZEN_HINT),
+    ("object is not extensible", FROZEN_HINT),
+    ("no setter for property",
+     "this property can only be read: width and height change with node.resize(w, h) or "
+     "h.fixed(node, w, h), an instance's properties with h.variant(inst, {...})"),
+    ("is not defined",
+     "scripts run in strict mode: declare a variable with const or let before its first use; "
+     "if it is declared, check how the name is spelled"),
     ("permission not specified in manifest",
      "Figaro asks Figma for nothing but the team library: figma.currentUser, figma.activeUsers "
      "and the authors of FigJam stamps are off for scripts. Leave them out, and don't edit "
@@ -385,7 +397,9 @@ ERROR_HINTS = [
     ("setProperties",
      "if 'Unable to find variant' — check available values via h.variantsOf(instance)"),
     ("not a function",
-     "API may be deprecated or renamed — check figma.* available methods, or use Async variants"),
+     "the method may be renamed, exist only as an async version (getNodeByIdAsync, "
+     "getMainComponentAsync), or exist only in Figma's MCP server: figma.createAutoLayout(), "
+     "node.query(), node.set() and node.screenshot() are not in the Plugin API"),
 ]
 
 

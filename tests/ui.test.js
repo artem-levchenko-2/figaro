@@ -1,8 +1,8 @@
 // The plugin window (plugin/ui.html) against stubs of the browser.
 //
-// The keep-awake tone starts with a request from the bridge, stops 3 min after
-// the last one, and stops at once when the bridge goes away: it never plays
-// while the bridge is down. The islands show what the bridge's `board` says —
+// The keep-awake tone starts with a request from the bridge, plays while it
+// runs, stops 3 min after the last one ends, and stops at once when the bridge
+// goes away: it never plays while the bridge is down. The islands show what the bridge's `board` says —
 // each agent at work, done, stopped or failed, and the error of its last script
 // until one succeeds — the line under them the Figaro version and a newer one,
 // and their buttons send the bridge and the sandbox what they should. An
@@ -91,7 +91,9 @@ function load({ calm = false } = {}) {
     clock, sockets, posted,
     ws: () => sockets[sockets.length - 1],
     tone: () => (contexts.length ? contexts[0].state : "none"),
-    exec: (id) => env.ws().receive({ type: "exec", id, code: "return 1" }),
+    exec: (id, timeout) => env.ws().receive({ type: "exec", id, code: "return 1", timeout }),
+    // The sandbox's answer to a request, on its way to the bridge.
+    answer: (id) => window.onmessage({ data: { pluginMessage: { type: "result", id, value: 1 } } }),
     html: () => elements.app.innerHTML,
     sent: (type) => env.ws().sent.filter((m) => m.type === type),
     identity: (name, key) => window.onmessage({ data: { pluginMessage: {
@@ -145,12 +147,33 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("a script from the bridge starts the tone", env.tone(), "running");
     check("…and reaches the sandbox once the window is awake",
           env.posted.filter((m) => m.type === "exec").map((m) => m.id), ["e1"]);
+    env.answer("e1");
     await env.clock.advance(2 * MIN);
     env.exec("e2");
+    await env.clock.advance(300);
+    env.answer("e2");
     await env.clock.advance(2 * MIN);
     check("each script keeps it up 3 more minutes", env.tone(), "running");
-    await env.clock.advance(1 * MIN + 300);
+    await env.clock.advance(1 * MIN);
     check("3 min after the last script it stops", env.tone(), "suspended");
+  }
+  {
+    const env = load();
+    env.ws().open();
+    env.exec("long", 600);
+    await env.clock.advance(5 * MIN);
+    check("a script that runs longer than 3 min keeps it up", env.tone(), "running");
+    env.answer("long");
+    await env.clock.advance(3 * MIN - 1000);
+    check("…until 3 min after it ends", env.tone(), "running");
+    await env.clock.advance(2000);
+    check("…and then it stops", env.tone(), "suspended");
+
+    env.exec("lost", 60);
+    await env.clock.advance(4 * MIN - 1000);
+    check("a script whose answer never comes keeps it up 3 min past its time", env.tone(), "running");
+    await env.clock.advance(2000);
+    check("…not longer", env.tone(), "suspended");
   }
 
   // ─── the bridge goes away ───────────────────────────────────────────────

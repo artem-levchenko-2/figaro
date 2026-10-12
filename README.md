@@ -446,8 +446,8 @@ button when a new one is out.
   file's key, so it never writes anything of its own into your design.
 - While scripts run, the plugin's window plays a tone you can't hear. Without it,
   Figma throttles a window in the background, and each step can take up to a
-  minute. The tone stops three minutes after the last script, or as soon as
-  the bridge stops.
+  minute. The tone stops three minutes after the last script ends, or as soon
+  as the bridge stops.
 - The bridge and the command are Python, with `aiohttp`. The plugin is plain
   JavaScript and HTML, in `plugin/`.
 
@@ -507,7 +507,7 @@ at the first broken link it says what to do.
 | **504,&nbsp;out&nbsp;of&nbsp;time** | It may still be running, so look at the file before you retry. If the file stays blocked after the script has ended, run `figaro clear -T <file>` |
 | **"Older&nbsp;build"** | The plugin in that file runs older code. Press **Reload** at the bottom of its window, or run `figaro reload -T <file>` |
 | **zsh:&nbsp;no&nbsp;matches&nbsp;found** | Put the link in quotes |
-| **Computer&nbsp;won't&nbsp;sleep** | Figma "plays audio": the silent tone that keeps a background Figma quick. It stops three minutes after the last script, or as soon as the bridge stops |
+| **Computer&nbsp;won't&nbsp;sleep** | Figma "plays audio": the silent tone that keeps a background Figma quick. It stops three minutes after the last script ends, or as soon as the bridge stops |
 | **Port&nbsp;8788&nbsp;taken** | `lsof -nP -iTCP:8788 -sTCP:LISTEN` shows who listens. Stop a bridge with `bash start-bridge.sh --stop`, or `start-bridge.ps1 -Stop` on Windows: they stop nothing else. Never `kill` everything `lsof -ti` prints: Figma itself is on that list |
 
 More cases, each with its fix, are in

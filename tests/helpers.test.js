@@ -85,16 +85,52 @@ check("layout shorthand V", f.layoutMode, "VERTICAL");
 check("fill from hex", f.fills, [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }]);
 check("align applied", [f.primaryAxisAlignItems, f.counterAxisAlignItems], ["CENTER", "MIN"]);
 
-// a pinned width must not be overwritten by hug
+// an axis pinned to a number is FIXED, the other hugs
 order.length = 0;
 const fixed = h.frame(parent, { layout: "H", w: 320 });
-check("pinned width stays FIXED", fixed.primaryAxisSizingMode, undefined);
+check("pinned width is FIXED", fixed.primaryAxisSizingMode, "FIXED");
 check("pinned width still hugs height", fixed.counterAxisSizingMode, "AUTO");
 check("resize after layoutMode", order.indexOf("layoutMode") < order.indexOf("resize"), true);
+check("sizing after resize", order.indexOf("resize") < order.indexOf("primaryAxisSizingMode"), true);
+// resize() fixes only an axis whose size changes, and a new frame is 100 × 100
+const tall = h.frame(parent, { layout: "V", w: 200, h: 100 });
+check("h: 100, the size it had, is FIXED too",
+      [tall.primaryAxisSizingMode, tall.counterAxisSizingMode], ["FIXED", "FIXED"]);
+const free = h.frame(parent, { layout: "V", w: 200, hug: false });
+check("hug: false leaves the free axis alone",
+      [free.primaryAxisSizingMode, free.counterAxisSizingMode], [undefined, "FIXED"]);
+
+// cloneNext — next to the original, right after it among its siblings
+{
+  const layer = (id, x) => ({
+    id, type: "FRAME", x, y: 0, width: 100, height: 50, parent: null,
+    clone() { return layer(id + "c", 0); },
+  });
+  const row = { type: "FRAME", children: [] };
+  row.insertChild = (i, c) => { row.children.splice(i, 0, c); c.parent = row; };
+  const a = layer("a", 0), b = layer("b", 200);
+  row.children.push(a, b);
+  a.parent = b.parent = row;
+  const c = h.cloneNext(a, { direction: "RIGHT", gap: 20 });
+  check("cloneNext: right after the original", row.children.map((n) => n.id), ["a", "ac", "b"]);
+  check("cloneNext: direction in any case", [c.x, c.y], [120, 0]);
+  let why = "";
+  try { h.cloneNext(a, { direction: "sideways" }); } catch (e) { why = e.message; }
+  check("cloneNext: an unknown direction fails", /right, left, down or up/.test(why), true);
+  const page = { type: "PAGE", parent: { type: "DOCUMENT" }, clone() { throw new Error("cloned a page"); } };
+  why = "";
+  try { h.cloneNext(page); } catch (e) { why = e.message; }
+  check("cloneNext: a page is refused before it is copied", /not a page/.test(why), true);
+}
 
 // numeric padding
 const p = h.frame(parent, { layout: "V", padding: 20 });
 check("numeric padding", [p.paddingTop, p.paddingRight], [20, 20]);
+const sides = (f) => [f.paddingTop, f.paddingRight, f.paddingBottom, f.paddingLeft];
+check("padding [t, r, b, l] as in CSS", sides(h.frame(parent, { layout: "V", padding: [1, 2, 3, 4] })), [1, 2, 3, 4]);
+check("padding [t, h, b] as in CSS", sides(h.frame(parent, { layout: "V", padding: [1, 2, 3] })), [1, 2, 3, 2]);
+check("padding as text of a number", sides(h.frame(parent, { layout: "V", padding: "12" })), [12, 12, 12, 12]);
+check("padding [] is none", sides(h.frame(parent, { layout: "V", padding: [] })), [0, 0, 0, 0]);
 
 // sel
 figma.currentPage.selection = [

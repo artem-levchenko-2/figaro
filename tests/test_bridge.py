@@ -547,6 +547,12 @@ def test_two_documents_sharing_a_name_stay_ambiguous():
 
 @pytest.mark.parametrize("error_text,expected", [
     ("Cannot assign to read only property 'fills'", "h.bF()"),
+    # what QuickJS, in Figma, says in strict mode (checked live)
+    ("'color' is read-only", "copy the array"),
+    ("object is not extensible", "copy the array"),
+    ("no setter for property", "node.resize(w, h)"),
+    ("'x' is not defined", "const or let"),
+    ("not a function", "figma.createAutoLayout()"),
     ("in an unloaded font Inter Bold", "h.setText"),
     ('in get_currentUser: "currentuser" permission not specified in manifest.json', "figma.currentUser"),
     ("Unable to find a variant matching", "h.variantsOf"),
