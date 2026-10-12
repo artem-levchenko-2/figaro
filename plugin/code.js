@@ -8,7 +8,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-12.10";
+const PLUGIN_VERSION = "2026-10-12.11";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -422,19 +422,28 @@ function makeGate(id, deadline) {
 // ui.html asks for the height of all it shows (`height`) and of the least it
 // does with (`least`: this file's island, and the last line while that has a
 // button). The window takes that height but ends at the bottom of the canvas,
-// and the islands scroll inside it; parked lower than that, it keeps `least`
-// and what is under it stays out of sight. An island that opens without room
-// under it (`lift`, the height it needs, and `island`) moves the window up, at
-// most to the top of the canvas, and when that island closes (`drop`) the
-// window goes back down, unless the user moved it meanwhile. Figma has no
-// event for a moved window or a resized canvas, so the window asks again every
-// second.
+// and the islands scroll inside it; lower than that, it keeps `least`, and
+// what is under it stays out of sight. A window that the canvas's bottom edge
+// holds to its least height is parked there, and only a parked window moves:
+// an island that opens in it (`lift`, the height it needs, and `island`) lifts
+// it just enough to show that island whole, at most to the top of the canvas,
+// and a last line that comes with a button (a taller `least`) lifts it by as
+// much as the edge would cut; a window with room for its least but not for
+// that line counts as parked too. When that island closes (`drop`) and that
+// line goes, the window goes back down, unless the user moved it meanwhile.
+// Anywhere else the window stays where the user put it, and an island that
+// opens scrolls in the room it has. Figma has no event for a moved window or a
+// resized canvas, so the window asks again every second.
 const FIGMA_HEADER = 41;  // what Figma draws above the window: its header (the plugin's name, the
                           // close button) and the line under it — to be checked against a live window
 const CANVAS_GAP = 8;     // the window keeps this far from the canvas's top and bottom edges
 const HEIGHT_MAX = 2000;
 const SETTLE_MS = 1500;   // a moved window may still read its old place this long
-const placed = { height: 0, parked: null, lifted: null, island: null, at: 0 };
+// park, while the window is parked: where the user left it (`spot`), where the
+// sandbox last put it (`pos`) and where it was before that (`from`, moved at
+// `at`), and the island that opened there (`card`: its id, the height it asked
+// for and `least` then).
+const placed = { height: 0, least: 0, park: null };
 
 // The canvas around the window, in px: the room below the window's header
 // down to the canvas's bottom, and how far up the window can go. null when
@@ -458,45 +467,64 @@ function windowRoom() {
 }
 
 const near = (a, b) => Math.abs(a.x - b.x) <= 2 && Math.abs(a.y - b.y) <= 2;
-
-// Up (dy < 0) or down by dy px on the screen. reposition takes the canvas's coordinates.
-function moveWindow(room, dy) {
-  const p = room.at;
-  figma.ui.reposition(p.canvasSpace.x, p.canvasSpace.y + dy / room.zoom);
-  return Object.assign({}, room, { below: room.below - dy, above: room.above + dy });
-}
+// The room of a window dy px lower on the screen (higher: dy < 0).
+const shifted = (room, dy) => Object.assign({}, room, { below: room.below - dy, above: room.above + dy });
 
 function fitWindow(ask) {
   const want = Math.round(Number(ask.height));
   if (!(want > 0)) return;
   const least = Math.min(want, Math.round(Number(ask.least)) || 0);
   let room = windowRoom();
-  if (room && typeof figma.ui.reposition === "function") {
-    const here = room.at.windowSpace;
-    if (placed.lifted && !near(here, placed.lifted)
-        && !(Date.now() - placed.at < SETTLE_MS && near(here, placed.parked))) {
-      placed.parked = placed.lifted = placed.island = null;  // the user moved it: its place is theirs
-    }
-    const drop = [].concat(ask.drop === undefined ? [] : ask.drop);
-    if (placed.lifted && drop.indexOf(placed.island) !== -1) {
-      room = moveWindow(room, placed.parked.y - here.y);
-      placed.parked = placed.lifted = placed.island = null;
-    } else if (Number(ask.lift) > room.below && room.above > 0) {
-      const dy = Math.min(Math.ceil(Number(ask.lift) - room.below), room.above);
-      if (!placed.parked) placed.parked = { x: here.x, y: here.y };
-      room = moveWindow(room, -dy);
-      placed.lifted = { x: here.x, y: here.y - dy };
-      placed.island = ask.island;
-      placed.at = Date.now();
-    }
-  }
+  if (room && typeof figma.ui.reposition === "function") room = parkWindow(room, ask, least);
   let height = want;
   if (room) height = Math.max(Math.min(height, room.below), least);
   height = Math.min(height, HEIGHT_MAX);
+  placed.least = least;
   if (height !== placed.height) {
     placed.height = height;
     figma.ui.resize(UI_WIDTH, height);
   }
+}
+
+// A parked window goes where it shows what it must, and comes back; the room
+// it has there.
+function parkWindow(room, ask, least) {
+  const here = room.at.windowSpace;
+  let park = placed.park;
+  if (park && !near(here, park.pos) && !(Date.now() - park.at < SETTLE_MS && near(here, park.from))) {
+    park = placed.park = null;  // the user moved it: its place is theirs
+  }
+  const lift = Number(ask.lift) || 0;
+  if (!park) {
+    const before = placed.least || least;
+    const held = room.below <= before + 1;  // the canvas's edge held it to its least height
+    const opens = held && lift > room.below;
+    const grows = placed.least > 0 && least > before && least > room.below;  // a last line with a button, cut
+    if (!opens && !grows) return room;
+    const spot = { x: here.x, y: here.y };
+    park = placed.park = { spot, pos: spot, from: spot, at: 0, card: null };
+  }
+  const drop = [].concat(ask.drop === undefined ? [] : ask.drop);
+  if (park.card && drop.indexOf(park.card.island) !== -1) park.card = null;
+  if (lift > 0) park.card = { island: ask.island, need: lift, least };
+  // What it must show from the spot: the island that opened there (taller by
+  // as much as the last line grew since), or its least.
+  const down = park.spot.y - here.y;
+  const need = Math.max(least, park.card ? park.card.need + least - park.card.least : 0);
+  const dy = Math.max(0, Math.min(Math.ceil(need - (room.below - down)), room.above + down));
+  const target = { x: park.spot.x, y: park.spot.y - dy };
+  if (!near(target, park.pos)) {
+    const p = room.at;  // reposition takes the canvas's coordinates
+    figma.ui.reposition(p.canvasSpace.x + (target.x - here.x) / room.zoom,
+                        p.canvasSpace.y + (target.y - here.y) / room.zoom);
+    park.from = park.pos;
+    park.pos = target;
+    park.at = Date.now();
+  }
+  // Back where the user left it, with nothing to lift it: no longer parked,
+  // once Figma reads its place right.
+  if (dy === 0 && !park.card && Date.now() - park.at >= SETTLE_MS) placed.park = null;
+  return shifted(room, target.y - here.y);
 }
 
 figma.ui.onmessage = async (msg) => {
@@ -1438,25 +1466,45 @@ function errorText(e) {
 
 function errorMessage(id, e, code, shifts) {
   const lines = String(code).split("\n");
-  let stack = (e && e.stack) || null;
+  const stack = (e && e.stack) || null;
   const where = scriptPositions(stack, lines.length, shifts);
-  const msg = { type: "error", id, text: errorText(e), stack };
+  const inLib = libPositions(stack);  // where in a --lib file it failed, if it did there
+  const msg = { type: "error", id, text: errorText(e), stack: ownFrames(stack, where.concat(inLib)) };
   if (where.length) {
     msg.line = where[0].line;
     msg.col = where[0].col;
     msg.source = lines[where[0].line - 1].trim().slice(0, 200);
-    for (const w of where) stack = stack.replace(w.at, "script:" + w.line + ":" + w.col);
-    msg.stack = stack;
   }
-  // Where in a --lib file it failed, if it did there.
-  const inLib = libPositions(stack);
   if (inLib.length) {
     const first = inLib[0];
     msg.lib = { name: first.name, line: first.line, source: first.source };
-    for (const w of inLib) stack = stack.replace(w.at, w.name + ":" + w.line + ":" + w.col);
-    msg.stack = stack;
   }
   return msg;
+}
+
+// The stack as the script's author reads it: the frames of the script
+// ("script:L:C") and of its --lib files ("name.js:L:C"), and no others — not
+// the plugin's own (the loop guard that threw, the code that ran the script,
+// a deadline's timer) nor Figma's; null when none of them is the script's.
+// `own`: those positions, as scriptPositions and libPositions found them, in
+// the order of the stack.
+function ownFrames(stack, own) {
+  if (!own.length) return null;
+  const kept = [];
+  for (const line of String(stack).split("\n")) {
+    STACK_POS.lastIndex = 0;
+    const m = STACK_POS.exec(line);
+    STACK_POS.lastIndex = 0;
+    const w = m && own.find((o) => o.at === m[0] && !o.used);
+    if (w) {
+      w.used = true;
+      kept.push(line.replace(m[0], (w.name || "script") + ":" + w.line + ":" + w.col));
+    } else if (!m && !/^\s*at\s/.test(line)) {
+      kept.push(line);  // not a frame: V8 starts with the error's text
+    }
+  }
+  for (const o of own) delete o.used;
+  return kept.join("\n");
 }
 
 // Fonts loaded in this run of the plugin. Figma keeps a loaded font loaded, and

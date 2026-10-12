@@ -432,11 +432,12 @@ file first: black in Figma's dark theme, white in its light one. Click an
 island for its agents and the recent changes. The window grows with its islands
 down to the bottom of Figma's canvas, and they scroll in it from there. Parked
 at the bottom of the screen, it shows your file's island alone, and opening it
-lifts the window until you close it again. An agent's row says what it is
-doing: at work, done (with a note for you), stopped or failed, and the error of
-its last script stays under its name until a script of its succeeds. A file
-where Figma stops answering, with a script still running long after its time or
-a window that closed while one ran, turns red in every window, with what to do.
+lifts the window until you close it again; anywhere else the window stays where
+you put it. An agent's row says what it is doing: at work, done (with a note for
+you), stopped or failed, and the error of its last script stays under its name
+until a script of its succeeds. A file where Figma stops answering, with a
+script still running long after its time or a window that closed while one ran,
+turns red in every window, with what to do.
 Point at an agent at work for its **Stop** button. A click on a changed layer selects it
 in Figma. Under the islands: Figaro's version, and an **Update** button when a
 new one is out, which keeps that line at the bottom of the window.

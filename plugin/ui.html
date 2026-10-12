@@ -757,8 +757,9 @@ function render() {
 // window grows ahead of it by two frames of its growth (at most LEAD px), never
 // past where it ends and never back: the island and the line under it are
 // never cut off on the way. An island that opens asks for the height it needs
-// whole (`lift`): without that room under the window, the sandbox moves the
-// window up, and when the island closes (`drop`), back down.
+// whole (`lift`): in a window parked at the canvas's bottom, the sandbox moves
+// the window up for it, and when the island closes (`drop`), back down; so it
+// does for the last line when that comes with a button (a taller `least`).
 const LEAD = 64;
 let sentHeight = 0;
 let sentLeast = 0;

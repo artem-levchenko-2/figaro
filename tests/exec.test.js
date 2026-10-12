@@ -186,6 +186,8 @@ function check(label, actual, expected) {
     const e = await exec(env, "const a = 1;\nconst b = 2;\nnull.boom;\nreturn a + b;");
     check("error names the script line", [e.type, e.line, e.source], ["error", 3, "null.boom;"]);
     check("stack points into the script", /script:3:\d+/.test(e.stack), true);
+    check("…with its frames alone, not those of the plugin that ran it",
+      e.stack.split("\n").filter((l) => /^\s*at\s/.test(l)).map((l) => /script:\d+:\d+/.test(l)), [true]);
 
     const bare = await exec(env, "throw {};");
     check("an error without text is explained", /^an error with no text/.test(bare.text), true);
@@ -605,6 +607,8 @@ function check(label, actual, expected) {
       ["error", true]);
     check("…and names the script's line that awaited it", [hung.line, /^return await figma\.teamLibrary/.test(hung.source)],
       [1, true]);
+    check("…which is all its stack shows, not the plugin's gate",
+      hung.stack.split("\n").filter((l) => /^\s*at\s/.test(l)).map((l) => (/script:(\d+):\d+/.exec(l) || [l])[1]), ["1"]);
     const stuck = env.figma.ui.onmessage({ id: "e-stuck", type: "exec", timeout: 10,
       code: "await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync(); return 1;" });
     await sleep(20);

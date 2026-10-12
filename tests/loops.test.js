@@ -50,6 +50,9 @@ function check(label, actual, expected) {
   console.log(`${ok ? "  ok  " : " FAIL "} ${label}${ok ? "" : `\n         got ${a}\n         want ${e}`}`);
 }
 
+// The frames of a stack ("at …" lines), the error's text left out.
+const frames = (stack) => String(stack || "").split("\n").filter((l) => /^\s*at\s/.test(l));
+
 const DEADLINE = /^aborted: the loop on line (\d+)( of [^ ]+)? was still running when --timeout ran out — the script was stopped$/;
 
 (async () => {
@@ -65,6 +68,8 @@ const DEADLINE = /^aborted: the loop on line (\d+)( of [^ ]+)? was still running
       [r.type, DEADLINE.exec(r.text) && DEADLINE.exec(r.text)[1], r.line, r.source],
       ["error", "2", 2, "while (true) { n++; }"]);
     check("…soon after the deadline", ms >= 200 && ms < 1200, true);
+    check("…and its stack is the script's line alone, not the guard's or the plugin's",
+      frames(r.stack).map((l) => (/script:(\d+):\d+/.exec(l) || [])[1] || l), ["2"]);
   }
   for (const [label, code, line] of [
     ["for (;;)", "for (;;) {}", 1],
@@ -104,6 +109,9 @@ const DEADLINE = /^aborted: the loop on line (\d+)( of [^ ]+)? was still running
     check("a loop in a --lib file ends at the deadline, naming the file and its line",
       [r.type, m && m[1], m && m[2], r.lib && r.lib.name, r.lib && r.lib.line, r.lib && r.lib.source],
       ["error", "3", " of spin.js", "spin.js", 3, "while (i >= 0) i++;"]);
+    check("…its stack: the lib's line, then the script's",
+      frames(r.stack).map((l) => (/(spin\.js|script):(\d+):\d+/.exec(l) || []).slice(1).join(":") || l),
+      ["spin.js:3", "script:1"]);
     const again = await exec(env, "return lib.spin();", { timeout: 0.15, libs: [{ hash: "s1", name: "spin.js" }] });
     check("…in the next script too: the guard is that script's", [again.type, DEADLINE.test(again.text)], ["error", true]);
     const sum = { hash: "s2", name: "sum.js", code: "function sum(n) {\n  let s = 0;\n  for (let i = 1; i <= n; i++) s += i;\n  return s;\n}" };

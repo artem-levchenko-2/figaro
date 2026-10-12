@@ -229,13 +229,16 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   and `figma.viewport` and calls `figma.ui.resize`; past that, the islands scroll. `getPosition` gives the
   window's corner both in window space and on the canvas, so together with `viewport.bounds` they say where the
   canvas starts; `FIGMA_HEADER` (41 px) is Figma's header and the line under it. Figma has no event for a moved
-  window or a resized canvas, so the window asks again every second. An island that opens without room under it
-  lifts the window with `figma.ui.reposition`, given canvas coordinates, and puts it back when it closes. An
-  open island's row sticks to the top only because `.island` has `overflow: clip`: `hidden` would make it a
-  scroll container. The header above the window (icon, title, close button) is Figma's: a plugin can put
-  nothing there but the title, "Figaro Relay", which `figma.showUI` sets and only a new `showUI` changes,
-  restarting the window. The menu shows the manifest's name, "Figaro". Figma applies a resize a frame or two
-  late, so while an island opens the window grows ahead of it (`fit`), or its bottom is cut off on the way.
+  window or a resized canvas, so the window asks again every second. Only a window parked at the canvas's
+  bottom (its edge holds the window to its least height) moves: an island that opens in it, or a last line
+  that comes with a button, lifts it with `figma.ui.reposition`, given canvas coordinates, and it goes back
+  when they go, unless the user moved it. `getPosition` may read the old place for a moment after a move
+  (`SETTLE_MS`). Anywhere else an island that opens scrolls in the room the window has. An open island's row
+  sticks to the top only because `.island` has `overflow: clip`: `hidden` would make it a scroll container.
+  The header above the window (icon, title, close button) is Figma's: a plugin can put nothing there but the
+  title, "Figaro Relay", which `figma.showUI` sets and only a new `showUI` changes, restarting the window. The
+  menu shows the manifest's name, "Figaro". Figma applies a resize a frame or two late, so while an island
+  opens the window grows ahead of it (`fit`), or its bottom is cut off on the way.
 - **Figma's theme reaches the window** through `themeColors: true`: Figma sets the `--figma-color-*` variables
   and marks `<html>` `figma-light` or `figma-dark`. The islands take their colours from the `--is-*` tokens in
   `ui.html`, which `html.figma-light` redefines: black islands in the dark theme, white ones with a hairline

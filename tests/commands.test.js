@@ -227,8 +227,12 @@ const kit = () => ({
     check("an error inside a lib names its file and line", [r.type, r.lib], ["error", { name: "broken.js", line: 4, source: "return n.width.height;" }]);
     check("the script line that called it", [r.line, r.source], [2, "return lib.boom({});"]);
     check("the stack names the lib", /broken\.js:4:\d+/.test(r.stack), true);
+    check("…then the script's line, and no other frame",
+      r.stack.split("\n").filter((l) => /^\s*at\s/.test(l)).map((l) => (/(broken\.js|script):(\d+):\d+/.exec(l) || [l]).slice(1).join(":")),
+      ["broken.js:4", "script:2"]);
     r = await exec(env, "return 1", { libs: [{ hash: "h4", name: "syntax.js", code: "function (" }] });
     check("a lib that does not compile", r.type, "error");
+    check("…with no stack: none of its frames is the script's or a lib's", r.stack, null);
     for (let i = 0; i < 52; i++) {
       await exec(env, "return 1", { libs: [{ hash: "n" + i, name: "n.js", code: "const N = " + i }] });
       if (i >= 40) await exec(env, "return 1", { libs: [{ hash: "h1", name: "grid.js" }] });  // keep grid.js in use

@@ -1,8 +1,10 @@
 // The window's height and place (plugin/code.js, fitWindow) against a stub of
 // Figma's canvas: the window is as tall as its islands but ends at the bottom
-// of the canvas; parked low, it keeps this file's island; an island that opens
-// without room under it lifts the window, at most to the top of the canvas,
-// and its closing puts the window back, unless the user moved it meanwhile.
+// of the canvas; parked low, it keeps this file's island. Only a parked window
+// moves: an island that opens in it, or a last line that comes with a button,
+// lifts it just enough, at most to the top of the canvas, and their going puts
+// it back, unless the user moved it meanwhile. Anywhere else the window stays
+// where the user put it, and an island that opens scrolls in it.
 //
 //     node tests/window.test.js
 const fs = require("fs");
@@ -15,11 +17,13 @@ const GAP = 8;      // CANVAS_GAP
 // Figma's screen: the canvas starts `canvasTop` px down the window space and
 // is `canvasHeight` px tall, at `zoom`; the plugin window's corner is at `at`.
 // getPosition gives that corner in window space and on the canvas, as Figma
-// does, and reposition takes the canvas's coordinates.
+// does, and reposition takes the canvas's coordinates. `lag`: how many reads
+// after a move still give the old place, as Figma's may for a moment.
 function makeFigma({ at = { x: 1600, y: 300 }, canvasTop = 0, canvasLeft = 332, canvasHeight = 1000, zoom = 1,
-                     noPosition = false } = {}) {
+                     noPosition = false, lag = 0 } = {}) {
   const view = { x: -1000, y: -686 };  // the canvas point at the canvas's top left corner
   const win = { x: at.x, y: at.y };
+  let old = null, stale = 0;
   const sizes = [];
   const moves = [];
   const ui = {
@@ -28,11 +32,16 @@ function makeFigma({ at = { x: 1600, y: 300 }, canvasTop = 0, canvasLeft = 332, 
     resize(w, h) { sizes.push(h); },
   };
   if (!noPosition) {
-    ui.getPosition = () => ({
-      windowSpace: { x: win.x, y: win.y },
-      canvasSpace: { x: view.x + (win.x - canvasLeft) / env.zoom, y: view.y + (win.y - canvasTop) / env.zoom },
-    });
+    ui.getPosition = () => {
+      const w = stale-- > 0 ? old : win;
+      return {
+        windowSpace: { x: w.x, y: w.y },
+        canvasSpace: { x: view.x + (w.x - canvasLeft) / env.zoom, y: view.y + (w.y - canvasTop) / env.zoom },
+      };
+    };
     ui.reposition = (cx, cy) => {
+      old = { x: win.x, y: win.y };
+      stale = lag;
       win.x = canvasLeft + (cx - view.x) * env.zoom;
       win.y = canvasTop + (cy - view.y) * env.zoom;
       moves.push(Math.round(win.y));
@@ -56,6 +65,8 @@ function makeFigma({ at = { x: 1600, y: 300 }, canvasTop = 0, canvasLeft = 332, 
   env.below = () => canvasTop + canvasHeight - GAP - win.y - HEADER;
   return env;
 }
+// Where the window's corner is when the canvas's edge leaves it `room` px under its header.
+const parkedAt = (room, canvasHeight = 1000) => canvasHeight - GAP - HEADER - room;
 
 let failed = 0;
 function check(label, actual, expected) {
@@ -111,23 +122,26 @@ function check(label, actual, expected) {
     check("…up to 2000 px", env.height(), 2000);
   }
 
-  // ─── an island that opens without room under it ─────────────────────────
+  // ─── an island that opens in a parked window ────────────────────────────
   {
-    const env = makeFigma({ at: { x: 1600, y: 850 } });
+    const env = makeFigma({ at: { x: 1600, y: parkedAt(70) } });
     await env.ask({ height: 142, least: 70 });
     const parked = env.win.y;
-    check("parked low", env.height(), env.below());
+    check("parked: the canvas's edge holds it to its least height", env.height(), 70);
     await env.ask({ height: 400, least: 70, lift: 400, island: "here" });
     check("an island opens: the window goes up just enough to show it whole",
-          [env.win.y, env.height()], [parked - (400 - (1000 - GAP - parked - HEADER)), 400]);
+          [env.win.y, env.height()], [parked - (400 - 70), 400]);
     await env.ask({ height: 400, least: 70 });
     check("…and stays there while it is open", env.moves.length, 1);
     await env.ask({ height: 142, least: 70, drop: ["here"] });
     check("it closes: the window goes back where the user parked it", env.win.y, parked);
-    check("…and down to the canvas's bottom again", env.height(), env.below());
+    check("…and down to its least height again", env.height(), 70);
+    await env.ask({ height: 400, least: 70, lift: 400, island: "here" });
+    check("…and opens again the same way", env.win.y, parked - (400 - 70));
   }
   {
-    const env = makeFigma({ at: { x: 1600, y: 300 }, canvasHeight: 600 });
+    const env = makeFigma({ at: { x: 1600, y: parkedAt(70, 600) }, canvasHeight: 600 });
+    await env.ask({ height: 142, least: 70 });
     await env.ask({ height: 900, least: 70, lift: 900, island: "here" });
     check("a taller island goes up to the top of the canvas, no further", env.win.y, GAP);
     check("…and fills the canvas, the rest scrolls", env.height(), 600 - GAP - GAP - HEADER);
@@ -149,9 +163,86 @@ function check(label, actual, expected) {
     check("another island closes: the window stays up", env.win.y, lifted);
   }
   {
+    const env = makeFigma({ at: { x: 1600, y: parkedAt(70) }, lag: 2 });
+    await env.ask({ height: 142, least: 70 });
+    const parked = env.win.y;
+    await env.ask({ height: 400, least: 70, lift: 400, island: "here" });
+    await env.ask({ height: 400, least: 70 });  // Figma still reads the old place
+    check("a moved window that still reads its old place is not taken for the user's move",
+          [env.win.y, env.height()], [parked - 330, 400]);
+    await env.ask({ height: 142, least: 70, drop: ["here"] });
+    check("…and closing still takes it back", env.win.y, parked);
+  }
+
+  // ─── anywhere else it stays put ─────────────────────────────────────────
+  {
     const env = makeFigma({ at: { x: 1600, y: 100 } });
     await env.ask({ height: 400, least: 70, lift: 400, island: "here" });
     check("room enough under it: an island opens and nothing moves", env.moves, []);
+  }
+  {
+    const env = makeFigma({ at: { x: 1600, y: 24 }, canvasHeight: 420 });
+    await env.ask({ height: 142, least: 42 });
+    await env.ask({ height: 602, least: 42, lift: 538, island: "here" });
+    check("high on the canvas: a long island opens, the window stays, the island scrolls in it",
+          [env.moves, env.height()], [[], 420 - GAP - 24 - HEADER]);
+  }
+  {
+    const env = makeFigma({ at: { x: 1600, y: parkedAt(101) } });
+    await env.ask({ height: 142, least: 70 });
+    check("low, but with room for more than its least", env.height(), 101);
+    await env.ask({ height: 400, least: 70, lift: 400, island: "here" });
+    check("…is not parked: an island opens and the window stays", [env.moves, env.height()], [[], 101]);
+  }
+
+  // ─── a last line with a button ──────────────────────────────────────────
+  {
+    const env = makeFigma({ at: { x: 1600, y: parkedAt(42) } });
+    await env.ask({ height: 136, least: 42 });
+    const parked = env.win.y;
+    await env.ask({ height: 164, least: 70 });
+    check("parked, the last line comes with a button: the window goes up by its height",
+          [env.win.y, env.height()], [parked - 28, 70]);
+    await env.ask({ height: 136, least: 42 });
+    check("…and the line goes: back where the user parked it", [env.win.y, env.height()], [parked, 42]);
+  }
+  {
+    const env = makeFigma({ at: { x: 1600, y: parkedAt(42) } });
+    await env.ask({ height: 136, least: 42 });
+    await env.ask({ height: 164, least: 70 });
+    env.win.y = 400;  // the user drags it
+    await env.ask({ height: 164, least: 70 });
+    await env.ask({ height: 136, least: 42 });
+    check("the user moved it meanwhile: the line goes and the window stays", env.win.y, 400);
+  }
+  {
+    const env = makeFigma({ at: { x: 1600, y: parkedAt(42) } });
+    await env.ask({ height: 136, least: 42 });
+    const parked = env.win.y;
+    await env.ask({ height: 300, least: 42, lift: 300, island: "here" });
+    check("an island opens in a parked window", env.win.y, parked - (300 - 42));
+    await env.ask({ height: 328, least: 70 });
+    check("…the last line comes: up by as much again", env.win.y, parked - (300 - 42) - 28);
+    await env.ask({ height: 164, least: 70, drop: ["here"] });
+    check("…the island closes: down to what the line needs", env.win.y, parked - 28);
+    await env.ask({ height: 136, least: 42 });
+    check("…the line goes: back where the user parked it", env.win.y, parked);
+  }
+  {
+    const env = makeFigma({ at: { x: 1600, y: 100 } });
+    await env.ask({ height: 136, least: 42 });
+    await env.ask({ height: 164, least: 70 });
+    check("room enough under it: the line comes and nothing moves", env.moves, []);
+  }
+  {
+    const env = makeFigma({ at: { x: 1600, y: parkedAt(60) } });
+    await env.ask({ height: 136, least: 42 });
+    const low = env.win.y;
+    await env.ask({ height: 164, least: 70 });
+    check("room for its least but not for the line with a button: up by what is missing",
+          [env.win.y, env.height()], [low - 10, 70]);
+    await env.ask({ height: 136, least: 42 });
+    check("…and back when the line goes", [env.win.y, env.height()], [low, 60]);
   }
 
   console.log(failed ? `\n${failed} FAILED` : "\nall window place checks passed");

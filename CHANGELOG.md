@@ -38,16 +38,17 @@ file; the release notes say when it has to be imported again.
   loop of a script or a `--lib` file ends at the script's `--timeout`: "the loop on line N was still running
   when --timeout ran out — the script was stopped", and the file is free. Strings, comments and line numbers
   in errors stay as they were; a round costs ~25 ns more. `for … of` loops are left as they are: call `h.ck()`
-  in a long one.
+  in a long one. Its error, like every other, shows only the lines of the script and its `--lib` files.
 
 - **The plugin's window scrolls.** With a long island open, or many files, it grew past the bottom of the
   screen, and what was under the edge couldn't be reached. Now it ends at the bottom of Figma's canvas and the
   islands scroll in it as one list: an open island's row stays at the top while its panel scrolls under it.
   The line with the version comes last, and stays at the window's bottom only while it has a button (Update,
   Reload) or says why an update failed. The scrollbar is thin and shows only while the list scrolls or the
-  pointer is on it. Parked at the bottom of the screen, the window shows your file's island alone; opening it
-  lifts the window just enough to show it whole, and closing it puts the window back, unless you moved it
-  meanwhile.
+  pointer is on it. Parked at the bottom of the screen, the window shows your file's island alone. Opening it,
+  or a button that comes on the last line, lifts the window just enough to show them whole, and the window
+  goes back when they go, unless you moved it meanwhile. Anywhere else the window stays where you put it, and
+  an island that opens scrolls in it.
 
 ## [1.2.2] — 2026-10-12
 
