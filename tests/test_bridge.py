@@ -418,25 +418,105 @@ def test_same_file_reconnect_replaces_unresponsive():
 def test_same_document_in_two_windows_coexists():
     """One file open in two tabs/windows reports the same name AND the same
     docSig. Both connections stay — evicting a live one made the two sides kick
-    each other out in a loop — and a target resolves to the newest live view,
-    which is safe because both edit the same document."""
+    each other out in a loop — and a target resolves to the first live view,
+    which is safe because both edit the same document. The first, not the
+    newest: a window that comes later can't take a file over while the window
+    that has it answers. When that one goes, the other takes over."""
     async def go():
         c = await make_client()
         async with FakePlugin(c) as first, FakePlugin(c) as second:
             for p in (first, second):
                 await p.ws.send_str(json.dumps(
                     {"type": "hello", "version": "test",
-                     "name": "FileA", "docSig": "abc123"}))
-            await asyncio.sleep(bridge.SLOT_PROBE_TIMEOUT + 0.4)
+                     "name": "FileA", "docSig": "abc123", "fileKey": "abc123"}))
+                await asyncio.sleep(0.1)
 
             files = (await (await c.get("/targets")).json())["files"]
             assert [f["name"] for f in files] == ["FileA", "FileA"], files
 
-            r = await c.post("/exec", json={"code": "return 1", "timeout": 5,
-                                            "target": "FileA"})
-            assert r.status == 200, await r.text()
-            assert second.seen_codes, "target did not reach the newest live view"
-            assert not first.seen_codes
+            for target in ("FileA", "abc123", None):
+                r = await c.post("/exec", json={"code": f"to {target}", "timeout": 5,
+                                                "target": target})
+                assert r.status == 200, await r.text()
+            assert len(first.seen_codes) == 3, "a target went past the first live view"
+            assert not second.seen_codes
+
+            await first.ws.close()
+            await asyncio.sleep(0.2)
+            r = await c.post("/exec", json={"code": "after", "timeout": 5, "target": "FileA"})
+            assert r.status == 200 and second.seen_codes == ["after"]
+        await c.close()
+    run(go())
+
+
+def test_a_page_in_a_browser_cannot_be_the_plugin():
+    """A sandboxed iframe on any web page connects with Origin "null", as the
+    plugin's window does — but with a browser's User-Agent, not Figma's app."""
+    async def go():
+        c = await make_client()
+        chrome = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36")
+        for ua in (chrome, "", "figma"):
+            with pytest.raises(aiohttp.WSServerHandshakeError) as e:
+                await c.ws_connect("/plugin", headers={"Origin": "null", "User-Agent": ua})
+            assert e.value.status == 403
+        assert bridge.PLUGINS == {}
+        # figma-linux adds "Figma/<its version>" to its own name
+        linux = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                 "figma-linux/0.11.4 Figma/0.11.4 Chrome/120.0.0.0 Electron/28.0.0 Safari/537.36")
+        ws = await c.ws_connect("/plugin", headers={"Origin": "null", "User-Agent": linux})
+        await ws.close()
+        await c.close()
+    run(go())
+
+
+def test_odd_fields_in_a_hello_break_nothing():
+    """A hello whose name, document id or file key isn't text: the window
+    counts as one that hasn't said them, and /status, /targets and the routes
+    to the other files keep working."""
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c) as good, FakePlugin(c) as odd:
+            await good.ws.send_str(json.dumps(
+                {"type": "hello", "version": "test", "name": "FileA", "docSig": "aaa111"}))
+            await odd.ws.send_str(json.dumps(
+                {"type": "hello", "version": "test", "name": 123, "docSig": {"a": 1},
+                 "fileKey": [1], "plugin": 5, "caps": ["undo", 7]}))
+            await odd.ws.send_str("[1, 2]")  # not an object at all
+            await asyncio.sleep(0.2)
+            assert (await c.get("/status")).status == 200
+            r = await c.get("/targets")
+            assert r.status == 200
+            assert [f["name"] for f in (await r.json())["files"]] == ["FileA", None]
+            r = await c.post("/exec", json={"code": "x", "timeout": 5, "target": "FileA"})
+            assert r.status == 200 and good.seen_codes == ["x"]
+            info = [i for i in bridge.PLUGINS.values() if i.get("caps")][0]
+            assert info["caps"] == ["undo"]
+        await c.close()
+    run(go())
+
+
+def test_only_the_window_a_script_went_to_answers_it():
+    """Another window can't slip in an answer to a script that went elsewhere."""
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c) as a, FakePlugin(c) as b:
+            await a.ws.send_str(json.dumps({"type": "hello", "version": "test", "name": "A", "docSig": "aaa111"}))
+            await b.ws.send_str(json.dumps({"type": "hello", "version": "test", "name": "B", "docSig": "bbb222"}))
+            await asyncio.sleep(0.1)
+            a.go_silent()  # A gets the script and takes its time
+            task = asyncio.create_task(c.post("/exec", json={"code": "x", "timeout": 5, "target": "A"}))
+            for _ in range(50):
+                if bridge.PENDING:
+                    break
+                await asyncio.sleep(0.02)
+            rid = next(iter(bridge.PENDING))
+            await b.ws.send_str(json.dumps({"type": "result", "id": rid, "value": "forged"}))
+            await asyncio.sleep(0.1)
+            assert not task.done(), "a window the script did not go to answered it"
+            await a.ws.send_str(json.dumps({"type": "result", "id": rid, "value": "from A"}))
+            r = await task
+            assert (await r.json())["value"] == "from A"
         await c.close()
     run(go())
 

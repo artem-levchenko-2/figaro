@@ -328,6 +328,21 @@ def test_malformed_requests_are_400(raw, ctype):
     run(go())
 
 
+def test_a_token_that_isnt_text_is_a_401():
+    """Bytes that aren't UTF-8 in the token's header: a wrong token, not a 500."""
+    async def go():
+        c = await make_client()
+        reader, writer = await asyncio.open_connection("127.0.0.1", c.server.port)
+        body = b'{"code": "return 1"}'
+        writer.write(b"POST /exec HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"
+                     b"X-Figaro-Token: caf\xe9\xff\r\nContent-Length: %d\r\n\r\n%s" % (len(body), body))
+        await writer.drain()
+        assert (await reader.readline()).split()[1] == b"401"
+        writer.close()
+        await c.close()
+    run(go())
+
+
 @pytest.mark.parametrize("extra", [
     {"timeout": "soon"},
     {"timeout": -5},

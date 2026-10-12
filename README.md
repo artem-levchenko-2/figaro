@@ -397,7 +397,7 @@ it keeps four promises:
 | Guard | What it does |
 | :-- | :-- |
 | One&nbsp;script&nbsp;at&nbsp;a&nbsp;time | Scripts in one file wait their turn. A script that runs out of time keeps the file until it ends, instead of racing the next one |
-| Local&nbsp;only | The bridge listens on `127.0.0.1` and turns away requests from web pages: it checks `Origin` and `Host` |
+| Local&nbsp;only | The bridge listens on `127.0.0.1` and turns away requests from web pages: it checks `Origin` and `Host`, and on the plugin's socket, that it is Figma's desktop app. A file's scripts go to the window that connected first, while it is open |
 | A&nbsp;token | Only programs that can read your files can run scripts: another user of the computer, or an app kept away from your files, can't send one. Each start of the bridge makes a new secret, readable by you alone, in `~/.figaro/token-<port>`; every request that runs code or changes a file must carry it. `figaro` reads it by itself |
 | A&nbsp;version&nbsp;on&nbsp;demand | `--checkpoint "before the grid"` saves one before a risky script |
 | Whose&nbsp;change | Figma doesn't say who changed a layer, so Figaro reads the script's code. What changes while code that only reads runs (Figma updating a page it just loaded, someone at work in the file) is reported, never rolled back. If an undo ever takes back a step that wasn't the script's, the answer says so: Cmd+Shift+Z in Figma brings it back |
@@ -523,7 +523,7 @@ Figaro has no server of its own, no account and no telemetry. Your files, your
 scripts and the pictures it takes stay on your computer and in Figma.
 
 - The bridge listens on `127.0.0.1` only and turns away requests from web
-  pages.
+  pages, also those that try to connect to it as the plugin.
 - Only programs that can read your files can run scripts in your Figma: every
   request that runs code or changes a file must carry a token. The bridge makes
   a new one each time it starts and saves it, for you alone, in

@@ -56,6 +56,11 @@ DISCONNECTED = "plugin disconnected mid-request"
 # address. Empty set means "don't check" — chosen when the user binds a
 # non-loopback address on purpose (--host 0.0.0.0).
 ALLOWED_HOSTS: set = set()
+# The plugin's window is a page in Figma's desktop app, and its User-Agent
+# names the app: "… Figma/126.9.11 Chrome/… Electron/…" (figma-linux adds the
+# same token). A web page can open a socket with Origin "null" too, from a
+# sandboxed iframe, but it can't change its User-Agent.
+FIGMA_APP = re.compile(r"\bFigma[\w-]*/\d")
 # The secret of the HTTP API (see _guard); main() makes it, tests set it.
 TOKEN = None
 PORT = 8788
@@ -250,6 +255,10 @@ def _guard(request: web.Request, *, allow_null_origin: bool = False, need_token:
         A browser always does on cross-origin requests, so its mere presence
         means the request came from a page. This blocks CSRF, including the
         "simple request" trick of posting JSON as text/plain to dodge preflight.
+        The plugin's window reports "null", and so does a sandboxed iframe on
+        any page: "null" passes only for a window of Figma's desktop app
+        (FIGMA_APP), or a page could stand in for the plugin, read the board
+        and answer the agents' scripts in its place.
       * Host — a page whose DNS is re-pointed at 127.0.0.1 (DNS rebinding)
         becomes same-origin with the bridge and could then read responses.
         Pinning Host to the loopback names we actually serve closes that.
@@ -268,18 +277,18 @@ def _guard(request: web.Request, *, allow_null_origin: bool = False, need_token:
 
     origin = request.headers.get("Origin")
     if origin is not None:
-        # The Figma plugin UI runs in a sandboxed iframe, which reports "null".
-        if not (allow_null_origin and origin == "null"):
+        figma = FIGMA_APP.search(request.headers.get("User-Agent") or "")
+        if not (allow_null_origin and origin == "null" and figma):
             return web.json_response(
                 {"ok": False,
                  "error": "cross-origin requests are not allowed",
                  "hint": "the bridge only accepts local clients (curl, figaro CLI) "
-                         "and the Figma plugin"},
+                         "and the Figma plugin in Figma's desktop app"},
                 status=403,
             )
     if need_token:
         sent = request.headers.get("X-Figaro-Token") or ""
-        if not TOKEN or not hmac.compare_digest(sent.encode(), TOKEN.encode()):
+        if not TOKEN or not hmac.compare_digest(sent.encode(errors="replace"), TOKEN.encode()):
             return web.json_response(
                 {"ok": False,
                  "error": "missing or wrong X-Figaro-Token",
@@ -307,7 +316,8 @@ async def guard(request: web.Request, handler):
         return await handler(request)
     if plugin:
         print(f"[plugin] refused connection from {request.remote} "
-              f"(origin={request.headers.get('Origin')!r})")
+              f"(origin={request.headers.get('Origin')!r}, "
+              f"user-agent={(request.headers.get('User-Agent') or '')[:160]!r})")
     return blocked
 
 
@@ -427,6 +437,11 @@ async def _broadcast_peers():
             pass
 
 
+def _text(value):
+    """A field of a window's hello: a non-empty string, or None."""
+    return value if isinstance(value, str) and value else None
+
+
 async def plugin_ws_handler(request: web.Request):
     # 64 MB: a shot of a long page at 2× is past 16 MB.
     ws = web.WebSocketResponse(heartbeat=20, max_msg_size=64 * 1024 * 1024)
@@ -434,8 +449,8 @@ async def plugin_ws_handler(request: web.Request):
 
     # Each plugin (one per open Figma file) gets its own registry slot. Identity
     # (fileKey / file name) arrives in the `hello` message a moment after connect.
-    # Reconnects never lock out: a stale same-file connection is replaced at
-    # `hello` time, so no incumbent check is needed in the multi-file model.
+    # Reconnects never lock out: a dead same-file connection is dropped at
+    # `hello` time.
     conn_id = str(uuid.uuid4())
     PLUGINS[conn_id] = {"ws": ws, "fileKey": None, "name": None, "docSig": None}
     print(f"[plugin] connected {conn_id[:8]} from {request.remote}")
@@ -453,36 +468,32 @@ async def plugin_ws_handler(request: web.Request):
             except json.JSONDecodeError:
                 print(f"[plugin] bad json: {msg.data[:200]!r}")
                 continue
+            if not isinstance(m, dict):
+                continue
 
             mtype = m.get("type")
 
             if mtype == "hello":
-                file_key = m.get("fileKey")
-                name = m.get("name")
-                doc_sig = m.get("docSig")
+                # What a window says of itself. Anything but text is left out:
+                # it would break /status, /targets and every route to the file.
+                file_key, name, doc_sig, version = (
+                    _text(m.get(k)) for k in ("fileKey", "name", "docSig", "plugin"))
                 # Drop an older registration for the same file ONLY if its socket
-                # is already dead (plugin re-Run without a clean close).
+                # is dead (plugin re-Run without a clean close, a laptop that slept).
                 #
                 # Evicting a LIVE one too would loop forever with the same file open
                 # in two tabs/windows: each side would kick the other out, and the
                 # loser would reconnect 2s later and kick back. Two live views of
-                # one document are legitimate — keep both and let resolve_target
-                # pick (they edit the same file either way).
+                # one document are legitimate — both stay, and scripts go to the
+                # first (resolve_target): a window that comes later never takes a
+                # file over while the window that has it answers.
                 for cid, info in list(PLUGINS.items()):
                     if cid == conn_id:
                         continue
                     same = (file_key and info.get("fileKey") == file_key) or (
                         name and info.get("fileKey") is None and info.get("name") == name
                     )
-                    if not same:
-                        continue
-                    # Two live views of one document (same file in two tabs or
-                    # windows) — both stay; resolve_target routes by docSig.
-                    if (doc_sig is not None
-                            and info.get("docSig") == doc_sig
-                            and not info["ws"].closed):
-                        continue
-                    if await _still_alive(info):
+                    if not same or await _still_alive(info):
                         continue
                     print(f"[plugin] dropping dead connection for {name!r}")
                     try:
@@ -494,18 +505,19 @@ async def plugin_ws_handler(request: web.Request):
                 PLUGINS[conn_id]["name"] = name
                 PLUGINS[conn_id]["docSig"] = doc_sig
                 PLUGINS[conn_id]["hello"] = True
-                PLUGINS[conn_id]["pluginVersion"] = m.get("plugin")
+                PLUGINS[conn_id]["pluginVersion"] = version
                 # What this build does beyond exec (undo, reload, …).
                 caps = m.get("caps")
-                PLUGINS[conn_id]["caps"] = caps if isinstance(caps, list) else []
+                PLUGINS[conn_id]["caps"] = (
+                    [c for c in caps if isinstance(c, str)] if isinstance(caps, list) else [])
                 print(f"[plugin] hello file={name!r} key={file_key} sig={doc_sig} "
-                      f"plugin={m.get('plugin')} protocol={m.get('version', '?')}")
+                      f"plugin={version} protocol={m.get('version', '?')}")
                 if plugin_outdated(PLUGINS[conn_id]):
                     # The plugin bar turns purple and asks for a re-Run.
                     try:
                         await ws.send_str(json.dumps({
                             "type": "outdated",
-                            "running": m.get("plugin"),
+                            "running": version,
                             "expected": expected_plugin_version(),
                         }))
                     except Exception:
@@ -522,12 +534,17 @@ async def plugin_ws_handler(request: web.Request):
                     fut.set_result(True)
                 continue
 
-            # A button in the window: Stop, Update, Reload.
-            if await bridge_board.handle(conn_id, m):
+            # A button in the window: Stop, Update, Reload — from a window that
+            # has said which file it is.
+            if PLUGINS[conn_id].get("hello") and await bridge_board.handle(conn_id, m):
                 continue
 
             rid = m.get("id")
             if not isinstance(rid, str):
+                continue
+            # Only the window a request went to answers it.
+            sent_to = (PENDING.get(rid) or ABANDONED.get(rid) or {}).get("conn")
+            if sent_to is not None and sent_to != conn_id:
                 continue
             if mtype in ("result", "error"):
                 # The script has ended, so any interlock it holds lifts — whether
@@ -601,7 +618,7 @@ def resolve_target(target):
             return live[0]
         # Several tabs on ONE document are still one file — no target needed.
         if len({_doc_key(c) for c, _ in live}) == 1 and live[0][1].get("docSig"):
-            return live[-1]
+            return live[0]
         names = ", ".join(repr(i.get("name") or f"({c[:8]})") for c, i in live)
         return None, (f"{len(live)} files connected — specify a target. "
                       f"Connected: {names}")
@@ -613,7 +630,7 @@ def resolve_target(target):
     if len(t) >= 6:
         by_doc = [(cid, i) for cid, i in live if (i.get("docSig") or "").lower().startswith(t)]
         if by_doc and len({i.get("docSig") for _, i in by_doc}) == 1:
-            return by_doc[-1]  # one document; newest view if open in several tabs
+            return by_doc[0]  # one document; its first window if open in several tabs
         by_conn = [(cid, i) for cid, i in live if cid.startswith(t)]
         if len(by_conn) == 1:
             return by_conn[0]
@@ -624,11 +641,13 @@ def resolve_target(target):
         return exact[0]
     if len(exact) > 1:
         # Same name, same document signature = one file open in several tabs or
-        # windows. Both views edit the same document, so routing to the newest
-        # live one is safe; the caller cannot end up in "the other copy".
+        # windows. Both views edit the same document, so routing to the first
+        # live one is safe; the caller cannot end up in "the other copy". The
+        # first, not the newest: a window that comes later must not take over
+        # a file whose window still answers (see the hello in plugin_ws_handler).
         sigs = {i.get("docSig") for _, i in exact}
         if len(sigs) == 1 and None not in sigs:
-            return exact[-1]
+            return exact[0]
         # Same name, different documents (or a plugin build too old to report a
         # signature) — genuinely ambiguous, and a write would land in a file the
         # caller did not choose.

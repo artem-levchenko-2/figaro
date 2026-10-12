@@ -73,9 +73,11 @@ powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Uninstall
 ```
 
 The bridge saves a fresh token to `~/.figaro/token-<port>` once its port is bound; every POST wants it in the
-`X-Figaro-Token` header (`_guard`, which the `guard` middleware runs before every handler). `tests/conftest.py` gives every test client the right one and points
-`FIGARO_TOKEN_FILE` at a temp file; a test of the check removes it from `client.session.headers`. Run a
-third-party script against a bridge with `-H "X-Figaro-Token: $(cat ~/.figaro/token-8788)"`.
+`X-Figaro-Token` header (`_guard`, which the `guard` middleware runs before every handler). `tests/conftest.py`
+gives every test client the right one, and Figma's User-Agent (`FIGMA_UA`), which a socket with
+`Origin: null` needs to count as the plugin; it points `FIGARO_TOKEN_FILE` at a temp file. A test of a check
+removes the header from `client.session.headers`. Run a third-party script against a bridge with
+`-H "X-Figaro-Token: $(cat ~/.figaro/token-8788)"`.
 
 CI (`.github/workflows/tests.yml`) runs pytest on Linux and Windows with Python 3.9 and 3.13, the Node tests,
 and both installers; nothing else tests Windows, so check the run after changing anything it touches.
@@ -97,9 +99,10 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   `--no-checkpoint`, `--lib`, `--shot`).
 - `cli_extras.py` — links in arguments, starting the bridge on demand, `inspect`, `shot`, `link`, `--lib`,
   `exec --shot`; `inspect_text.py` — the text `inspect` prints.
-- `bridge.py` — HTTP and WebSocket, routing to files, the queue and lock per file, Origin/Host checks and the
-  API token (`_guard`; `figaro_token.py` is the path and the reader both sides share), the release check,
-  `ERROR_HINTS`.
+- `bridge.py` — HTTP and WebSocket, routing to files (a file's scripts go to its first live window, and a
+  later window of the same file waits until that one closes), the queue and lock per file, Origin/Host
+  checks, the API token and the plugin socket's User-Agent (`_guard`; `figaro_token.py` is the path and the
+  reader both sides share), the release check, `ERROR_HINTS`.
 - `bridge_board.py` — what every plugin window shows (the `board`: each file's agents — at work from their
   first script until five quiet minutes or `figaro done`, its note, a failed last script, the user's Stop —
   and recent changes; a read leaves a done or a Stop on show, and `figaro doctor`'s checks (`probe`) stay
@@ -203,6 +206,9 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
 
 ## Figma facts that cost time
 
+- **The plugin's window connects with `Origin: null`** and a User-Agent with `Figma/<version>` (Electron;
+  figma-linux sends one too). A web page can make its Origin "null" (a sandboxed iframe) but can't change
+  its User-Agent, so the bridge takes a plugin socket only with both (`FIGMA_APP`).
 - **Hot reload.** With Figma's *Plugins → Development → Hot reload plugin* on, any write to `plugin/code.js`
   or `ui.html` (even `touch`) restarts the plugin in every file within a second. A running script is cut off
   ("plugin disconnected mid-request") and `undo` forgets everything. Don't touch `plugin/` while agents work.

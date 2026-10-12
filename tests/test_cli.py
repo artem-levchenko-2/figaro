@@ -32,6 +32,7 @@ from aiohttp.test_utils import TestClient, TestServer
 import bridge
 import figaro
 import cli_extras
+from conftest import FIGMA_UA
 import bridge_idle
 import inspect_text
 
@@ -746,7 +747,8 @@ def test_a_stopping_bridge_closes_plugin_sockets_at_once():
                             break
                 except aiohttp.ClientError:
                     await asyncio.sleep(0.1)
-            ws = await s.ws_connect(f"ws://127.0.0.1:{port}/plugin", headers={"Origin": "null"})
+            ws = await s.ws_connect(f"ws://127.0.0.1:{port}/plugin",
+                                    headers={"Origin": "null", "User-Agent": FIGMA_UA})
             await ws.send_json({"type": "hello", "version": "2.1", "fileKey": KEY, "name": "Draft"})
             await asyncio.sleep(0.3)
             t0 = time.monotonic()

@@ -8,6 +8,15 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 
 ## [Unreleased]
 
+### Security
+
+- **Only Figma's desktop app can connect as the plugin.** While the bridge ran, a web page could open the
+  plugin's socket from a sandboxed frame (`Origin: null`): see the names of the open files and the agents'
+  notes in the window, press Stop or Update, and pose as a file to take agents' scripts and send back false
+  answers. Now the socket also needs Figma's User-Agent, which a page can't change. A file's scripts go to
+  the window that connected first, while it is open; the window's buttons count only from a window that said
+  which file it is; an answer counts only from the window its script went to.
+
 ## [1.2.1] — 2026-10-12
 
 ### Changed

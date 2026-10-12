@@ -22,6 +22,11 @@ import bridge_update  # noqa: E402
 
 
 TEST_TOKEN = "test-token"
+# What a plugin window in Figma's desktop app sends (checked live): the bridge
+# takes a socket with Origin "null" only from Figma's app (bridge.FIGMA_APP).
+# Every test client sends it, so the tests' stand-ins for the plugin pass.
+FIGMA_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Figma/126.9.11 Chrome/150.0.7871.250 Electron/43.7.7 Safari/537.36 FigmaARM")
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +41,7 @@ def clean_state(tmp_path, tmp_path_factory, monkeypatch):
     orig_init = TestClient.__init__
 
     def init(self, *args, **kwargs):
-        kwargs.setdefault("headers", {"X-Figaro-Token": TEST_TOKEN})
+        kwargs.setdefault("headers", {"X-Figaro-Token": TEST_TOKEN, "User-Agent": FIGMA_UA})
         orig_init(self, *args, **kwargs)
     monkeypatch.setattr(TestClient, "__init__", init)
     # Checkpoint times are kept in ~/.cache/figaro — never touch the real one.

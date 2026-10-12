@@ -509,6 +509,24 @@ def test_a_pull_that_fails_says_why_and_offers_the_release(monkeypatch):
     run(go())
 
 
+def test_buttons_count_only_from_a_window_that_said_which_file_it_is(quick_update):
+    """A socket that never said hello is no window: its Stop, Update and
+    Reload do nothing."""
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, caps=CAPS) as p:
+            stranger = await c.ws_connect("/plugin", headers={"Origin": "null"})
+            for m in ({"type": "update-now"}, {"type": "reload-all"},
+                      {"type": "stop", "doc": "doc:KEY1", "agent": "designer"}):
+                await stranger.send_str(json.dumps(m))
+            await settle()
+            assert quick_update == [] and bridge_update.STATE["step"] is None
+            assert not agents(p, "Draft")
+            await stranger.close()
+        await c.close()
+    run(go())
+
+
 def test_a_script_sent_during_the_restart_is_refused_and_safe_to_repeat():
     async def go():
         c = await make_client()
