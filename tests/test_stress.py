@@ -316,19 +316,22 @@ def test_reconnect_storm_keeps_one_queue():
     ('{"code": "   "}', "application/json"),
     ('{"code": null}', "application/json"),
     ("", "application/json"),
-    ('{"code": "return 1"}', "application/json; charset=no-such-charset"),
-    ("[" * 100000 + "]" * 100000, "application/json"),
-    (b'{"code": "\xff\xfe"}', "application/json"),
+    pytest.param('{"code": "return 1"}', "application/json; charset=no-such-charset", id="unknown-charset"),
+    # Too deep for json on Python 3.9: a RecursionError. The ids are short: a
+    # test id is an environment variable while it runs, and Windows takes no
+    # more than 32767 characters there.
+    pytest.param("[" * 100000 + "]" * 100000, "application/json", id="nested-too-deep"),
+    pytest.param(b'{"code": "\xff\xfe"}', "application/json", id="not-utf-8"),
 ])
 def test_malformed_requests_are_400(raw, ctype):
     async def go():
         c = await make_client()
         async with SandboxPlugin(c, "A", "docAAAAAA"):
             r = await c.post("/exec", data=raw, headers={"Content-Type": ctype})
-            assert r.status == 400, (raw, r.status, await r.text())
+            assert r.status == 400, (raw[:80], r.status, await r.text())
             # /done and the like take a body they can't read as none
             r = await c.post("/done", data=raw, headers={"Content-Type": ctype})
-            assert r.status != 500, (raw, r.status, await r.text())
+            assert r.status != 500, (raw[:80], r.status, await r.text())
             await assert_file_is_free(c, "A")
         await c.close()
     run(go())
