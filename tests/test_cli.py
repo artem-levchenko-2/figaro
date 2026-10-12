@@ -267,10 +267,74 @@ def test_svg_and_jpg_shots(tmp_path):
 def test_link_prints_links(monkeypatch, capsys):
     value = [{"id": "1:2", "name": "Card", "url": "https://www.figma.com/design/K/F?node-id=1-2"},
              {"id": "1:3", "name": "Local", "url": None}]
-    rc, out, err, calls = cli(monkeypatch, capsys, "link", "sel", bridge_reply={"ok": True, "value": value})
+    rc, out, err, calls = cli(monkeypatch, capsys, "link", "sel", bridge_reply={
+        "ok": True, "value": value, "notice": "the file changed meanwhile", "logs": ["a line"]})
     assert out.splitlines() == ['https://www.figma.com/design/K/F?node-id=1-2  "Card"',
                                 '(the file has no key, so no link)  "Local"']
     assert calls[0]["quick"] is True
+    assert "the file changed meanwhile" in err and "log: a line" in err
+
+
+def test_shot_leaves_the_callers_other_files_alone(tmp_path):
+    for name in ("1-2.md", "1-2.txt", "1-2-notes.png", "1-2-p1.png", "1-2-p2.jpg"):
+        (tmp_path / name).write_text("x")
+    cli_extras.save_shots([shot(data=png(10, 100))], tmp_path)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["1-2-notes.png", "1-2.md", "1-2.png", "1-2.txt"]
+
+
+def test_shot_into_a_file_or_a_folder_it_cant_write_says_so(monkeypatch, capsys, tmp_path):
+    taken = tmp_path / "a-file"
+    taken.write_text("x")
+    rc, out, err, calls = cli(monkeypatch, capsys, "shot", "1:2", "-o", str(taken),
+                              bridge_reply={"ok": True, "value": [shot(data=png(10, 10))]})
+    assert "can't save the pictures" in str(rc)
+    rc, out, err, calls = cli(monkeypatch, capsys, "inspect", "1:2", "-o", str(taken / "x.json"),
+                              bridge_reply={"ok": True, "value": {"node": {"id": "1:2"}}})
+    assert "can't write" in str(rc)
+
+
+@pytest.mark.parametrize("argv", [["shot", "1:2", "--tile", "0"], ["shot", "1:2", "--tile", "-5"],
+                                  ["tree", "page", "--timeout", "-5"], ["exec", "-t", "0", "return 1"]])
+def test_numbers_below_one_are_refused_at_once(monkeypatch, capsys, argv):
+    monkeypatch.setattr(sys, "argv", ["figaro", *argv])
+    with pytest.raises(SystemExit) as done:
+        figaro.main()
+    assert done.value.code == 2 and "must be 1 or more" in capsys.readouterr().err
+
+
+def test_exec_from_a_file_that_isnt_there_or_isnt_text(monkeypatch, capsys, tmp_path):
+    rc, out, err, calls = cli(monkeypatch, capsys, "exec", "-f", str(tmp_path / "missing.js"))
+    assert rc == 2 and "can't read" in err and not calls
+    rc, out, err, calls = cli(monkeypatch, capsys, "exec", "-f", str(tmp_path))
+    assert rc == 2 and "can't read" in err and not calls
+    (tmp_path / "bad.js").write_bytes(b"return '\xff\xfe'")
+    rc, out, err, calls = cli(monkeypatch, capsys, "exec", "-f", str(tmp_path / "bad.js"))
+    assert rc == 2 and "not UTF-8" in err and not calls
+    (tmp_path / "bom.js").write_bytes("\ufeffreturn 1".encode())
+    rc, out, err, calls = cli(monkeypatch, capsys, "exec", "-f", str(tmp_path / "bom.js"))
+    assert rc == 0 and calls[0]["code"] == "return 1"
+
+
+def test_a_lib_with_a_bom_keeps_its_first_line(tmp_path):
+    lib = tmp_path / "lib.js"
+    lib.write_bytes("\ufefffunction a() { return 1 }".encode())
+    assert cli_extras.read_libs([str(lib)])[0]["code"] == "function a() { return 1 }"
+
+
+def test_a_port_that_isnt_a_number(monkeypatch):
+    monkeypatch.setenv("FIGARO_PORT", "eighty")
+    with pytest.raises(SystemExit, match="not a port number"):
+        figaro._env_port()
+    monkeypatch.setenv("FIGARO_PORT", "")
+    assert figaro._env_port() == 8788
+
+
+def test_a_token_file_that_isnt_text_is_no_token(monkeypatch, tmp_path):
+    bad = tmp_path / "token"
+    bad.write_bytes(b"\xff\xfe\x00")
+    monkeypatch.setenv("FIGARO_TOKEN_FILE", str(bad))
+    import figaro_token
+    assert figaro_token.read_token(8788) is None
 
 
 def test_undo_says_how_many_steps_and_what_is_left(monkeypatch, capsys):
@@ -446,25 +510,34 @@ const nodes = {
 for (const n of Object.values(nodes)) n.remove = function () {
   this.removed = true; for (const k of this.kids) nodes[k].removed = true; };
 const h = {async resolve(id) { if (!nodes[id]) throw new Error("no " + id); return nodes[id]; }};
+const figma = {currentPage: {selection: SELECTION.map((id) => nodes[id])}};
 const logs = [];
 const print = (s) => logs.push(s);
 const body = %s;
-new Function("h", "print", "return (async () => {" + body + "})();")(h, print).then(
+new Function("figma", "h", "print", "return (async () => {" + body + "})();")(figma, h, print).then(
   (v) => console.log(JSON.stringify({ok: true, v, logs, removed: Object.values(nodes).filter((n) => n.removed).map((n) => n.id)})),
   (e) => console.log(JSON.stringify({ok: false, e: e.message, removed: Object.values(nodes).filter((n) => n.removed).map((n) => n.id)})));
 """
 
 
-def run_rm(monkeypatch, capsys, *ids):
+def run_rm(monkeypatch, capsys, *ids, selection=()):
     code = cli(monkeypatch, capsys, "rm", *ids)[3][0]["code"]
-    r = subprocess.run(["node", "-e", RM_STUB % json.dumps(code)], capture_output=True, encoding="utf-8",
-                       timeout=30)
+    stub = f"const SELECTION = {json.dumps(list(selection))};" + RM_STUB % json.dumps(code)
+    r = subprocess.run(["node", "-e", stub], capture_output=True, encoding="utf-8", timeout=30)
     return json.loads(r.stdout)
 
 
 def test_rm_finds_every_id_before_removing_any(monkeypatch, capsys):
     got = run_rm(monkeypatch, capsys, "1:3", "9:9")
     assert got == {"ok": False, "e": "node not found: 9:9 — nothing removed", "removed": []}
+
+
+def test_rm_sel_removes_every_selected_layer(monkeypatch, capsys):
+    got = run_rm(monkeypatch, capsys, "sel", selection=["1:1", "1:3"])
+    assert got["ok"] and [x["id"] for x in got["v"]] == ["1:1", "1:3"]
+    got = run_rm(monkeypatch, capsys, "sel", "1:3")
+    assert got == {"ok": False, "e": "node not found: sel (nothing is selected) — nothing removed",
+                   "removed": []}
 
 
 def test_rm_skips_what_went_with_its_parent(monkeypatch, capsys):
@@ -536,10 +609,11 @@ def test_windows_starts_the_bridge_with_powershell(monkeypatch):
 
 def test_a_sandbox_that_blocks_localhost_is_named(monkeypatch, capsys):
     """Codex's and Cursor's sandboxes refuse the connect itself: no autostart, a hint."""
-    def blocked(*a, **k):
-        raise urllib.error.URLError(PermissionError(1, "Operation not permitted"))
+    class Blocked:
+        def open(self, *a, **k):
+            raise urllib.error.URLError(PermissionError(1, "Operation not permitted"))
 
-    monkeypatch.setattr(urllib.request, "urlopen", blocked)
+    monkeypatch.setattr(cli_extras, "LOCAL", Blocked())
     monkeypatch.setattr(cli_extras, "autostart", lambda *a: pytest.fail("no autostart"))
     status, resp = figaro._request("GET", "/status")
     assert status == 0 and resp["hint"] == figaro.SANDBOXED
@@ -555,6 +629,17 @@ def free_port():
         return s.getsockname()[1]
 
 
+def serve(handler):
+    """An HTTP server on a free port, in a thread: (port, stop)."""
+    server = http.server.HTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    def stop():
+        server.shutdown()
+        server.server_close()
+    return server.server_address[1], stop
+
+
 class Status(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         body = json.dumps({"plugin_connected": True, "files": [{"name": "Draft"}]}).encode()
@@ -565,6 +650,91 @@ class Status(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, *a):
         pass
+
+
+def test_the_bridge_is_never_reached_through_a_proxy(monkeypatch):
+    """http_proxy would get the token and the script, or fail and have the CLI
+    restart a bridge that is fine."""
+    port, stop = serve(Status)
+    for name in ("http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"):
+        monkeypatch.setenv(name, "http://127.0.0.1:9")  # nothing listens there
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.setattr(figaro, "HOST", "127.0.0.1")
+    monkeypatch.setattr(figaro, "PORT", port)
+    try:
+        status, body = figaro._request("GET", "/status")
+        assert status == 200 and body["files"] == [{"name": "Draft"}]
+        assert cli_extras._connected("127.0.0.1", port) == ["Draft"]
+        assert cli_extras._answers("127.0.0.1", port)
+    finally:
+        stop()
+
+
+class Hangs(http.server.BaseHTTPRequestHandler):
+    """Takes the request and hangs up without an answer, or never answers."""
+    def do_GET(self):
+        if self.path == "/slow":
+            time.sleep(3)
+        self.close_connection = True
+
+    def log_message(self, *a):
+        pass
+
+
+class NotJson(Status):
+    def do_GET(self):
+        self.send_response(502)
+        self.end_headers()
+        self.wfile.write(b"<html>Bad gateway</html>")
+
+
+@pytest.mark.parametrize("handler, path, error", [
+    (Hangs, "/status", "connection: "),
+    (Hangs, "/slow", "request timed out"),
+    (NotJson, "/status", "<html>Bad gateway</html>"),
+])
+def test_an_odd_answer_is_an_error_not_a_traceback(monkeypatch, handler, path, error):
+    port, stop = serve(handler)
+    monkeypatch.setattr(figaro, "HOST", "127.0.0.1")
+    monkeypatch.setattr(figaro, "PORT", port)
+    try:
+        status, body = figaro._request("GET", path, timeout=1)
+        assert body["ok"] is False and body["error"].startswith(error), body
+    finally:
+        stop()
+
+
+def test_a_second_start_waits_for_the_first_and_starts_nothing(tmp_path, monkeypatch, capsys):
+    """Parallel first calls: one starts the bridge, the others wait for it."""
+    runs = fake_start(tmp_path, monkeypatch)
+    port = free_port()
+    lock = cli_extras._start_lock(port)  # another figaro call is starting it
+    server = http.server.HTTPServer(("127.0.0.1", port), Status)
+
+    def the_other_call_is_done():
+        time.sleep(0.5)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        lock.unlink()
+    threading.Thread(target=the_other_call_is_done, daemon=True).start()
+    try:
+        t = time.time()
+        assert cli_extras.autostart("127.0.0.1", port) is True
+        assert time.time() - t >= 0.4 and not runs.exists()
+        assert "starting it" not in capsys.readouterr().err
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_start_lock_left_by_a_call_that_died_is_taken_over():
+    port = free_port()
+    lock = cli_extras._start_lock(port)
+    old = time.time() - cli_extras.START_LOCK_STALE - 5
+    os.utime(lock, (old, old))
+    t = time.time()
+    assert cli_extras._start_lock(port) == lock and time.time() - t < 2
+    lock.unlink()
 
 
 def test_a_refused_request_starts_the_bridge_and_asks_again(monkeypatch):

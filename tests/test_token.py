@@ -15,6 +15,7 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 import bridge
+import cli_extras
 import figaro
 import figaro_token
 
@@ -204,7 +205,12 @@ def test_the_cli_sends_the_token_from_the_file(monkeypatch, tmp_path):
         def read(self):
             return b"{}"
 
-    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout: seen.append(req) or Resp())
+    class Local:
+        def open(self, req, timeout):
+            seen.append(req)
+            return Resp()
+
+    monkeypatch.setattr(cli_extras, "LOCAL", Local())
     figaro._request("POST", "/clear", {})
     assert seen[0].get_header("X-figaro-token") == "abc"
     f.unlink()

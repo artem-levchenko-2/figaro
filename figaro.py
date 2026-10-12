@@ -60,9 +60,11 @@ Helpers available inside exec'd code (as `h.*`):
 """
 
 import argparse
+import http.client
 import json
 import locale
 import os
+import socket
 import sys
 import urllib.error
 import urllib.request
@@ -77,7 +79,17 @@ import figaro_token  # noqa: E402  the bridge's shared secret
 # 127.0.0.1, not "localhost": on Windows "localhost" tries ::1 first, and against a
 # bridge that only listens on IPv4 every call stalls ~2 s before falling back.
 DEFAULT_HOST = os.environ.get("FIGARO_HOST", "127.0.0.1")
-DEFAULT_PORT = int(os.environ.get("FIGARO_PORT", "8788"))
+
+
+def _env_port():
+    raw = os.environ.get("FIGARO_PORT") or "8788"
+    try:
+        return int(raw)
+    except ValueError:
+        sys.exit(f"figaro: FIGARO_PORT is {raw!r}, not a port number")
+
+
+DEFAULT_PORT = _env_port()
 
 HOST = DEFAULT_HOST
 PORT = DEFAULT_PORT
@@ -131,24 +143,37 @@ def _request(method, path, payload=None, timeout=65):
         headers["X-Figaro-Token"] = token
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.status, json.loads(r.read() or b"{}")
+        with cli_extras.LOCAL.open(req, timeout=timeout) as r:
+            return r.status, _answer(r.read(), r.status)
     except urllib.error.HTTPError as e:
-        body = e.read() or b"{}"
-        try:
-            return e.code, json.loads(body)
-        except json.JSONDecodeError:
-            return e.code, {"ok": False, "error": body.decode("utf-8", "replace")}
+        return e.code, _answer(e.read(), e.code)
     except urllib.error.URLError as e:
         # Nothing listens — start our bridge once and ask again.
         if isinstance(e.reason, ConnectionRefusedError) and cli_extras.autostart(HOST, PORT):
             return _request(method, path, payload, timeout)
+        if isinstance(e.reason, (TimeoutError, socket.timeout)):
+            return 0, {"ok": False, "error": "request timed out"}
         resp = {"ok": False, "error": f"connection: {e.reason}"}
         if isinstance(e.reason, PermissionError):
             resp["hint"] = SANDBOXED
         return 0, resp
-    except TimeoutError:
+    except (TimeoutError, socket.timeout):  # socket.timeout is no TimeoutError before 3.10
         return 0, {"ok": False, "error": "request timed out"}
+    except (http.client.HTTPException, ConnectionError) as e:
+        # The bridge hung up without an answer: it stopped or restarted meanwhile.
+        return 0, {"ok": False, "error": f"connection: {e or type(e).__name__}"}
+
+
+def _answer(body, status):
+    """The bridge's JSON answer, or an error made of whatever else came back."""
+    try:
+        value = json.loads(body or b"{}")
+    except ValueError:
+        text = body.decode("utf-8", "replace").strip()[:300]
+        return {"ok": False, "error": text or f"HTTP {status} with no answer"}
+    if not isinstance(value, dict):
+        return {"ok": False, "error": f"unexpected answer: {str(value)[:300]}"}
+    return value
 
 
 def _exec(code, timeout=60, read_only=False, quick=False, libs=None, probe=False):
@@ -461,8 +486,15 @@ def cmd_doctor(args):
 
 def cmd_exec(args):
     if args.file:
-        with open(args.file, encoding="utf-8") as f:
-            code = f.read()
+        try:
+            with open(args.file, encoding="utf-8-sig") as f:
+                code = f.read()
+        except OSError as e:
+            print(f"figaro: can't read {args.file}: {e.strerror or e}", file=sys.stderr)
+            return 2
+        except UnicodeDecodeError:
+            print(f"figaro: {args.file} is not UTF-8 text", file=sys.stderr)
+            return 2
     elif args.stdin:
         code = read_stdin()
     elif args.code:
@@ -498,7 +530,7 @@ def cmd_tree(args):
 def cmd_find(args):
     if "=" not in args.filter and "~" not in args.filter:
         print("figaro: filter must be key=value or key~value", file=sys.stderr)
-        print("  forms: name=X (exact), name~X (substring), type=X, text=X (substring)", file=sys.stderr)
+        print("  forms: name=X (exact), name~X (substring), type=X, text=X (exact), text~X (substring)", file=sys.stderr)
         return 2
 
     # Whichever separator comes first decides the mode, so a value may contain
@@ -589,14 +621,16 @@ def cmd_clone(args):
 def cmd_rm(args):
     # Cleaning up after an experiment is almost always plural.
     # Every id is found first, so a typo removes nothing; a layer already
-    # gone with its parent earlier in the list is skipped.
+    # gone with its parent earlier in the list is skipped. `sel` is every
+    # selected layer.
     code = (
         f"const ids = {json.dumps(args.node_ids)};"
         f"const nodes = [], missing = [];"
         f"for (const id of ids) {{"
-        f"  let n = null;"
-        f"  try {{ n = await h.resolve(id); }} catch (e) {{}}"
-        f"  if (n) nodes.push(n); else missing.push(id);"
+        f"  let found = [];"
+        f"  try {{ found = id === 'sel' ? figma.currentPage.selection.slice() : [await h.resolve(id)]; }} catch (e) {{}}"
+        f"  if (found.length && found[0]) nodes.push(...found);"
+        f"  else missing.push(id === 'sel' ? 'sel (nothing is selected)' : id);"
         f"}}"
         f"if (missing.length) throw new Error('node not found: ' + missing.join(', ') + ' — nothing removed');"
         f"const removed = [], skipped = [];"
@@ -625,7 +659,7 @@ def cmd_import_component(args):
 # ─── argparse / dispatch ───────────────────────────────────────────────────
 
 def _add_common_flags(p):
-    p.add_argument("--timeout", "-t", type=int, default=60)
+    p.add_argument("--timeout", "-t", type=cli_extras.above_zero, default=60)
     p.add_argument("--raw", action="store_true", help="print full JSON response")
     p.add_argument("--target", "-T", default=None,
                    help="which connected file to route to (name, fileKey, or substring)")
@@ -718,7 +752,7 @@ def build_parser():
 
     p_rm = sub.add_parser("rm", help="delete layers; checks every id first")
     _add_common_flags(p_rm)
-    p_rm.add_argument("node_ids", nargs="+", help="one or more node ids, or `sel`")
+    p_rm.add_argument("node_ids", nargs="+", help="one or more node ids, `sel` for every selected layer")
 
     for name in ("import-component", "icomp"):
         p = sub.add_parser(name, help="an instance of a published library component, by key"
@@ -806,7 +840,15 @@ def main():
     CHECKPOINT = (False if getattr(args, "no_checkpoint", False)
                   else getattr(args, "checkpoint", None))
 
-    sys.exit(DISPATCH[args.cmd](args))
+    try:
+        rc = DISPATCH[args.cmd](args)
+        sys.stdout.flush()
+    except BrokenPipeError:
+        # Whoever read the output went away (`figaro tree page | head -1`).
+        # Without this Python prints a traceback, and one more at exit.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        rc = 1
+    sys.exit(rc)
 
 
 cli_extras.attach(sys.modules[__name__])

@@ -12,6 +12,7 @@ would load a second copy with its own settings.
 
 from __future__ import annotations
 
+import argparse
 import base64
 import io
 import json
@@ -22,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -42,6 +44,12 @@ PLUGIN_SETTLE = 2.2
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 EXT = {"PNG": "png", "JPG": "jpg", "SVG": "svg", "PDF": "pdf"}
 
+START_LOCK_STALE = 60  # s: a start lock this old was left by a call that died
+# Straight to the bridge, never through a proxy: urllib takes http_proxy from
+# the environment for 127.0.0.1 too, and would hand the proxy the token and the
+# script, or fail and have autostart restart a bridge that is fine.
+LOCAL = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
 CLI = None           # the figaro module, set by attach()
 _started = False
 
@@ -53,6 +61,17 @@ def attach(cli):
 
 def say(text):
     print(text, file=sys.stderr)
+
+
+def above_zero(text):
+    """A whole number from 1 up: --timeout, --tile."""
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid int value: {text!r}")
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be 1 or more, not {value}")
+    return value
 
 
 # ─── links in arguments ──────────────────────────────────────────────────
@@ -107,6 +126,57 @@ def autostart(host, port):
     script, cmd = start_command(port)
     if host not in LOCAL_HOSTS or not script.exists():
         return False
+    lock = _start_lock(port)
+    try:
+        # Another figaro call may have started it while this one waited.
+        started = _answers(host, port) or _start(cmd, port)
+    finally:
+        if lock:
+            try:
+                lock.unlink()
+            except OSError:
+                pass
+    if started:
+        _wait_for_plugins(host, port)
+    return started
+
+
+def _start_lock(port):
+    """Wait while another figaro call starts the bridge, then take the lock: a
+    file made only if it isn't there. Parallel first calls must not each start
+    one: the second start-bridge.sh stops the first one's bridge, and its pid
+    file names a bridge that never got the port. The lock's path, or None
+    when there is none to be had."""
+    path = Path(tempfile.gettempdir()) / f"figaro-start-{port}.lock"
+    deadline = time.time() + 45
+    while time.time() < deadline:
+        try:
+            os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            return path
+        except FileExistsError:
+            try:
+                if time.time() - path.stat().st_mtime > START_LOCK_STALE:
+                    path.unlink()
+            except OSError:
+                pass
+            time.sleep(0.2)
+        except OSError:
+            return None
+    return None
+
+
+def _answers(host, port):
+    """Something answers HTTP on the bridge's port."""
+    try:
+        with LOCAL.open(f"http://{host}:{port}/status", timeout=2):
+            return True
+    except urllib.error.HTTPError:
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _start(cmd, port):
     say(f"  no bridge answered on {port} — starting it: {' '.join(cmd)}")
     try:
         # A session of its own: the bridge must outlive this call and whatever
@@ -127,7 +197,6 @@ def autostart(host, port):
         tail = printed.strip().splitlines()[-5:]
         say("   ⚠ it did not start:\n     " + "\n     ".join(tail))
         return False
-    _wait_for_plugins(host, port)
     return True
 
 
@@ -169,7 +238,7 @@ def _wait_for_plugins(host, port):
 
 def _connected(host, port):
     try:
-        with urllib.request.urlopen(f"http://{host}:{port}/status", timeout=2) as r:
+        with LOCAL.open(f"http://{host}:{port}/status", timeout=2) as r:
             return sorted(f.get("name") or "?" for f in json.load(r).get("files") or [])
     except (OSError, ValueError):
         return []
@@ -212,8 +281,11 @@ def cmd_inspect(args):
     if args.out:
         text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
         path = Path(args.out).expanduser()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        except OSError as e:
+            sys.exit(f"figaro: can't write {path}: {e.strerror or e}")
         node = value.get("node") or {}
         print(json.dumps({"file": value.get("file"), "node": node.get("id"), "name": node.get("name"),
                           "out": str(path.resolve()), "nodes": value.get("nodes"), "chars": len(text)},
@@ -258,7 +330,11 @@ def cmd_shot(args):
     if args.raw or not resp.get("ok"):
         return CLI._emit(resp, raw=args.raw)
     report(resp)
-    for line in save_shots(resp.get("value") or [], args.out, args.tile):
+    try:
+        lines = save_shots(resp.get("value") or [], args.out, args.tile)
+    except OSError as e:
+        sys.exit(f"figaro: can't save the pictures in {e.filename or args.out}: {e.strerror or e}")
+    for line in lines:
         print(line)
     return 0
 
@@ -308,8 +384,12 @@ def save_shots(shots, out_dir=None, tile=TILE):
         folder = Path(out_dir).expanduser() if out_dir else SHOTS / _safe(s.get("fileKey") or s.get("file") or "file")
         folder.mkdir(parents=True, exist_ok=True)
         stem, ext = _safe(s["id"]), EXT.get(s.get("format"), "png")
-        for old in list(folder.glob(f"{stem}.*")) + list(folder.glob(f"{stem}-p*.*")):
-            old.unlink()
+        # What an earlier shot of this layer left, a picture or its parts, and
+        # nothing else: with -o the folder is the caller's own.
+        ours = re.compile(re.escape(stem) + r"(?:-p\d+)?\.(?:png|jpg|svg|pdf)")
+        for old in folder.glob(f"{stem}*"):
+            if ours.fullmatch(old.name):
+                old.unlink()
         parts, why = split_image(data, ext, tile)
         how = f"{s['scale']}×" if s.get("scale") else f"{s['width']} px" if s.get("width") else ""
         for i, (blob, size, rows) in enumerate(parts, 1):
@@ -384,6 +464,7 @@ def cmd_link(args):
     status, resp = CLI._exec(code, args.timeout, quick=True)
     if args.raw or not resp.get("ok"):
         return CLI._emit(resp, raw=args.raw)
+    report(resp)
     for item in resp.get("value") or []:
         print(f"{item.get('url') or '(the file has no key, so no link)'}  \"{item.get('name')}\"")
     return 0
@@ -399,9 +480,11 @@ def read_libs(paths):
     for p in paths:
         path = Path(p).expanduser()
         try:
-            libs.append({"name": path.name, "code": path.read_text(encoding="utf-8")})
+            libs.append({"name": path.name, "code": path.read_text(encoding="utf-8-sig")})
         except OSError as e:
             sys.exit(f"figaro: --lib {p}: {e.strerror}")
+        except UnicodeDecodeError:
+            sys.exit(f"figaro: --lib {p}: not UTF-8 text")
     return libs
 
 
@@ -434,7 +517,8 @@ def add_parsers(sub, common):
     p.add_argument("--svg-text", action="store_true", help="SVG: keep text as <text>, not outlines")
     p.add_argument("--absolute", action="store_true",
                    help="exactly the layer's size, even if children or effects stick out of it")
-    p.add_argument("--tile", type=int, default=TILE, help=f"cut taller pictures into parts (default {TILE} px)")
+    p.add_argument("--tile", type=above_zero, default=TILE,
+                   help=f"cut taller pictures into parts (default {TILE} px)")
     p.add_argument("-o", "--out", metavar="DIR", help=f"folder (default {SHOTS}/<file key>)")
 
     p = sub.add_parser("link", help="clickable links to layers, for reports")

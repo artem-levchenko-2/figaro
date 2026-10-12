@@ -316,6 +316,9 @@ def test_reconnect_storm_keeps_one_queue():
     ('{"code": "   "}', "application/json"),
     ('{"code": null}', "application/json"),
     ("", "application/json"),
+    ('{"code": "return 1"}', "application/json; charset=no-such-charset"),
+    ("[" * 100000 + "]" * 100000, "application/json"),
+    (b'{"code": "\xff\xfe"}', "application/json"),
 ])
 def test_malformed_requests_are_400(raw, ctype):
     async def go():
@@ -323,6 +326,9 @@ def test_malformed_requests_are_400(raw, ctype):
         async with SandboxPlugin(c, "A", "docAAAAAA"):
             r = await c.post("/exec", data=raw, headers={"Content-Type": ctype})
             assert r.status == 400, (raw, r.status, await r.text())
+            # /done and the like take a body they can't read as none
+            r = await c.post("/done", data=raw, headers={"Content-Type": ctype})
+            assert r.status != 500, (raw, r.status, await r.text())
             await assert_file_is_free(c, "A")
         await c.close()
     run(go())

@@ -85,7 +85,7 @@ def _file_digest(path: Path):
 # The bridge runs its helper modules too — a changed bridge_exec.py is old code just the same.
 _BRIDGE_CODE = [Path(__file__).resolve()] + [
     HERE / n for n in ("bridge_board.py", "bridge_exec.py", "bridge_idle.py", "bridge_update.py",
-                       "figma_links.py")]
+                       "figma_links.py", "figaro_token.py")]
 BRIDGE_DIGEST = [_file_digest(p) for p in _BRIDGE_CODE]
 
 
@@ -137,6 +137,11 @@ _SEMVER = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 def update_allowed():
     """False with FIGARO_UPDATE_BUTTON=off (or 0, false, no): the window must not pull code."""
     return os.environ.get("FIGARO_UPDATE_BUTTON", "").strip().lower() not in ("off", "0", "false", "no")
+
+
+def update_checks_on():
+    """False with FIGARO_NO_UPDATE_CHECK=1 (or yes, true); 0, as anywhere, leaves the check on."""
+    return os.environ.get("FIGARO_NO_UPDATE_CHECK", "").strip().lower() in ("", "0", "false", "no", "off")
 
 
 def parse_version(tag):
@@ -677,7 +682,7 @@ async def exec_handler(request: web.Request) -> web.Response:
 
     try:
         body = await request.json()
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (ValueError, LookupError, RecursionError):  # bad JSON or bytes, an unknown charset
         return bad("invalid JSON body")
     # Agents send all sorts of things; anything malformed is a 400 that says
     # what is wrong, never a 500 from inside the bridge.
@@ -1126,8 +1131,8 @@ async def root_handler(request: web.Request) -> web.Response:
         "service": "figaro-bridge",
         "version": VERSION,
         "endpoints": {
-            "POST /exec": ("{code, target?, agent?, timeout?, parallel?, force?, read_only?, "
-                           "checkpoint?, quick?, libs?, probe?} -> "
+            "POST /exec": ("{code, target?, agent?, timeout?, queue_timeout?, parallel?, force?, "
+                           "read_only?, checkpoint?, quick?, libs?, probe?} -> "
                            "{ok, result, value, logs, elapsed_ms}. Serialized per file "
                            "unless parallel:true (reads only)."),
             "GET /status": "{plugin_connected, files, pending, abandoned}",
@@ -1230,7 +1235,7 @@ def main():
     loop.set_exception_handler(_quiet_connection_resets)
     app = build_app()
     bridge_idle.install(app, args.idle_exit)
-    if not os.environ.get("FIGARO_NO_UPDATE_CHECK"):
+    if update_checks_on():
         app.on_startup.append(_start_update_checks)
         app.on_cleanup.append(_stop_update_checks)
     try:

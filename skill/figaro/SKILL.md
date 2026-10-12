@@ -73,9 +73,10 @@ The references next to this file — read each one when you reach its step:
 | `figaro targets` · `doctor` · `status` | the connected files · a connection check with advice · the bridge's raw state |
 | `figaro clear` | unblock a file after a 504 (`pitfalls.md`) |
 
-`<layer>` is an id (`12:34` or `12-34`), a layer link, `sel` (the selection) or `page` (the current page). Quote
-ids with a `;` (`I12:3;4:5`). Every command but `targets` and `status` takes `-T`, `-A`, `--timeout` (seconds)
-and `--raw` (the whole JSON answer).
+`<layer>` is an id (`12:34` or `12-34`), a layer link, `sel` (the first selected layer; `shot`, `link` and `rm`
+take every selected one) or `page` (the current page). Quote ids with a `;` (`I12:3;4:5`). Every command but
+`targets` and `status` takes `-T` and `-A`; those that run a script (`exec`, the readers and the writers below,
+not `doctor`) also take `--timeout` (seconds) and `--raw` (the whole JSON answer).
 
 The readers `inspect`, `shot`, `tree`, `find`, `sel`, `link` and `doctor` change nothing and answer within
 milliseconds. `text`, `variant`, `clone`, `icomp` and `rm` write to the file, as `exec` does. Without `figaro`

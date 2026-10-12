@@ -16,6 +16,28 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
   answers. Now the socket also needs Figma's User-Agent, which a page can't change. A file's scripts go to
   the window that connected first, while it is open; the window's buttons count only from a window that said
   which file it is; an answer counts only from the window its script went to.
+- **`figaro` never goes through a proxy to the bridge.** With `http_proxy` or `HTTP_PROXY` set, every command
+  failed, and the token and the script went to the proxy. `start-bridge.sh` asks the bridge directly too.
+
+### Changed
+
+- `figaro rm sel` removes every selected layer, as `shot` and `link` take them. Before, it removed the first.
+
+### Fixed
+
+- Several commands at once, with no bridge running, each started one. Now one starts it and the others wait.
+- A plugin window that sent odd fields made `/status`, `/targets` and `/exec` answer 500. A malformed body
+  or a token that isn't text gets a 400 or a 401.
+- Commands end with a message, not a traceback: `exec -f` with a missing or non-UTF-8 file, `-o` into a
+  folder you can't write, `--tile 0`, `--timeout -5`, an empty `FIGARO_PORT`, a token file that isn't text,
+  output into a closed pipe (`figaro tree page | head -1`), a lost connection, an answer that isn't JSON.
+- `shot` deleted every file in its folder whose name began with the layer's id. It deletes only its own old
+  pictures now.
+- `--lib` and `exec -f` lost the first line of a file saved with a byte order mark.
+- `figaro link` didn't print the script's notes and logs.
+- `FIGARO_NO_UPDATE_CHECK=0` turned the release check off, as any value did. `0`, `false`, `no` and `off` leave
+  it on now.
+- `start-bridge.sh` said FAILED without `curl`, though the bridge was up.
 
 ## [1.2.1] — 2026-10-12
 

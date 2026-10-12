@@ -18,5 +18,5 @@ def read_token(port):
     """The token, or None when the file is missing or empty."""
     try:
         return token_path(port).read_text(encoding="utf-8").strip() or None
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None

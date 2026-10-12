@@ -34,7 +34,17 @@ else
     PY=python
 fi
 
-up() { curl -sf "http://127.0.0.1:$PORT/status" >/dev/null 2>&1; }
+# The bridge answers. Never through a proxy: curl takes http_proxy for
+# 127.0.0.1 too. Without curl, Python asks.
+up() {
+    if command -v curl >/dev/null 2>&1; then
+        curl --noproxy '*' -sf "http://127.0.0.1:$PORT/status" >/dev/null 2>&1
+    else
+        "$PY" -c 'import sys, urllib.request as u
+u.build_opener(u.ProxyHandler({})).open("http://127.0.0.1:%s/status" % sys.argv[1], timeout=2)' \
+            "$PORT" >/dev/null 2>&1
+    fi
+}
 # Anything at all listening on the port — a bridge, or some other program.
 taken() { (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; }
 

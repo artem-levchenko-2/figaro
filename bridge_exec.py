@@ -360,7 +360,7 @@ def _same_file(old, new):
 async def _body(request):
     try:
         body = await request.json()
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (ValueError, LookupError, RecursionError):  # bad JSON or bytes, an unknown charset
         body = {}
     if not isinstance(body, dict):
         return None, web.json_response({"ok": False, "error": "body must be a JSON object"},

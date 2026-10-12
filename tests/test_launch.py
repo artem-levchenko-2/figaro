@@ -26,7 +26,7 @@ def test_every_default_port_agrees():
         f"http://localhost:{PORT}", f"ws://localhost:{PORT}"]
     assert f'const SERVER = "ws://localhost:{PORT}/plugin";' in read("plugin/ui.html")
     assert re.search(rf'"--port", type=int, default={PORT}\b', read("bridge.py"))
-    assert f'os.environ.get("FIGARO_PORT", "{PORT}")' in read("figaro.py")
+    assert f'os.environ.get("FIGARO_PORT") or "{PORT}"' in read("figaro.py")
     assert f'PORT="${{FIGARO_PORT:-{PORT}}}"' in read("start-bridge.sh")
     assert f"[int]$Port = {PORT}," in read("start-bridge.ps1")
 
@@ -52,12 +52,16 @@ def test_plugin_never_writes_into_the_document_by_itself():
         assert call not in code, f"plugin/code.js calls {call}"
 
 
-def test_update_check_offers_only_this_projects_releases():
+def test_update_check_offers_only_this_projects_releases(monkeypatch):
     bridge = read("bridge.py")
     repo = re.search(r'^REPO = "([^"]+)"', bridge, re.M).group(1)
     # The plugin opens only release pages of the same repository.
     assert f'startsWith("https://github.com/{repo}/")' in read("plugin/code.js")
-    assert 'if not os.environ.get("FIGARO_NO_UPDATE_CHECK")' in bridge
+    assert "if update_checks_on():" in bridge
+    import bridge as module
+    for value, on in (("1", False), ("yes", False), ("", True), ("0", True), ("off", True)):
+        monkeypatch.setenv("FIGARO_NO_UPDATE_CHECK", value)
+        assert module.update_checks_on() is on, value
 
 
 def test_launcher_leaves_other_bridges_and_figma_alone():
