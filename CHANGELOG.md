@@ -24,6 +24,12 @@ file; the release notes say when it has to be imported again.
   script ran and doesn't come back within 10 s. The red goes once the script ends (or `figaro clear`), or
   the window is back; a closed window's file leaves the board after 15 minutes. `figaro status` shows both
   (`stuck`, `lost`).
+- A script that imports by key (`importComponentByKeyAsync`, `importVariableByKeyAsync`, `h.importComp`,
+  `h.importVar`, …) counted as one that writes, so changes Figma made while it ran were rolled back by `-R`
+  as the script's. Importing changes no layer: such a script reads, and those changes are reported instead.
+- After a 504 the file's next script gets a 409 that now says what to do from a shell: `figaro wait -T
+  <file>` until the abandoned script ends, and `figaro clear -T <file>` if the file stays blocked after
+  that. It named only the HTTP API (`POST /clear`, `"force": true`), which `figaro doctor` repeated.
 
 - **A loop that never ends no longer holds Figma.** A script runs on Figma's main thread, so a `while (true)`
   froze Figma, nothing could stop it, and the file stayed busy. Now every `while`, `do … while` and `for (;;)`

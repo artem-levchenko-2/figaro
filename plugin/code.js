@@ -8,7 +8,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-12.8";
+const PLUGIN_VERSION = "2026-10-12.9";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -637,13 +637,16 @@ const VARIABLE_WRITES = /\b(setValueForMode|createVariable|createVariableCollect
 // a slot of its own objects and arrays (out.count, rows[i] — not rows[i].name),
 // calls a method that writes, an h.* helper that writes or a figma method
 // beyond those that only read, passes figma or h on, or runs --lib files.
+// Importing by key reads: it brings a library's component, style or variable
+// in for the script to use and changes no layer. Counted as a write, it let -R
+// roll back changes Figma made meanwhile as the script's.
 // Read wrong one way, a script keeps the rollback; the other way, a change it
 // did make stays, reported — so whatever is unclear counts as a write.
-const FIGMA_READS = /^(?:get\w*|load\w*|listAvailableFontsAsync|notify|on|once|off|base64Encode|base64Decode|setCurrentPageAsync|saveVersionHistoryAsync|commitUndo)$/;
-const HELPER_READS = /^(?:node|resolve|sel|find|findByName|findAllByName|dumpTree|link|inspect|shot|hex|solid|fonts|withFonts|fa|variantsOf|var_|annotations|ck|aborted)$/;
+const FIGMA_READS = /^(?:get\w*|load\w*|import\w*ByKeyAsync|listAvailableFontsAsync|notify|on|once|off|base64Encode|base64Decode|setCurrentPageAsync|saveVersionHistoryAsync|commitUndo)$/;
+const HELPER_READS = /^(?:node|resolve|sel|find|findByName|findAllByName|dumpTree|link|inspect|shot|hex|solid|fonts|withFonts|fa|variantsOf|var_|importComp|importVar|annotations|ck|aborted)$/;
 // Methods that change the file, called or bound on anything; a call by a
 // computed name; code that runs code.
-const WRITE_CALLS = /\.\s*(?:set(?!CurrentPageAsync\b|Timeout\b|Interval\b)[A-Z]\w*|create[A-Z]\w*|import\w*Async|(?:add|edit|delete|remove|reset|clear)[A-Z]\w*|remove|appendChild|insertChild|resize|resizeWithoutConstraints|rescale|clone|detachInstance|swapComponent|outlineStroke|insertCharacters|(?:lock|unlock)AspectRatio|group|ungroup|flatten|union|subtract|intersect|exclude|combineAsVariants|moveLocal\w*|triggerUndo|renameMode)\s*(?:\?\.\s*)?(?:\(|\.\s*(?:call|apply|bind)\b)|\]\s*\(|\b(?:eval|Function|import)\s*\(|(?:^|[;{}\n])\s*with\s*\(|\bReflect\s*\.|\bObject\s*\.\s*(?:defineProperty|defineProperties|setPrototypeOf)\b/;
+const WRITE_CALLS = /\.\s*(?:set(?!CurrentPageAsync\b|Timeout\b|Interval\b)[A-Z]\w*|create[A-Z]\w*|(?:add|edit|delete|remove|reset|clear)[A-Z]\w*|remove|appendChild|insertChild|resize|resizeWithoutConstraints|rescale|clone|detachInstance|swapComponent|outlineStroke|insertCharacters|(?:lock|unlock)AspectRatio|group|ungroup|flatten|union|subtract|intersect|exclude|combineAsVariants|moveLocal\w*|triggerUndo|renameMode)\s*(?:\?\.\s*)?(?:\(|\.\s*(?:call|apply|bind)\b)|\]\s*\(|\b(?:eval|Function|import)\s*\(|(?:^|[;{}\n])\s*with\s*\(|\bReflect\s*\.|\bObject\s*\.\s*(?:defineProperty|defineProperties|setPrototypeOf)\b/;
 const ASSIGN_OP = "(?:(?:[-+*/%&|^]|\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?)?=(?![=>])|\\+\\+|--)";
 // Not the file: the page on show, the selection, the view, a speed-up for reads.
 const NOT_THE_FILE = /^figma\.(?:currentPage|skipInvisibleInstanceChildren|viewport\..+)$|\.selection$/;

@@ -581,7 +581,8 @@ def cmd_doctor(args):
         return 1
     if status == 409 and r.get("abandoned"):
         fail(f"file is interlocked: {r.get('error')}",
-             "wait for that script to finish, or:  figaro clear -T <file>")
+             r.get("hint") or "figaro wait -T <file> returns once that script has ended; "
+             "still blocked after that:  figaro clear -T <file>")
         return 1
     if status == 409:
         # Several files connected and no -T, or an ambiguous one — the plugin is

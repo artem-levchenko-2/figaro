@@ -24,6 +24,7 @@ import json
 import os
 import re
 import secrets
+import shlex
 import sys
 import time
 import uuid
@@ -946,12 +947,18 @@ async def _dispatch(target_ws, conn_id, code, timeout, force, meta=None,
     doc = _doc_key(conn_id)
     stale = [r for r, o in ABANDONED.items() if o.get("doc", o.get("conn")) == doc]
     if stale and not force:
+        info = PLUGINS.get(conn_id) or {}
+        file = info.get("fileKey") or shlex.quote(info.get("name") or "<file>")
         return web.json_response({
             "ok": False,
             "error": (f"a previous script on this file timed out and may still be running "
                       f"(rid {stale[0][:8]}) — its mutations were not rolled back. Wait for "
                       f"it to finish, POST /clear to drop the interlock, or resend with "
                       f"\"force\": true."),
+            "hint": (f"it may still be changing the file: `figaro wait -T {file}` returns once "
+                     f"it has ended (if it doesn't, tell the user). Look at the file before you "
+                     f"run anything again. Still blocked after it has ended: "
+                     f"`figaro clear -T {file}`"),
             "abandoned": [r[:8] for r in stale],
         }, status=409)
 

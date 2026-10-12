@@ -301,6 +301,13 @@ function check(label, actual, expected) {
       "let a = 1, b = 2; [a, b] = [b, a]; return a;",
       'const stats = new Map()\nfor (const n of figma.currentPage.children) stats.set(n.id, n.name)\nreturn [...stats]',
       "return `${figma.root.name}: ${figma.root.children.map((p) => `${p.name}`).join(\", \")}`;",
+      // importing by key, and what the team library lists
+      'const c = await figma.importComponentByKeyAsync("k1"); return [c.name, c.key];',
+      'const set = await figma.importComponentSetByKeyAsync("k1"); const st = await figma.importStyleByKeyAsync("k2"); return [set.name, st.name];',
+      'const v = await figma.variables.importVariableByKeyAsync("k3"); return v.resolvedType;',
+      'const c = await h.importComp("k1"); const v = await h.importVar("k3"); return [c.name, v.name];',
+      "const cols = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();\n" +
+        "return Promise.all(cols.map((c) => figma.teamLibrary.getVariablesInLibraryCollectionAsync(c.key)));",
     ];
     check("code that only reads", reads.map((c) => may(c)), reads.map(() => false));
     const writes = [
@@ -340,6 +347,10 @@ function check(label, actual, expected) {
       "figma.createFrame?.();",
       "return `removed: ${figma.currentPage.children[0].remove()}`;",
       "return `${figma.root.name} ${`${(figma.currentPage.children[0].name = \"x\")}`}`;",
+      // what is done with an import, and code from elsewhere
+      'const c = await figma.importComponentByKeyAsync("k1"); figma.currentPage.appendChild(c.createInstance());',
+      'const v = await h.importVar("k3"); await h.bF(figma.currentPage.children[0], 0, v.id);',
+      'const m = await import("./more.js"); return m;',
     ];
     check("code that may write", writes.map((c) => may(c)), writes.map(() => true));
     check("…and so does code with --lib files", may("return 1;", [{ name: "a", hash: "x" }]), true);

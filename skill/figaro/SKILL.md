@@ -113,6 +113,7 @@ JS
   every script that only looks with `-R`; several of them in a row can also take `--parallel` and skip the
   queue. What changes while code that only reads runs — Figma updating a page the script loaded for the
   first time, the user at work — isn't the script's: a `⚠` line names it, and nothing is rolled back.
+  Importing by key (`h.importComp`, `h.importVar`, `import…ByKeyAsync`) counts as reading.
 - `--shot` — a picture right after the script: of the layer whose id the script returned (`return { id }`),
   or else of what it created; `--shot <layer>` — of that layer.
 - `--lib my.js` — your own functions for several scripts (`lib.<name>`). The plugin keeps the file compiled:

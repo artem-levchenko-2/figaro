@@ -197,6 +197,8 @@ def test_timed_out_script_interlocks_the_file_until_it_finishes():
             body = await r.json()
             assert r.status == 409 and body["abandoned"] == [orphan[:8]]
             assert {"type": "abort", "id": orphan} in plugin.received
+            # what to do, for an agent at a shell
+            assert "`figaro wait -T " in body["hint"] and "`figaro clear -T " in body["hint"]
 
             await plugin.ws.send_str(json.dumps(
                 {"type": "result", "id": orphan, "text": "late"}))
