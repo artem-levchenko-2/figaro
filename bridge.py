@@ -57,10 +57,11 @@ DISCONNECTED = "plugin disconnected mid-request"
 # non-loopback address on purpose (--host 0.0.0.0).
 ALLOWED_HOSTS: set = set()
 # The plugin's window is a page in Figma's desktop app, and its User-Agent
-# names the app: "… Figma/126.9.11 Chrome/… Electron/…" (figma-linux adds the
-# same token). A web page can open a socket with Origin "null" too, from a
-# sandboxed iframe, but it can't change its User-Agent.
-FIGMA_APP = re.compile(r"\bFigma[\w-]*/\d")
+# names the app: "… Figma/126.9.11 Chrome/… Electron/…", FigmaBeta/ and
+# FigmaGov/ in their builds, figma-linux/0.11.5 in figma-linux. A web page can
+# open a socket with Origin "null" too, from a sandboxed iframe, but it can't
+# change its User-Agent.
+FIGMA_APP = re.compile(r"\bfigma[\w-]*/\d", re.IGNORECASE)
 # The secret of the HTTP API (see _guard); main() makes it, tests set it.
 TOKEN = None
 PORT = 8788
@@ -461,6 +462,11 @@ def _text(value):
     return value if isinstance(value, str) and value else None
 
 
+def _in_flight(conn_id):
+    """A request went to this window and it hasn't answered yet."""
+    return any(e.get("conn") == conn_id for e in [*PENDING.values(), *ABANDONED.values()])
+
+
 async def plugin_ws_handler(request: web.Request):
     # 64 MB: a shot of a long page at 2× is past 16 MB.
     ws = web.WebSocketResponse(heartbeat=20, max_msg_size=64 * 1024 * 1024)
@@ -506,13 +512,19 @@ async def plugin_ws_handler(request: web.Request):
                 # one document are legitimate — both stay, and scripts go to the
                 # first (resolve_target): a window that comes later never takes a
                 # file over while the window that has it answers.
+                #
+                # Nor is a window dropped while a script it got hasn't ended: the
+                # script may hold its thread past the ping's second, and dropping
+                # it would cut the script off and let the next one run beside it
+                # in the other window. A dead one goes with the heartbeat.
                 for cid, info in list(PLUGINS.items()):
                     if cid == conn_id:
                         continue
                     same = (file_key and info.get("fileKey") == file_key) or (
                         name and info.get("fileKey") is None and info.get("name") == name
                     )
-                    if not same or await _still_alive(info):
+                    # Asked again after the ping: a script may go there meanwhile.
+                    if not same or _in_flight(cid) or await _still_alive(info) or _in_flight(cid):
                         continue
                     print(f"[plugin] dropping dead connection for {name!r}")
                     try:

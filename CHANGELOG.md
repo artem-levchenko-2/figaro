@@ -16,7 +16,8 @@ file; the release notes say when it has to be imported again.
   notes in the window, press Stop or Update, and pose as a file to take agents' scripts and send back false
   answers. Now the socket also needs Figma's User-Agent, which a page can't change. A file's scripts go to
   the window that connected first, while it is open; the window's buttons count only from a window that said
-  which file it is; an answer counts only from the window its script went to.
+  which file it is; an answer counts only from the window its script went to. Another plugin running in
+  Figma, if its manifest lets it reach `localhost`, can still pose as the window.
 - **`figaro` never goes through a proxy to the bridge.** With `http_proxy` or `HTTP_PROXY` set, every command
   failed, and the token and the script went to the proxy. `start-bridge.sh` asks the bridge directly too.
 

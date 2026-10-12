@@ -47,6 +47,7 @@ class SandboxPlugin:
     counter = property(lambda self: self.d.counter)
     max_running = property(lambda self: self.d.max_running)
     running = property(lambda self: self.d.running)
+    pong_after = 0         # seconds: a window busy with a script answers a ping late
 
     async def __aenter__(self):
         self.ws = await self.client.ws_connect(
@@ -70,11 +71,19 @@ class SandboxPlugin:
                 continue
             m = json.loads(msg.data)
             if m.get("type") == "ping":
-                await self.ws.send_str(json.dumps({"type": "pong"}))
+                if self.pong_after:
+                    asyncio.create_task(self._pong_late())
+                else:
+                    await self.ws.send_str(json.dumps({"type": "pong"}))
             elif m.get("type") == "exec":
                 t = asyncio.create_task(self._run(m["id"], json.loads(m["code"])))
                 self.scripts.add(t)
                 t.add_done_callback(self.scripts.discard)
+
+    async def _pong_late(self):
+        await asyncio.sleep(self.pong_after)
+        if not self.ws.closed:
+            await self.ws.send_str(json.dumps({"type": "pong"}))
 
     async def _run(self, rid, cmd):
         d = self.d
@@ -528,5 +537,39 @@ def test_interlock_covers_every_tab_of_the_document():
             assert doc.max_running == 1
             r = await c.post("/clear", json={"target": conns[1]})   # clear via either tab
             assert (await r.json())["cleared"]
+        await c.close()
+    run(go())
+
+
+@pytest.mark.parametrize("script_first", [True, False], ids=["script-then-window", "window-then-script"])
+def test_a_window_with_a_script_is_never_dropped(script_first):
+    """The same file opens in a second window while the first runs a script, or
+    a script goes to the first while the bridge pings it for the second. The
+    script holds the first window, so its pong comes late; it stays all the
+    same. Dropping it cut the script off with a 500 and let the next script run
+    beside it in the other window."""
+    async def go():
+        c = await make_client()
+        doc = Document()
+        first = SandboxPlugin(c, "F", "docFFFFFF", doc)
+        first.pong_after = bridge.SLOT_PROBE_TIMEOUT + 0.5
+        await first.__aenter__()
+        second = SandboxPlugin(c, "F", "docFFFFFF", doc)
+        if script_first:
+            script = asyncio.create_task(call(c, {"op": "sleep", "s": 2, "tag": "long"}, target="F"))
+            await asyncio.sleep(0.2)
+            await second.__aenter__()
+        else:
+            await second.__aenter__()   # the bridge pings the first window now
+            script = asyncio.create_task(call(c, {"op": "sleep", "s": 2, "tag": "long"}, target="F"))
+        await asyncio.sleep(bridge.SLOT_PROBE_TIMEOUT + 0.3)   # past the ping's second
+        r = await call(c, {"op": "sleep", "s": 0.01, "tag": "next"}, target="F")
+        assert r.status == 200, await r.text()
+        r = await script
+        assert r.status == 200, await r.text()
+        assert doc.max_running == 1, "the next script ran beside the long one"
+        assert first.ran == ["long", "next"] and second.ran == []
+        await second.__aexit__()
+        await first.__aexit__()
         await c.close()
     run(go())

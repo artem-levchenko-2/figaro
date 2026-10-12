@@ -20,6 +20,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import bridge  # noqa: E402
+from conftest import FIGMA_UA  # noqa: E402
 
 
 def run(coro):
@@ -449,22 +450,42 @@ def test_same_document_in_two_windows_coexists():
     run(go())
 
 
-def test_a_page_in_a_browser_cannot_be_the_plugin():
+@pytest.mark.parametrize("ua", [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/150.0.0.0 Safari/537.36",
+    "",
+    "figma",
+], ids=["chrome", "none", "no-version"])
+def test_a_page_in_a_browser_cannot_be_the_plugin(ua):
     """A sandboxed iframe on any web page connects with Origin "null", as the
     plugin's window does — but with a browser's User-Agent, not Figma's app."""
     async def go():
         c = await make_client()
-        chrome = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36")
-        for ua in (chrome, "", "figma"):
-            with pytest.raises(aiohttp.WSServerHandshakeError) as e:
-                await c.ws_connect("/plugin", headers={"Origin": "null", "User-Agent": ua})
-            assert e.value.status == 403
+        with pytest.raises(aiohttp.WSServerHandshakeError) as e:
+            await c.ws_connect("/plugin", headers={"Origin": "null", "User-Agent": ua})
+        assert e.value.status == 403
         assert bridge.PLUGINS == {}
-        # figma-linux adds "Figma/<its version>" to its own name
-        linux = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
-                 "figma-linux/0.11.4 Figma/0.11.4 Chrome/120.0.0.0 Electron/28.0.0 Safari/537.36")
-        ws = await c.ws_connect("/plugin", headers={"Origin": "null", "User-Agent": linux})
+        await c.close()
+    run(go())
+
+
+@pytest.mark.parametrize("ua", [
+    FIGMA_UA,
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Figma/126.9.11 Chrome/150.0.7871.250 Electron/43.7.7 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "FigmaBeta/126.9.11 Chrome/150.0.7871.250 Electron/43.7.7 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "FigmaGov/126.9.11 Chrome/150.0.7871.250 Electron/43.7.7 Safari/537.36",
+    # figma-linux, the unofficial app for Linux, names itself in lowercase
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "figma-linux/0.11.5 Chrome/124.0.6367.230 Electron/30.0.8 Safari/537.36",
+], ids=["figma-macos", "figma-windows", "figma-beta", "figma-gov", "figma-linux"])
+def test_a_window_of_figmas_desktop_app_is_the_plugin(ua):
+    async def go():
+        c = await make_client()
+        ws = await c.ws_connect("/plugin", headers={"Origin": "null", "User-Agent": ua})
+        assert len(bridge.PLUGINS) == 1
         await ws.close()
         await c.close()
     run(go())

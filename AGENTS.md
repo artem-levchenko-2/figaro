@@ -207,9 +207,11 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
 
 ## Figma facts that cost time
 
-- **The plugin's window connects with `Origin: null`** and a User-Agent with `Figma/<version>` (Electron;
-  figma-linux sends one too). A web page can make its Origin "null" (a sandboxed iframe) but can't change
-  its User-Agent, so the bridge takes a plugin socket only with both (`FIGMA_APP`).
+- **The plugin's window connects with `Origin: null`** and a User-Agent that names the app (Electron):
+  `Figma/<version>`, `FigmaBeta/` and `FigmaGov/` in those builds, `figma-linux/<version>` in lowercase in
+  figma-linux. A web page can make its Origin "null" (a sandboxed iframe) but can't change its User-Agent,
+  so the bridge takes a plugin socket only with both (`FIGMA_APP`). Another plugin running in Figma has
+  both, if its manifest lets it reach `localhost`: it can still pose as Figaro's window.
 - **Hot reload.** With Figma's *Plugins → Development → Hot reload plugin* on, any write to `plugin/code.js`
   or `ui.html` (even `touch`) restarts the plugin in every file within a second. A running script is cut off
   ("plugin disconnected mid-request") and `undo` forgets everything. Don't touch `plugin/` while agents work.
