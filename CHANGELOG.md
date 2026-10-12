@@ -34,10 +34,12 @@ file; the release notes say when it has to be imported again.
 
 - **The plugin's window scrolls.** With a long island open, or many files, it grew past the bottom of the
   screen, and what was under the edge couldn't be reached. Now it ends at the bottom of Figma's canvas and the
-  islands scroll in it as one list: an open island's row stays at the top while its panel scrolls under it,
-  and the line with the version stays at the bottom. Parked at the bottom of the screen, the window keeps your
-  file's island; opening that island lifts the window just enough, and closing it puts the window back, unless
-  you moved it meanwhile.
+  islands scroll in it as one list: an open island's row stays at the top while its panel scrolls under it.
+  The line with the version comes last, and stays at the window's bottom only while it has a button (Update,
+  Reload) or says why an update failed. The scrollbar is thin and shows only while the list scrolls or the
+  pointer is on it. Parked at the bottom of the screen, the window shows your file's island alone; opening it
+  lifts the window just enough to show it whole, and closing it puts the window back, unless you moved it
+  meanwhile.
 
 ## [1.2.2] — 2026-10-12
 

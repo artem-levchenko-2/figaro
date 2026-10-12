@@ -14,15 +14,19 @@
    from its right one (x 15 to 305). The window's corners are 13 px and the
    islands sit 6 px in, so theirs are 13 − 6 = 7 px, and they are 6 px apart.
    The window ends at the bottom of Figma's canvas (code.js), so the islands
-   scroll in it, as one list, above the line at the bottom; the scrollbar runs
-   in the 6 px right of them. An open island's row stays at the top while its
-   panel scrolls under it. */
+   scroll in it as one list, the line with the version last; that line stays
+   at the window's bottom only while it has a button or a notice. The
+   scrollbar runs in the 6 px right of the islands, thin, and shows only while
+   the pointer is on the list or it scrolls. An open island's row stays at the
+   top while its panel scrolls under it. */
 * { box-sizing: border-box; }
 :root {
   /* Figma's own window (themeColors), for what sits outside the islands */
   --win-bg: var(--figma-color-bg, #2c2c2c);
   --win-dim: var(--figma-color-text-secondary, rgba(255, 255, 255, .7));
   --win-faint: var(--figma-color-text-tertiary, rgba(255, 255, 255, .4));
+  --win-bar: rgba(255, 255, 255, .2);       /* the scrollbar, and under the pointer */
+  --win-bar-hot: rgba(255, 255, 255, .36);
   /* the islands: black in Figma's dark theme, white in its light one (below) */
   --is-bg: #0b0b0c;
   --is-edge: transparent;
@@ -53,6 +57,8 @@ html.figma-light {
   --win-bg: #eef1f5;
   --win-dim: rgba(26, 32, 44, .68);
   --win-faint: rgba(26, 32, 44, .5);
+  --win-bar: rgba(26, 32, 44, .2);
+  --win-bar-hot: rgba(26, 32, 44, .36);
   --is-bg: #ffffff;
   --is-edge: rgba(26, 32, 44, .12);
   --is-text: #1b1d22;
@@ -72,13 +78,18 @@ body { display: flex; flex-direction: column; font-family: var(--sys); -webkit-f
 button { font: inherit; }
 #scroll { flex: 0 1 auto; min-height: 0; margin: 6px 0 0 6px; overflow-y: auto; overscroll-behavior: contain;
   overflow-anchor: none; scrollbar-gutter: stable; }
-#scroll::-webkit-scrollbar { width: 6px; }
-#scroll::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 3px; background: var(--win-faint) padding-box; }
-#scroll::-webkit-scrollbar-thumb:hover { background-color: var(--win-dim); }
+#scroll::-webkit-scrollbar { width: 6px; background: transparent; }
+#scroll::-webkit-scrollbar-track { background: transparent; }
+#scroll::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 3px; background: transparent padding-box; }
+#scroll:hover::-webkit-scrollbar-thumb, #scroll.moving::-webkit-scrollbar-thumb { background-color: var(--win-bar); }
+#scroll::-webkit-scrollbar-thumb:hover, #scroll::-webkit-scrollbar-thumb:active { background-color: var(--win-bar-hot); }
+#end { padding: 6px 0; }
 #foot { flex: none; padding: 6px; }
+#end:empty, #foot:empty { display: none; }
 /* An island cut by the list's top edge gets round corners there, and its
    hairline in the light theme, as if it began there; one cut by the bottom
-   edge fades out, so it shows that more of it is below (edges()). */
+   edge fades out, so it shows that more of it is below, and so does the line
+   with the version (edges()). */
 #app::before { content: ""; position: sticky; top: 0; z-index: 3; display: none; height: 7px; margin-bottom: -7px; pointer-events: none;
   background: radial-gradient(circle 7px at 7px 7px, transparent 5.75px, var(--is-edge) 6.25px, var(--is-edge) 6.75px, var(--win-bg) 7.25px) left top / 7px 7px no-repeat,
     radial-gradient(circle 7px at 0 7px, transparent 5.75px, var(--is-edge) 6.25px, var(--is-edge) 6.75px, var(--win-bg) 7.25px) right top / 7px 7px no-repeat,
@@ -201,7 +212,9 @@ button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), t
 /* The window's last line, under the islands: the Figaro version, always, and on
    the right a newer release to update to (or, where the bridge has no Update
    button, a link to it), the update under way, or newer plugin code to
-   reload. Its text keeps the islands' inner edges, x 15 to 305;
+   reload. With none of those it is the list's last item (#end), out of sight
+   in a window parked low; with one, it stays at the window's bottom (#foot).
+   Its text keeps the islands' inner edges, x 15 to 305;
    a button runs out to their outer edge, x 314, so it is 6 px from the
    window's edge, as from the island above it and the window's bottom. Why an
    update failed takes a line of its own above it, its button staying on the
@@ -234,7 +247,7 @@ button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), t
 </style>
 </head>
 <body>
-<div id="scroll"><div id="app"></div></div>
+<div id="scroll"><div id="app"></div><div id="end"></div></div>
 <div id="foot"></div>
 
 <script>
@@ -614,7 +627,8 @@ function island(f, cls, anim) {
 
 // The window's last line: the Figaro version, and what there is to do about a
 // newer one — update to a release, or reload newer plugin code from disk. Why
-// an update or a reload failed goes on a line above it.
+// an update or a reload failed goes on a line above it. `pin`: it has
+// something to do, so it stays at the window's bottom.
 function footer() {
   const on = conn === "ok";
   const latest = on && ((board && board.update && board.update.latest) || (update && update.latest));
@@ -639,8 +653,9 @@ function footer() {
   } else if (release && release.latest) {
     right = `<button type="button" class="out" data-act="release" data-url="${esc(release.url || "")}" title="The Update button is off on this computer. To update: git pull in the Figaro folder, restart the bridge, then press Reload here"><span>${esc(release.latest)} is out</span>${ICON.out}</button>`;
   }
-  return `<div class="foot">${why}<div class="line"><span class="ver">Figaro${version ? " " + esc(version) : ""}</span>`
+  const html = `<div class="foot">${why}<div class="line"><span class="ver">Figaro${version ? " " + esc(version) : ""}</span>`
     + (right ? `<span class="what">${right}</span>` : "") + "</div></div>";
+  return { html, pin: !!(why || right) };
 }
 
 // ─── rendering ───────────────────────────────────────────────────────────
@@ -649,7 +664,8 @@ function footer() {
 // a pressed button to be released, so it never swallows a click.
 const app = document.getElementById("app");        // the islands
 const scroller = document.getElementById("scroll");  // what scrolls them
-const foot = document.getElementById("foot");      // the last line
+const end = document.getElementById("end");        // the last line, as the list's last item
+const foot = document.getElementById("foot");      // …or at the window's bottom
 const onScreen = new Set();    // islands on screen, by id
 let lastFiles = new Map();
 let animId = null;             // the island whose panel just opened
@@ -716,9 +732,11 @@ function render() {
     app.innerHTML = html;
     lastHtml = html;
   }
-  if (tail !== lastFoot) {
-    foot.innerHTML = tail;
-    lastFoot = tail;
+  const line = (tail.pin ? "foot:" : "end:") + tail.html;
+  if (line !== lastFoot) {
+    (tail.pin ? foot : end).innerHTML = tail.html;
+    (tail.pin ? end : foot).innerHTML = "";
+    lastFoot = line;
   }
   const ask = opening !== null ? growAhead(opening) : null;
   if (moving) {
@@ -731,8 +749,10 @@ function render() {
 
 // The window follows its islands: the sandbox sizes it (code.js), as tall as
 // all of them and the line under them, but no further than the bottom of the
-// canvas, and never shorter than this file's island (`least`). It asks again
-// every second: Figma tells the sandbox nothing when the window moves.
+// canvas, and never shorter than this file's island (`least`: its row, and
+// under it the line when that is pinned at the bottom, or the 6 px gap). So
+// parked low, it shows that island alone. It asks again every second: Figma
+// tells the sandbox nothing when the window moves.
 // Figma resizes it a frame or two after it asks, so while an island opens the
 // window grows ahead of it by two frames of its growth (at most LEAD px), never
 // past where it ends and never back: the island and the line under it are
@@ -745,8 +765,10 @@ let sentLeast = 0;
 let lastHeight = 0;
 let growTo = 0;
 let growUntil = 0;
+const GAP = 6;                 // between the islands, and between them and the window's edges
 const tall = (el) => el.getBoundingClientRect().height;
-const contentHeight = () => scroller.getBoundingClientRect().top + tall(app) + tall(foot);
+const under = () => tall(foot) || GAP;  // what an island needs under it: the pinned line, or the gap
+const contentHeight = () => scroller.getBoundingClientRect().top + tall(app) + tall(end) + tall(foot);
 function growAhead(id) {
   const slot = [...app.querySelectorAll(".slot")].find((el) => el.dataset.fid === id);
   const inner = slot && slot.querySelector(".fold > div");
@@ -755,7 +777,8 @@ function growAhead(id) {
   growTo = lastHeight + Math.ceil(inner.scrollHeight);
   growUntil = Date.now() + ANIM_MS - 20;
   const row = slot.querySelector(".row");
-  const need = slot.getBoundingClientRect().top + (row ? tall(row) : 0) + inner.scrollHeight + tall(foot);
+  const top = Math.max(slot.getBoundingClientRect().top, scroller.getBoundingClientRect().top);
+  const need = top + (row ? tall(row) : 0) + inner.scrollHeight + under();
   return { lift: Math.ceil(need), island: id };
 }
 function fit(extra) {
@@ -768,7 +791,7 @@ function fit(extra) {
   }
   lastHeight = content;
   const row = app.querySelector(".row");  // this file's island
-  const least = Math.ceil(scroller.getBoundingClientRect().top + (row ? tall(row) : 0) + tall(foot));
+  const least = Math.ceil(scroller.getBoundingClientRect().top + (row ? tall(row) : 0) + under());
   edges();
   if (want > 0 && (extra || want !== sentHeight || least !== sentLeast)) {
     sentHeight = want;
@@ -778,24 +801,36 @@ function fit(extra) {
 }
 if (typeof ResizeObserver === "function") {
   const watch = new ResizeObserver(() => fit());
-  for (const el of [app, foot, scroller]) watch.observe(el);
+  for (const el of [app, end, foot, scroller]) watch.observe(el);
 }
 
 // An island that the list's top edge cuts gets round corners there; one that
-// its bottom edge cuts fades out. Between two islands an edge needs neither.
+// its bottom edge cuts fades out, as does the line with the version at the
+// list's end. Between two islands an edge needs neither.
 function edges() {
   if (!scroller.classList || !scroller.getBoundingClientRect) return;
   const box = scroller.getBoundingClientRect();
+  const cut = (r) => r.top < box.bottom - 0.5 && r.bottom > box.bottom + 0.5;
   let up = false, down = false;
   for (const el of app.querySelectorAll(".slot")) {
     const r = el.getBoundingClientRect();
     up = up || (r.top < box.top - 0.5 && r.bottom > box.top + 0.5);
-    down = down || (r.top < box.bottom - 0.5 && r.bottom > box.bottom + 0.5);
+    down = down || cut(r);
   }
+  down = down || cut(end.getBoundingClientRect());
   scroller.classList.toggle("up", up);
   scroller.classList.toggle("down", down);
 }
-if (scroller.addEventListener) scroller.addEventListener("scroll", edges, { passive: true });
+// The scrollbar shows while the list scrolls, and for a moment after (and
+// while the pointer is on the list: the CSS).
+let still = null;
+function scrolled() {
+  edges();
+  scroller.classList.add("moving");
+  clearTimeout(still);
+  still = setTimeout(() => scroller.classList.remove("moving"), 900);
+}
+if (scroller.addEventListener) scroller.addEventListener("scroll", scrolled, { passive: true });
 
 // An island that opened, once it has: the list scrolls to show as much of it
 // as fits, its row still in view.

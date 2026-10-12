@@ -8,7 +8,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-12.7";
+const PLUGIN_VERSION = "2026-10-12.8";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -420,14 +420,15 @@ function makeGate(id, deadline) {
 
 // ─── the window's height and place ───────────────────────────────────────
 // ui.html asks for the height of all it shows (`height`) and of the least it
-// does with (`least`: this file's island and the last line). The window takes
-// that height but ends at the bottom of the canvas, and the islands scroll
-// inside it; parked lower than that, it keeps `least` and what is under it
-// stays out of sight. An island that opens without room under it (`lift`, the
-// height it needs, and `island`) moves the window up, at most to the top of
-// the canvas, and when that island closes (`drop`) the window goes back down,
-// unless the user moved it meanwhile. Figma has no event for a moved window or
-// a resized canvas, so the window asks again every second.
+// does with (`least`: this file's island, and the last line while that has a
+// button). The window takes that height but ends at the bottom of the canvas,
+// and the islands scroll inside it; parked lower than that, it keeps `least`
+// and what is under it stays out of sight. An island that opens without room
+// under it (`lift`, the height it needs, and `island`) moves the window up, at
+// most to the top of the canvas, and when that island closes (`drop`) the
+// window goes back down, unless the user moved it meanwhile. Figma has no
+// event for a moved window or a resized canvas, so the window asks again every
+// second.
 const FIGMA_HEADER = 41;  // what Figma draws above the window: its header (the plugin's name, the
                           // close button) and the line under it — to be checked against a live window
 const CANVAS_GAP = 8;     // the window keeps this far from the canvas's top and bottom edges

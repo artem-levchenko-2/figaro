@@ -127,8 +127,10 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - `figma_links.py` — Figma links: the file key and node id in a link, links to layers for reports.
 - `plugin/` — `manifest.json`, `code.js` (the `HELPERS` object behind `h.*`, running scripts with a deadline,
   a guard in every loop's head that ends it there (`guardLoops`), change tracking and whose change it was
-  (`codeMayWrite`), undo, selecting a layer from the window, the window's height and place (`fitWindow`)), `ui.html` (the window: one island per file where Figaro runs, in a
-  list that scrolls, and under them a line with the version, Update and Reload).
+  (`codeMayWrite`), undo, selecting a layer from the window, the window's height and place (`fitWindow`)),
+  `ui.html` (the window: one island per file where Figaro runs, in a list that scrolls, and under them a line
+  with the version, Update and Reload: the list's last item, or pinned at the window's bottom while it has a
+  button or a notice).
 - `skill/figaro/` — `SKILL.md` (the loop, the commands, safety, house rules) and `references/`:
   `helpers.md`, `craft.md`, `pitfalls.md`. The recipes in them were checked against real Figma.
 - `tools/install.sh` — the command and the skill's links (`~/.claude/skills`, `~/.agents/skills`); never
