@@ -398,6 +398,8 @@ def test_a_shot_is_not_printed_twice():
     ('in set_fontName: Cannot use unloaded font "Roboto Mono Regular". Please call figma.loadFontAsync',
      "h.setText"),
     ("Unable to establish connection to Figma after 10 seconds", "h.node(id)"),
+    ("aborted: the loop on line 3 was still running when --timeout ran out — the script was stopped",
+     "never ended"),
     # what a fresh agent hit in a smoke test
     ("in setProperties: Could not find a component property with name: 'Right Icon#164:41'", "h.variant"),
     ('could not find variable with key "58931feeac5c3df23dc96d949f8b7c43fd6b84a1"', "VariableID"),

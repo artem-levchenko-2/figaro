@@ -11,6 +11,13 @@ file; the release notes say when it has to be imported again.
 
 ### Fixed
 
+- **A loop that never ends no longer holds Figma.** A script runs on Figma's main thread, so a `while (true)`
+  froze Figma, nothing could stop it, and the file stayed busy. Now every `while`, `do … while` and `for (;;)`
+  loop of a script or a `--lib` file ends at the script's `--timeout`: "the loop on line N was still running
+  when --timeout ran out — the script was stopped", and the file is free. Strings, comments and line numbers
+  in errors stay as they were; a round costs ~25 ns more. `for … of` loops are left as they are: call `h.ck()`
+  in a long one.
+
 - **The plugin's window scrolls.** With a long island open, or many files, it grew past the bottom of the
   screen, and what was under the edge couldn't be reached. Now it ends at the bottom of Figma's canvas and the
   islands scroll in it as one list: an open island's row stays at the top while its panel scrolls under it,

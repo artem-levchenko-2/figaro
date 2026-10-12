@@ -106,8 +106,8 @@ JS
 - One script is one transaction: read and change in the same call. Between two calls the user or another
   agent may change the file.
 - Keep a script under ~10 s: it holds the file, and everyone else waits. Bulk edits go in batches of ~25
-  layers, with `h.ck()` on every step of a long loop (`helpers.md`, "Environment"). Don't wait inside a script
-  with `setTimeout`.
+  layers, with `h.ck()` on every step of a long `for … of` loop (`helpers.md`, "Environment"). Don't wait
+  inside a script with `setTimeout`.
 - `-R` — the script only reads: if it changed anything, the change is rolled back and the call fails. Run
   every script that only looks with `-R`; several of them in a row can also take `--parallel` and skip the
   queue. What changes while code that only reads runs — Figma updating a page the script loaded for the

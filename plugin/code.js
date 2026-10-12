@@ -8,7 +8,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-12.5";
+const PLUGIN_VERSION = "2026-10-12.6";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -570,15 +570,17 @@ figma.ui.onmessage = async (msg) => {
 
   CURRENT_PRINT = print;
   let ok = false;
-  let result, error;
+  let result, error, shifts = null;
   const libErrors = { missing: [] };
   const gate = makeGate(id, deadline);
   try {
     const fig = scriptFigma(h.aborted, print, gate);
     h[SCRIPT_FIGMA] = fig;  // a helper's import by key ends at the deadline too
-    const lib = loadLibs(msg.libs, fig, print, h, libErrors);  // --lib files
-    const fn = compileScript(code);
-    result = await fn(fig, print, h, lib);
+    const guard = (name) => loopGuard(id, deadline, name);
+    const lib = loadLibs(msg.libs, fig, print, h, libErrors, guard);  // --lib files
+    const script = compileScript(code);
+    shifts = script.shifts;
+    result = await script.fn(fig, print, h, lib, guard(null));
     ok = true;
   } catch (e) {
     error = e;
@@ -595,7 +597,7 @@ figma.ui.onmessage = async (msg) => {
     figma.ui.postMessage(Object.assign(resultMessage(id, result, logs), outcome.fields));
   } else {
     const reply = ok ? { type: "error", id, text: outcome.error, stack: null }
-                     : errorMessage(id, error, code);
+                     : errorMessage(id, error, code, shifts);
     if (!ok && outcome.error) reply.text += " — " + outcome.error;
     figma.ui.postMessage(Object.assign(reply, outcome.fields));
   }
@@ -736,6 +738,55 @@ function codeOnly(code) {
   return parts.join("");
 }
 
+// codeOnly that keeps every character in its place, for finding code by its
+// index: a comment turns into spaces, a string, a regular expression and a
+// template's text into "_", and a template's ${…} code stays code. A newline
+// stays a newline. It tells a regular expression from a division as codeOnly
+// does, by the same text before it.
+function codeMask(code) {
+  const s = String(code || "");
+  const out = s.split("");
+  let tail = "";  // as in codeOnly
+  const add = (text) => { tail = (tail + text.slice(-64)).replace(/\s+/g, " ").slice(-24); };
+  let from = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c !== "/" && c !== '"' && c !== "'" && c !== "`") continue;
+    const d = s[i + 1];
+    let end, text = '""', fill = "_", t = null;
+    if (c === "/" && d === "/") {
+      end = s.indexOf("\n", i);
+      if (end < 0) end = s.length;
+      text = fill = " ";
+    } else if (c === "/" && d === "*") {
+      end = s.indexOf("*/", i + 2);
+      end = end < 0 ? s.length : end + 2;
+      text = fill = " ";
+    } else if (c === "`") {
+      t = templateAt(s, i);
+      end = t.end;
+      if (t.code.length) text = "(" + t.code.map(codeOnly).join(", ") + ")";
+    } else if (c !== "/" || regexHere(tail + s.slice(Math.max(from, i - 64), i))) {
+      end = literalEnd(s, i);
+    } else {
+      end = -1;  // a division
+    }
+    if (end < 0) continue;
+    add(s.slice(from, i));
+    add(text);
+    for (let k = i; k < end; k++) if (out[k] !== "\n") out[k] = fill;
+    if (t) {
+      t.code.forEach((part, n) => {
+        const inner = codeMask(part);
+        for (let k = 0; k < inner.length; k++) out[t.at[n] + k] = inner[k];
+      });
+    }
+    from = end;
+    i = end - 1;
+  }
+  return out.join("");
+}
+
 // A slash after an operator, a bracket that opens, a comma or a keyword like
 // `return` starts a regular expression; after a name, ) or ] it divides.
 function regexHere(before) {
@@ -748,30 +799,31 @@ function regexHere(before) {
 }
 
 // The template that starts at `i`: the index just past it (-1 if it doesn't
-// end), and the code of its ${…} parts.
+// end), and the code of its ${…} parts and where each starts.
 function templateAt(s, i) {
-  const code = [];
+  const code = [], at = [];
   for (let j = i + 1; j < s.length; j++) {
     const c = s[j];
     if (c === "\\") { j++; continue; }
-    if (c === "`") return { end: j + 1, code };
+    if (c === "`") return { end: j + 1, code, at };
     if (c !== "$" || s[j + 1] !== "{") continue;
     let k = j + 2;
     for (let depth = 1; depth; k++) {
-      if (k >= s.length) return { end: -1, code };
+      if (k >= s.length) return { end: -1, code, at };
       const d = s[k];
       if (d === "{") depth++;
       else if (d === "}") depth--;
       else if (d === '"' || d === "'" || d === "`") {
         const e = d === "`" ? templateAt(s, k).end : literalEnd(s, k);
-        if (e < 0) return { end: -1, code };
+        if (e < 0) return { end: -1, code, at };
         k = e - 1;
       }
     }
     code.push(s.slice(j + 2, k - 1));
+    at.push(j + 2);
     j = k - 1;
   }
-  return { end: -1, code };
+  return { end: -1, code, at };
 }
 
 // The end of the string, template or regular expression that starts at `i`,
@@ -1173,15 +1225,146 @@ function wait(ms) {
 
 // ─── the script ──────────────────────────────────────────────────────────
 
+// A script runs on Figma's main thread, so a loop that never ends would
+// freeze Figma, and the bridge's abort couldn't get in. Every `while`,
+// `do … while` and `for (;;)` of a script or a --lib file asks a guard each
+// time round: it counts down, and every so often looks at the clock and
+// throws once the script's --timeout has run out or the bridge has given up
+// on it, naming the loop's line. for … of, for … in and for await go over
+// what they are given and stay as they are. The loop heads are found on
+// codeMask, so strings, comments and templates are left alone, and the guard
+// adds no line, so error lines don't move; the columns it shifts are put back
+// (unshift). Should the guards break the code (an object's method named
+// `while`, say), it runs as it is.
+const GUARD_N = "$figaroN" + RUN_ID;  // names a script can't know beforehand
+const GUARD_G = "$figaroG" + RUN_ID;
+const GUARD_STEP_MAX = 1024;          // rounds between two looks at the clock, at most
+
+// The code with a guard in the head of each loop, and per line the columns it
+// moves: {code, shifts}, shifts null if there is no loop to guard.
+function guardLoops(code) {
+  const src = String(code);
+  const mask = codeMask(src);
+  const breaks = [];  // where each line ends
+  for (let k = src.indexOf("\n"); k !== -1; k = src.indexOf("\n", k + 1)) breaks.push(k);
+  const lineAt = (at) => {
+    let lo = 0, hi = breaks.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (breaks[mid] < at) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo + 1;
+  };
+  // --N is 0 every `step` rounds, and G(line) gives the next step, never 0
+  const guard = (at) => "(--" + GUARD_N + " || (" + GUARD_N + " = " + GUARD_G + "(" + lineAt(at) + ")))";
+  const ins = [];  // [index, text]
+  const head = /(^|[^\w$#.\u0080-\uffff])(while|for)\s*(await\b)?\s*\(/g;  // not in a name (éwhile)
+  let m;
+  while ((m = head.exec(mask))) {
+    const open = m.index + m[0].length - 1;
+    head.lastIndex = open + 1;
+    if (m[3]) continue;  // for await
+    // x.while(…) is a call; get/set/static/async/* while(…) {…} a method
+    let k = m.index + m[1].length;
+    while (k > 0 && /\s/.test(mask[k - 1])) k--;
+    if (mask[k - 1] === "." || mask[k - 1] === "*") continue;
+    let w = k;
+    while (w > 0 && /[\w$]/.test(mask[w - 1])) w--;
+    if (/^(?:get|set|static|async)$/.test(mask.slice(w, k))) continue;
+    const close = groupEnd(mask, open);
+    if (close < 0) continue;
+    if (m[2] === "while") {
+      if (!mask.slice(open + 1, close - 1).trim()) continue;
+      ins.push([open + 1, guard(open + 1) + " && ("], [close - 1, ")"]);
+      continue;
+    }
+    // for (a; b; c): the two semicolons outside any brackets
+    const semi = [];
+    for (let j = open + 1, depth = 0; j < close - 1; j++) {
+      const c = mask[j];
+      if (c === "(" || c === "[" || c === "{") depth++;
+      else if (c === ")" || c === "]" || c === "}") depth--;
+      else if (c === ";" && depth === 0) semi.push(j);
+    }
+    if (semi.length !== 2) continue;  // for … of, for … in
+    const [a, b] = semi;
+    if (!mask.slice(a + 1, b).trim()) ins.push([a + 1, guard(a + 1)]);
+    else ins.push([a + 1, guard(a + 1) + " && ("], [b, ")"]);
+  }
+  if (!ins.length) return { code: src, shifts: null };
+  ins.sort((x, y) => x[0] - y[0]);
+  const shifts = {};  // line -> [[column in the code as it was, length], …]
+  let out = "", from = 0;
+  for (const [at, text] of ins) {
+    const line = lineAt(at);
+    out += src.slice(from, at) + text;
+    from = at;
+    (shifts[line] = shifts[line] || []).push([line === 1 ? at : at - breaks[line - 2] - 1, text.length]);
+  }
+  return { code: out + src.slice(from), shifts };
+}
+
+// A column in a stack trace (1-based) of the guarded code, in the code as it
+// was. A column inside a guard is the start of the loop's condition.
+function unshift(shifts, line, col) {
+  const moved = shifts && shifts[line];
+  if (!moved) return col;
+  const at = col - 1;
+  let by = 0;
+  for (const [c, len] of moved) {
+    if (at < c + by) break;
+    if (at < c + by + len) return c + 1;
+    by += len;
+  }
+  return at - by + 1;
+}
+
+// The guard of one script's loops (`lib`: of one --lib file in it). It looks
+// at the clock about every 10 ms of looping: a fast loop goes more rounds
+// between two looks, a slow one fewer.
+function loopGuard(id, deadline, lib) {
+  let step = 1, last = Date.now();
+  return (line) => {
+    const now = Date.now();
+    if (now > deadline || ABORTED.has(id)) {
+      const loop = "the loop on line " + line + (lib ? " of " + lib : "");
+      throw new Error(now > deadline
+        ? "aborted: " + loop + " was still running when --timeout ran out — the script was stopped"
+        : "aborted: " + loop + " was still running when the bridge stopped the script");
+    }
+    const spent = now - last;
+    last = now;
+    if (spent < 2) step = Math.min(step * 2, GUARD_STEP_MAX);
+    else if (spent > 20) step = Math.max(1, Math.floor(step * 10 / spent));
+    return step;
+  };
+}
+
+// new Function(...params, body(code)) for the guarded code, or for the code as
+// it is if the guards break it. {fn, shifts}
+function compileGuarded(params, body, code) {
+  const guarded = guardLoops(code);
+  if (guarded.shifts) {
+    try {
+      return { fn: new Function(...params, body(guarded.code)), shifts: guarded.shifts };
+    } catch (e) {
+      // compiled as it is below: it has the error to report, if any
+    }
+  }
+  return { fn: new Function(...params, body(code)), shifts: null };
+}
+
 // The script's line 1 starts on its own line, so a trailing `// comment` no
 // longer swallows the closing `})();`. `lib` is what the --lib files define.
 // Strict mode, on the first line so the lines don't move: a write that can't
 // happen (node.fills[0].color = …, a frozen array) fails instead of doing
-// nothing, silently.
-const SCRIPT_PARAMS = ["figma", "print", "h", "lib"];
+// nothing, silently. The loops' guard is the last parameter.
+const SCRIPT_PARAMS = ["figma", "print", "h", "lib", GUARD_G];
 
 function compileScript(code) {
-  return new Function(...SCRIPT_PARAMS, '"use strict"; return (async () => {\n' + code + "\n})();");
+  return compileGuarded(SCRIPT_PARAMS, (text) =>
+    '"use strict"; let ' + GUARD_N + " = 1; return (async () => {\n" + text + "\n})();", code);
 }
 
 // A script line in a stack trace: "<input>:L:C" in Figma's sandbox (QuickJS),
@@ -1200,15 +1383,15 @@ const SCRIPT_LINE_OFFSET = (() => {
   return null;
 })();
 
-// Each script position in the stack, as the script's own line number.
-function scriptPositions(stack, lineCount) {
+// Each script position in the stack, as the script's own line and column.
+function scriptPositions(stack, lineCount, shifts) {
   const out = [];
   if (SCRIPT_LINE_OFFSET === null || !stack) return out;
   STACK_POS.lastIndex = 0;
   let m;
   while ((m = STACK_POS.exec(String(stack)))) {
     const line = Number(m[1]) - SCRIPT_LINE_OFFSET;
-    if (line >= 1 && line <= lineCount) out.push({ at: m[0], line, col: Number(m[2]) });
+    if (line >= 1 && line <= lineCount) out.push({ at: m[0], line, col: unshift(shifts, line, Number(m[2])) });
   }
   STACK_POS.lastIndex = 0;
   return out;
@@ -1249,10 +1432,10 @@ function errorText(e) {
   return String(e);
 }
 
-function errorMessage(id, e, code) {
+function errorMessage(id, e, code, shifts) {
   const lines = String(code).split("\n");
   let stack = (e && e.stack) || null;
-  const where = scriptPositions(stack, lines.length);
+  const where = scriptPositions(stack, lines.length, shifts);
   const msg = { type: "error", id, text: errorText(e), stack };
   if (where.length) {
     msg.line = where[0].line;
@@ -2020,9 +2203,10 @@ async function textReady(node, who) {
 // `lib`. A lib's lines sit at slot × LIB_STRIDE in a stack trace — that is how
 // an error inside one names its file and line. A lib runs in strict mode, as a
 // script does: the directive goes on the first of the empty lines before it, so
-// no line of the lib moves.
+// no line of the lib moves. Its loops are guarded as a script's are, by the
+// guard of the script that runs it.
 
-const LIBS = new Map();  // hash -> {name, base, lines, factory | error}, oldest first
+const LIBS = new Map();  // hash -> {name, base, lines, shifts, factory | error}, oldest first
 const LIBS_MAX = 50;      // as LIBS_MAX in bridge_exec.py: both forget the same one
 const LIB_STRIDE = 10000;
 const LIB_DECL = /^(?:async\s+)?(?:function\s*\*?\s*|class\s+|(?:const|let|var)\s+)([A-Za-z_$][\w$]*)/gm;
@@ -2041,17 +2225,19 @@ function compileLib(item) {
   while (used.has(base)) base += LIB_STRIDE;
   const tail = "\n;return Object.assign({}, module.exports, {" + names.map((n) =>
     JSON.stringify(n) + ": typeof " + n + " === 'undefined' ? undefined : " + n).join(", ") + "});";
-  const entry = { name: String(item.name || "lib"), base, lines: src.split("\n") };
+  const entry = { name: String(item.name || "lib"), base, lines: src.split("\n"), shifts: null };
   try {
-    entry.factory = new Function("figma", "print", "h", "lib", "module", "exports",
-      '"use strict";' + "\n".repeat(base) + src + tail);
+    const compiled = compileGuarded(["figma", "print", "h", "lib", "module", "exports", GUARD_G], (text) =>
+      '"use strict"; let ' + GUARD_N + " = 1;" + "\n".repeat(base) + text + tail, src);
+    entry.factory = compiled.fn;
+    entry.shifts = compiled.shifts;
   } catch (e) {
     entry.error = e;
   }
   return entry;
 }
 
-function loadLibs(items, fig, print, h, errors) {
+function loadLibs(items, fig, print, h, errors, guard) {
   const lib = {};
   if (!Array.isArray(items)) return lib;
   for (const item of items) {
@@ -2070,7 +2256,7 @@ function loadLibs(items, fig, print, h, errors) {
     }
     if (entry.error) throw entry.error;
     const module = { exports: {} };
-    Object.assign(lib, entry.factory(fig, print, h, lib, module, module.exports));
+    Object.assign(lib, entry.factory(fig, print, h, lib, module, module.exports, guard(entry.name)));
   }
   return lib;
 }
@@ -2086,7 +2272,7 @@ function libPositions(stack) {
     for (const e of LIBS.values()) {
       const line = bodyLine - e.base;
       if (line >= 1 && line <= e.lines.length) {
-        out.push({ at: m[0], name: e.name, line, col: Number(m[2]),
+        out.push({ at: m[0], name: e.name, line, col: unshift(e.shifts, line, Number(m[2])),
                    source: e.lines[line - 1].trim().slice(0, 200) });
         break;
       }

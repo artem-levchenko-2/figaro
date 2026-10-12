@@ -341,6 +341,10 @@ ERROR_HINTS = [
      "unlikely to help. Import by key and figma.teamLibrary sometimes never answer at all: take "
      "components, styles and variables the file already has by id — `figaro inspect` of a layer "
      "that uses them prints it"),
+    ("was still running when --timeout ran out",
+     "this loop never ended: check its condition, and that what it tests changes each time round. "
+     "The script was stopped and the file is free; what it changed before that stays (figaro undo "
+     "takes it back)"),
     ("Could not find a component property with name",
      "property names in a set often carry an emoji and a #id (\"✒️ Label#164:0\"): use "
      "await h.variant(inst, { Label: '…', 'Right Icon': false }) — it finds the full name from "

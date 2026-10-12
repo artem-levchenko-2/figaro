@@ -10,9 +10,10 @@ A `figaro exec` script runs as the body of an async function with the parameters
 - **`--timeout`** (60 s) — the script's deadline. Calls to `figma.*Async`, also under `figma.variables` and
   `figma.teamLibrary`, check it themselves: after the deadline a new call throws, and a call Figma never
   answered ends with the error "did not answer before --timeout ran out". So does an import by key in
-  `h.importComp`, `h.importVar`, `h.var_`, `h.bF`, `h.bS` and `h.bN`. Node methods (`getMainComponentAsync`,
-  `exportAsync`, `setTextStyleIdAsync`…) and the other helpers don't know the deadline — call `h.ck()` in a
-  long loop.
+  `h.importComp`, `h.importVar`, `h.var_`, `h.bF`, `h.bS` and `h.bN`. A `while`, `do … while` or `for (;;)`
+  loop ends at the deadline too: "the loop on line N was still running when --timeout ran out". Node methods
+  (`getMainComponentAsync`, `exportAsync`, `setTextStyleIdAsync`…), the other helpers and `for … of` loops
+  don't know the deadline — call `h.ck()` in a long `for … of` loop.
 - **`print(...)`** — lines in the answer's `logs`; the CLI prints them as `log: …`.
 - **`return`** — the result: a string, a number or JSON. Return ids, names and numbers. A Figma node does not
   turn into JSON.
@@ -100,9 +101,9 @@ A text's font to a variable: `text.setBoundVariable("fontSize", v)` — and the 
 
 ## Control
 
-`h.ck()` throws as soon as the script's `--timeout` has passed. Call it on every iteration of a long loop,
-or the loop keeps going while the next script waits for the file. `h.aborted()` is the same without
-throwing: `true` or `false`.
+`h.ck()` throws as soon as the script's `--timeout` has passed. Call it on every iteration of a long
+`for … of` loop, or the loop keeps going while the next script waits for the file (`while` and `for (;;)`
+loops check the deadline themselves). `h.aborted()` is the same without throwing: `true` or `false`.
 
 ## Recipes
 

@@ -49,6 +49,7 @@ node tests/exec.test.js                  # the exec core: change reports, Cmd+Z,
 node tests/commands.test.js              # links, quick reads, --lib, inspect, shot, fonts, auto-layout, find
 node tests/ui.test.js                    # the plugin window: islands, buttons; the tone plays only during scripts
 node tests/window.test.js                # the window's height and place: the canvas's bottom, parked, lifted
+node tests/loops.test.js                 # a loop that never ends stops at --timeout; strings, comments, lines stay
 node tests/variants.test.js              # h.variant: short names and #ids, "true"/"false"; h.bN with a key
 
 export FIGARO_TEST_FILE="<link to a draft of yours>"   # the live tests need the plugin running in it
@@ -122,8 +123,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   closes the plugins' connections at once.
 - `figma_links.py` — Figma links: the file key and node id in a link, links to layers for reports.
 - `plugin/` — `manifest.json`, `code.js` (the `HELPERS` object behind `h.*`, running scripts with a deadline,
-  change tracking and whose change it was (`codeMayWrite`), undo, selecting a layer from the window, the
-  window's height and place (`fitWindow`)), `ui.html` (the window: one island per file where Figaro runs, in a
+  a guard in every loop's head that ends it there (`guardLoops`), change tracking and whose change it was
+  (`codeMayWrite`), undo, selecting a layer from the window, the window's height and place (`fitWindow`)), `ui.html` (the window: one island per file where Figaro runs, in a
   list that scrolls, and under them a line with the version, Update and Reload).
 - `skill/figaro/` — `SKILL.md` (the loop, the commands, safety, house rules) and `references/`:
   `helpers.md`, `craft.md`, `pitfalls.md`. The recipes in them were checked against real Figma.
@@ -239,6 +240,12 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   (`pmset -g assertions` shows Figma "Playing audio"). The tone stops 3 minutes after the last script ends
   (a script whose answer never comes, after its `--timeout` and those 3 minutes) or ~2 s after the bridge
   goes away — that is why the bridge closes the plugins' connections on exit (`bridge_idle.close_plugins`).
+- **A script runs on Figma's main thread.** A loop that never yields freezes Figma, and nothing gets in while
+  it runs: not the bridge's abort, not Stop in the window. So `compileScript` and `compileLib` put a guard in
+  the head of every `while`, `do … while` and `for (;;)` loop (`guardLoops`, found on `codeMask`: strings,
+  comments and a template's text stay as they are, and no line moves); it throws at the script's deadline.
+  `for … of` and `for … in` aren't guarded: a long one needs `h.ck()`. In a WASM build of QuickJS a guard
+  costs ~25 ns a round (1e6 rounds of an empty loop: 73 ms, guarded 98 ms).
 - **`getNodeByIdAsync` for a layer inside an instance** (`I2:1068;2:1041`) once hung for 10 s ("Unable to
   establish connection") while `figma.getNodeById` found it. So `h.node` and the script's
   `figma.getNodeByIdAsync` ask synchronously first (`nodeHere`).
