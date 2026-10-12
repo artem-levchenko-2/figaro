@@ -23,7 +23,7 @@ file; the release notes say when it has to be imported again.
 
 ### Changed
 
-- **Scripts run in strict mode.** A write that can't happen fails instead of doing nothing:
+- **Scripts and `--lib` files run in strict mode.** A write that can't happen fails instead of doing nothing:
   `node.fills[0].color = …` says `'color' is read-only`, `node.width = 100` says `no setter for property`.
   A variable needs `const` or `let` before its first use. The hints say what to do in each case.
 - `figaro rm sel` removes every selected layer, as `shot` and `link` take them. Before, it removed the first.

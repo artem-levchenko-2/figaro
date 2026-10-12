@@ -570,6 +570,7 @@ def test_two_documents_sharing_a_name_stay_ambiguous():
     ("Cannot assign to read only property 'fills'", "h.bF()"),
     # what QuickJS, in Figma, says in strict mode (checked live)
     ("'color' is read-only", "copy the array"),
+    ("'x' is read-only", "declare it with let"),
     ("object is not extensible", "copy the array"),
     ("no setter for property", "node.resize(w, h)"),
     ("'x' is not defined", "const or let"),

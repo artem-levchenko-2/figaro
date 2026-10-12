@@ -369,8 +369,11 @@ ERROR_HINTS = [
     ("strokes variable bindings must be set on paints directly",
      "use h.bS(node, idx, varId) to bind a stroke paint to a variable"),
     # A write that can't happen: scripts run in strict mode, so it fails.
-    # QuickJS, in Figma, says "'color' is read-only"; V8 the longer form.
-    ("is read-only", FROZEN_HINT),
+    # QuickJS, in Figma, says "'x' is read-only" for a const that takes a new
+    # value and for a frozen paint's "'color'" alike; V8 the longer form, and
+    # only for a property.
+    ("is read-only", "a const can't take a new value: declare it with let. If it is a property, "
+                     + FROZEN_HINT),
     ("Cannot assign to read only property", FROZEN_HINT),
     ("object is not extensible", FROZEN_HINT),
     ("no setter for property",

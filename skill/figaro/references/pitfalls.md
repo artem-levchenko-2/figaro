@@ -107,8 +107,9 @@ order. If you write it by hand:
 ## Scripts
 
 - **The answer is `Done` or `null`** — you forgot the `return`.
-- **Scripts run in strict mode.** `'x' is not defined` — declare it first (`const`, `let`). `no setter for
-  property` — the property can only be read: `width` and `height` change with `resize()` or `h.fixed`.
+- **Scripts run in strict mode.** `'x' is not defined` — declare it first (`const`, `let`). `'x' is read-only`
+  for a variable — it is a `const`: declare it with `let` to give it a new value. `no setter for property` —
+  the property can only be read: `width` and `height` change with `resize()` or `h.fixed`.
 - **`not a function`** — the method was renamed or exists only as an async version (`getNodeByIdAsync`,
   `setTextStyleIdAsync`, `getMainComponentAsync`). Check the name.
 - **`figma.createAutoLayout()`, `node.query()`, `node.set()` and `node.screenshot()`** from Figma's own advice

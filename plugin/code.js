@@ -7,7 +7,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-12.3";
+const PLUGIN_VERSION = "2026-10-12.4";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -1941,7 +1941,9 @@ async function textReady(node, who) {
 // and `h`. Top-level functions, classes and consts become `lib.<name>`, and so
 // does whatever `module.exports` holds; a later lib sees the earlier ones as
 // `lib`. A lib's lines sit at slot × LIB_STRIDE in a stack trace — that is how
-// an error inside one names its file and line.
+// an error inside one names its file and line. A lib runs in strict mode, as a
+// script does: the directive goes on the first of the empty lines before it, so
+// no line of the lib moves.
 
 const LIBS = new Map();  // hash -> {name, base, lines, factory | error}, oldest first
 const LIBS_MAX = 50;      // as LIBS_MAX in bridge_exec.py: both forget the same one
@@ -1965,7 +1967,7 @@ function compileLib(item) {
   const entry = { name: String(item.name || "lib"), base, lines: src.split("\n") };
   try {
     entry.factory = new Function("figma", "print", "h", "lib", "module", "exports",
-      "\n".repeat(base) + src + tail);
+      '"use strict";' + "\n".repeat(base) + src + tail);
   } catch (e) {
     entry.error = e;
   }

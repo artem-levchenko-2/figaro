@@ -239,6 +239,10 @@ const kit = () => ({
     check("no two kept libs share their lines", new Set(bases).size, bases.length);
     r = await exec(env, "return lib.boom({})", { libs: [broken] });
     check("…so an error still names the right lib", [r.lib && r.lib.name, r.lib && r.lib.line], ["broken.js", 4]);
+    const sloppy = { hash: "h5", name: "sloppy.js", code: "function leak() {\n  leaked = 1;\n}" };
+    r = await exec(env, "return lib.leak()", { libs: [sloppy] });
+    check("a lib runs in strict mode, as a script does, and its lines stay",
+      [r.type, /leaked is not defined/.test(r.text), r.lib && r.lib.line], ["error", true, 2]);
   }
 
   // ─── inspect ────────────────────────────────────────────────────────────
