@@ -80,7 +80,9 @@ removes the header from `client.session.headers`. Run a third-party script again
 `-H "X-Figaro-Token: $(cat ~/.figaro/token-8788)"`.
 
 CI (`.github/workflows/tests.yml`) runs pytest on Linux and Windows with Python 3.9 and 3.13, the Node tests,
-and both installers; nothing else tests Windows, so check the run after changing anything it touches.
+and both installers; nothing else tests Windows, so check the run after changing anything it touches. A push
+that changes only `*.md` or `assets/` runs no tests. Keep a parametrized test's id short: on Windows pytest
+puts it in the `PYTEST_CURRENT_TEST` variable, which takes at most 32767 characters.
 
 A smoke test of the skill — a fresh Claude Code session that has only the skill and the command does a small
 task in your draft:
