@@ -1,6 +1,6 @@
 // The window: one island per file (ui.html). It grows and shrinks with them —
 // the UI measures itself and asks for its height (`resize`, fitWindow below) —
-// but ends at the bottom of the canvas.
+// and stays on the canvas: with no room under it, it moves up.
 const UI_WIDTH = 320;
 figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", themeColors: true });
 
@@ -8,7 +8,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-12.11";
+const PLUGIN_VERSION = "2026-10-13.1";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -419,36 +419,27 @@ function makeGate(id, deadline) {
 }
 
 // ─── the window's height and place ───────────────────────────────────────
-// ui.html asks for the height of all it shows (`height`) and of the least it
-// does with (`least`: this file's island, and the last line while that has a
-// button). The window takes that height but ends at the bottom of the canvas,
-// and the islands scroll inside it; lower than that, it keeps `least`, and
-// what is under it stays out of sight. A window that the canvas's bottom edge
-// holds to its least height is parked there, and only a parked window moves:
-// an island that opens in it (`lift`, the height it needs, and `island`) lifts
-// it just enough to show that island whole, at most to the top of the canvas,
-// and a last line that comes with a button (a taller `least`) lifts it by as
-// much as the edge would cut; a window with room for its least but not for
-// that line counts as parked too. When that island closes (`drop`) and that
-// line goes, the window goes back down, unless the user moved it meanwhile.
-// Anywhere else the window stays where the user put it, and an island that
-// opens scrolls in the room it has. Figma has no event for a moved window or a
-// resized canvas, so the window asks again every second.
-const FIGMA_HEADER = 41;  // what Figma draws above the window: its header (the plugin's name, the
-                          // close button) and the line under it — to be checked against a live window
+// ui.html asks for the height of all it shows (`height`). The window takes it
+// and stays where the user put it (`spot`) while it has room under it; with no
+// room, it moves up instead, just enough and at most to the canvas's top, and
+// as it gets shorter it comes back down, never past the spot. What the user
+// left below the canvas's bottom edge (`hidden`: a window dragged partly off
+// it) stays out of sight there, and no more of it goes there. Only a window
+// taller than the whole canvas stops short of its height, and ui.html scrolls
+// its islands; the sandbox tells ui.html how tall the window may get (`room`).
+// Figma has no event for a moved window or a resized canvas, so the window
+// asks again every second: one that isn't where the sandbox put it was moved
+// by the user, and where it is now is its spot.
+const FIGMA_HEADER = 40;  // Figma's header (the plugin's name, the close button) with the line under it: the
+                          // window's position is its top edge, and the islands start 40 px lower (checked live)
 const CANVAS_GAP = 8;     // the window keeps this far from the canvas's top and bottom edges
 const HEIGHT_MAX = 2000;
-const SETTLE_MS = 1500;   // a moved window may still read its old place this long
-// park, while the window is parked: where the user left it (`spot`), where the
-// sandbox last put it (`pos`) and where it was before that (`from`, moved at
-// `at`), and the island that opened there (`card`: its id, the height it asked
-// for and `least` then).
-const placed = { height: 0, least: 0, park: null };
+const HEIGHT_MIN = 30;    // on a canvas too short for more: an island's row
+const placed = { height: 0, spot: null, hidden: 0, pos: null, room: 0 };
 
-// The canvas around the window, in px: the room below the window's header
-// down to the canvas's bottom, and how far up the window can go. null when
-// Figma can't tell.
-function windowRoom() {
+// The canvas's top and bottom edges in window space, less the gap, and where
+// the window is. null when Figma can't tell.
+function canvasEdges() {
   try {
     const p = figma.ui.getPosition();
     const zoom = figma.viewport.zoom;
@@ -456,75 +447,51 @@ function windowRoom() {
     if (!p || !p.windowSpace || !p.canvasSpace || !b || !(zoom > 0)) return null;
     // windowSpace and canvasSpace are one point, the window's corner: from it, where the canvas starts
     const top = p.windowSpace.y - (p.canvasSpace.y - b.y) * zoom;
-    return {
-      at: p, zoom,
-      below: Math.floor(top + b.height * zoom - CANVAS_GAP - p.windowSpace.y - FIGMA_HEADER),
-      above: Math.max(0, Math.floor(p.windowSpace.y - top - CANVAS_GAP)),
-    };
+    return { at: p, zoom, top: top + CANVAS_GAP, bottom: top + b.height * zoom - CANVAS_GAP };
   } catch (e) {
     return null;
   }
 }
 
 const near = (a, b) => Math.abs(a.x - b.x) <= 2 && Math.abs(a.y - b.y) <= 2;
-// The room of a window dy px lower on the screen (higher: dy < 0).
-const shifted = (room, dy) => Object.assign({}, room, { below: room.below - dy, above: room.above + dy });
 
 function fitWindow(ask) {
-  const want = Math.round(Number(ask.height));
+  const want = Math.min(Math.round(Number(ask.height)), HEIGHT_MAX);
   if (!(want > 0)) return;
-  const least = Math.min(want, Math.round(Number(ask.least)) || 0);
-  let room = windowRoom();
-  if (room && typeof figma.ui.reposition === "function") room = parkWindow(room, ask, least);
+  const edges = canvasEdges();
   let height = want;
-  if (room) height = Math.max(Math.min(height, room.below), least);
-  height = Math.min(height, HEIGHT_MAX);
-  placed.least = least;
+  if (edges && typeof figma.ui.reposition === "function") height = placeWindow(edges, want);
+  else if (edges) {  // a Figma that can't move it: the window ends at the canvas's bottom
+    height = Math.max(HEIGHT_MIN, Math.min(want, Math.floor(edges.bottom - edges.at.windowSpace.y - FIGMA_HEADER)));
+  }
   if (height !== placed.height) {
     placed.height = height;
     figma.ui.resize(UI_WIDTH, height);
   }
 }
 
-// A parked window goes where it shows what it must, and comes back; the room
-// it has there.
-function parkWindow(room, ask, least) {
-  const here = room.at.windowSpace;
-  let park = placed.park;
-  if (park && !near(here, park.pos) && !(Date.now() - park.at < SETTLE_MS && near(here, park.from))) {
-    park = placed.park = null;  // the user moved it: its place is theirs
+// Puts the window where `want` px of islands fit, and gives the height they get there.
+function placeWindow(edges, want) {
+  const here = edges.at.windowSpace;
+  if (!placed.pos || !near(here, placed.pos)) {  // the user moved it, or this is the first ask
+    placed.spot = { x: here.x, y: here.y };
+    placed.hidden = Math.max(0, Math.round(here.y + FIGMA_HEADER + (placed.height || want) - edges.bottom));
   }
-  const lift = Number(ask.lift) || 0;
-  if (!park) {
-    const before = placed.least || least;
-    const held = room.below <= before + 1;  // the canvas's edge held it to its least height
-    const opens = held && lift > room.below;
-    const grows = placed.least > 0 && least > before && least > room.below;  // a last line with a button, cut
-    if (!opens && !grows) return room;
-    const spot = { x: here.x, y: here.y };
-    park = placed.park = { spot, pos: spot, from: spot, at: 0, card: null };
+  const spot = placed.spot;
+  const floor = edges.bottom + placed.hidden;  // where the window may end
+  const top = Math.min(spot.y, edges.top);     // and how high it may go
+  const y = Math.max(top, Math.min(spot.y, Math.floor(floor - FIGMA_HEADER - want)));
+  if (Math.abs(y - here.y) >= 1) {
+    const p = edges.at;  // reposition takes the canvas's coordinates
+    figma.ui.reposition(p.canvasSpace.x, p.canvasSpace.y + (y - here.y) / edges.zoom);
   }
-  const drop = [].concat(ask.drop === undefined ? [] : ask.drop);
-  if (park.card && drop.indexOf(park.card.island) !== -1) park.card = null;
-  if (lift > 0) park.card = { island: ask.island, need: lift, least };
-  // What it must show from the spot: the island that opened there (taller by
-  // as much as the last line grew since), or its least.
-  const down = park.spot.y - here.y;
-  const need = Math.max(least, park.card ? park.card.need + least - park.card.least : 0);
-  const dy = Math.max(0, Math.min(Math.ceil(need - (room.below - down)), room.above + down));
-  const target = { x: park.spot.x, y: park.spot.y - dy };
-  if (!near(target, park.pos)) {
-    const p = room.at;  // reposition takes the canvas's coordinates
-    figma.ui.reposition(p.canvasSpace.x + (target.x - here.x) / room.zoom,
-                        p.canvasSpace.y + (target.y - here.y) / room.zoom);
-    park.from = park.pos;
-    park.pos = target;
-    park.at = Date.now();
+  placed.pos = { x: here.x, y };
+  const room = Math.max(HEIGHT_MIN, Math.floor(floor - top - FIGMA_HEADER));
+  if (room !== placed.room) {
+    placed.room = room;
+    figma.ui.postMessage({ type: "room", height: room });
   }
-  // Back where the user left it, with nothing to lift it: no longer parked,
-  // once Figma reads its place right.
-  if (dy === 0 && !park.card && Date.now() - park.at >= SETTLE_MS) placed.park = null;
-  return shifted(room, target.y - here.y);
+  return Math.max(HEIGHT_MIN, Math.min(want, Math.floor(floor - y - FIGMA_HEADER)));
 }
 
 figma.ui.onmessage = async (msg) => {

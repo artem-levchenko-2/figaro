@@ -40,15 +40,16 @@ file; the release notes say when it has to be imported again.
   in errors stay as they were; a round costs ~25 ns more. `for … of` loops are left as they are: call `h.ck()`
   in a long one. Its error, like every other, shows only the lines of the script and its `--lib` files.
 
-- **The plugin's window scrolls.** With a long island open, or many files, it grew past the bottom of the
-  screen, and what was under the edge couldn't be reached. Now it ends at the bottom of Figma's canvas and the
-  islands scroll in it as one list: an open island's row stays at the top while its panel scrolls under it.
-  The line with the version comes last, and stays at the window's bottom only while it has a button (Update,
-  Reload) or says why an update failed. The scrollbar is thin and shows only while the list scrolls or the
-  pointer is on it. Parked at the bottom of the screen, the window shows your file's island alone. Opening it,
-  or a button that comes on the last line, lifts the window just enough to show them whole, and the window
-  goes back when they go, unless you moved it meanwhile. Anywhere else the window stays where you put it, and
-  an island that opens scrolls in it.
+- **The plugin's window stays on the canvas.** With a long island open, or many files, it grew past the bottom
+  of the screen, and what was under the edge couldn't be reached. Now an island that opens with room under the
+  window grows down; with no room, the window moves up instead, just enough and no higher than the canvas's
+  top, and it goes back where you put it when the island closes, unless you moved it meanwhile. The island
+  opens and closes with the window, frame by frame, so nothing jumps, and the islands fill the window on the
+  way, whichever edge moves. What you dragged below the canvas's bottom edge stays out of sight there. Only a
+  window taller than the whole canvas is cut short, and its islands scroll as one list: an open island's row
+  stays at the top while its panel scrolls under it, and the scrollbar is thin and shows only while the list
+  scrolls or the pointer is on it. The line with the version comes last, and stays at the window's bottom
+  only while it has a button (Update, Reload) or says why an update failed.
 
 ## [1.2.2] — 2026-10-12
 

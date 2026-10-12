@@ -48,7 +48,7 @@ node tests/plugin.test.js                # the plugin writes nothing to the file
 node tests/exec.test.js                  # the exec core: change reports, Cmd+Z, read-only, undo, error lines
 node tests/commands.test.js              # links, quick reads, --lib, inspect, shot, fonts, auto-layout, find
 node tests/ui.test.js                    # the plugin window: islands, buttons; the tone plays only during scripts
-node tests/window.test.js                # the window's height and place: the canvas's bottom, parked, lifted
+node tests/window.test.js                # the window's height and place: grows down, moves up, comes back, scrolls
 node tests/loops.test.js                 # a loop that never ends stops at --timeout; strings, comments, lines stay
 node tests/variants.test.js              # h.variant: short names and #ids, "true"/"false"; h.bN with a key
 
@@ -224,21 +224,24 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
 - **Hot reload.** With Figma's *Plugins → Development → Hot reload plugin* on, any write to `plugin/code.js`
   or `ui.html` (even `touch`) restarts the plugin in every file within a second. A running script is cut off
   ("plugin disconnected mid-request") and `undo` forgets everything. Don't touch `plugin/` while agents work.
-- **The window is 320 px wide and as tall as its islands and its last line**, down to the bottom of Figma's
-  canvas: `ui.html` measures itself, and `code.js` (`fitWindow`) takes the room from `figma.ui.getPosition()`
-  and `figma.viewport` and calls `figma.ui.resize`; past that, the islands scroll. `getPosition` gives the
-  window's corner both in window space and on the canvas, so together with `viewport.bounds` they say where the
-  canvas starts; `FIGMA_HEADER` (41 px) is Figma's header and the line under it. Figma has no event for a moved
-  window or a resized canvas, so the window asks again every second. Only a window parked at the canvas's
-  bottom (its edge holds the window to its least height) moves: an island that opens in it, or a last line
-  that comes with a button, lifts it with `figma.ui.reposition`, given canvas coordinates, and it goes back
-  when they go, unless the user moved it. `getPosition` may read the old place for a moment after a move
-  (`SETTLE_MS`). Anywhere else an island that opens scrolls in the room the window has. An open island's row
-  sticks to the top only because `.island` has `overflow: clip`: `hidden` would make it a scroll container.
+- **The window is 320 px wide and as tall as its islands and its last line**, and it stays on Figma's canvas:
+  `ui.html` measures itself, and `code.js` (`fitWindow`) finds the canvas's edges from `figma.ui.getPosition()`
+  and `figma.viewport`, calls `figma.ui.resize` and, when there is no room under the window, moves it up with
+  `figma.ui.reposition`, given canvas coordinates; it comes back down as the window gets shorter, never past
+  where the user put it, and what the user left below the canvas's bottom edge stays there. Only a window
+  taller than the canvas is cut short, and its islands scroll. `getPosition` gives the window's corner both in
+  window space and on the canvas, so together with `viewport.bounds` they say where the canvas starts (window
+  space starts under Figma's tabs, at its window's left edge); the corner is the top of `FIGMA_HEADER` (40 px),
+  Figma's header with the line under it. It reads a move at once (all checked live). Figma has no event for a
+  moved window or a resized canvas, so the window asks again every second, and a window that isn't where the
+  sandbox put it was moved by the user. An island that opens or closes drives the window frame by frame
+  (`drive` in `ui.html`): every frame it asks for the next height along the island's curve, and the fold takes
+  the height Figma has given the window by then, as Figma moves and sizes the window a frame or two after it
+  is asked. An open island's row sticks to the top only because `.island` has `overflow: clip`: `hidden` would
+  make it a scroll container.
   The header above the window (icon, title, close button) is Figma's: a plugin can put nothing there but the
   title, "Figaro Relay", which `figma.showUI` sets and only a new `showUI` changes, restarting the window. The
-  menu shows the manifest's name, "Figaro". Figma applies a resize a frame or two late, so while an island
-  opens the window grows ahead of it (`fit`), or its bottom is cut off on the way.
+  menu shows the manifest's name, "Figaro".
 - **Figma's theme reaches the window** through `themeColors: true`: Figma sets the `--figma-color-*` variables
   and marks `<html>` `figma-light` or `figma-dark`. The islands take their colours from the `--is-*` tokens in
   `ui.html`, which `html.figma-light` redefines: black islands in the dark theme, white ones with a hairline

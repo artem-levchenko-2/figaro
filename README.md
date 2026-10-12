@@ -429,11 +429,10 @@ Three small pieces, all on your computer. When your agent runs `figaro shot sel`
 
 The plugin's window shows an island for each file where Figaro runs, its own
 file first: black in Figma's dark theme, white in its light one. Click an
-island for its agents and the recent changes. The window grows with its islands
-down to the bottom of Figma's canvas, and they scroll in it from there. Parked
-at the bottom of the screen, it shows your file's island alone, and opening it
-lifts the window until you close it again; anywhere else the window stays where
-you put it. An agent's row says what it is doing: at work, done (with a note for
+island for its agents and the recent changes. The window grows with its
+islands: down while there is room under it, and up when there isn't, until you
+close the island again; only a window taller than Figma's canvas scrolls them.
+An agent's row says what it is doing: at work, done (with a note for
 you), stopped or failed, and the error of its last script stays under its name
 until a script of its succeeds. A file where Figma stops answering, with a
 script still running long after its time or a window that closed while one ran,

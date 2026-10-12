@@ -9,9 +9,10 @@
 // and their buttons send the bridge and the sandbox what they should. An
 // agent's Stop shows while the pointer is on its row; an island's panel folds
 // open and shut, at once for those who ask for less motion. The window asks the
-// sandbox for its height and for the least it does with, again every second; an
-// island that opens asks for the room to show it whole and scrolls into view,
-// and one that closes lets the window go back down. A file that stopped
+// sandbox for the height of all it shows, again every second. An island that
+// opens or closes drives the window a frame at a time, and its fold takes the
+// height Figma has given the window, so the islands fill it on every frame;
+// one that opens low in a window that can't grow scrolls into view. A file that stopped
 // answering (a script running on past its time, or a window that closed while
 // one ran) has a red island, first after this file's, that says what to do.
 //
@@ -60,8 +61,11 @@ function makeClock() {
 // system asks for less motion. `layout`: boxes as a browser would lay the
 // window out — every island a 30 px row and, open, its `panel` under it, 6 px
 // apart, the list 6 px from the top, the last line 34 px, after the islands or
-// pinned at the bottom — in a window `window` px tall.
-function load({ calm = false, layout = null } = {}) {
+// pinned at the bottom — in a window `window` px tall. `figma`: frames
+// (requestAnimationFrame every 16 ms) and a Figma that gives the window the
+// height it asks for `lag` frames later, half a frame before one is drawn, at
+// most `room` px (the sandbox's cap); `deaf`: it never does.
+function load({ calm = false, layout = null, figma = null } = {}) {
   const clock = makeClock();
   const sockets = [];
   const contexts = [];
@@ -90,15 +94,29 @@ function load({ calm = false, layout = null } = {}) {
     visibilityState: "hidden",
     addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
   };
-  const window = { matchMedia: (q) => ({ matches: calm && /reduce/.test(q) }) };
-  const parent = { postMessage: (m) => posted.push(m.pluginMessage) };
+  const window = { matchMedia: (q) => ({ matches: calm && /reduce/.test(q) }), innerHeight: layout ? layout.window : 0 };
+  const parent = { postMessage: (m) => {
+    posted.push(m.pluginMessage);
+    if (figma && !figma.deaf && m.pluginMessage.type === "resize") {
+      const h = Math.min(m.pluginMessage.height, figma.room || Infinity);
+      clock.setTimeout(() => { window.innerHeight = h; if (layout) layout.window = h; }, 16 * (figma.lag || 0) + 8);
+    }
+  } };
+  const frame = figma ? (fn) => clock.setTimeout(() => fn(clock.now()), 16) : undefined;
   new Function("document", "window", "parent", "WebSocket", "AudioContext",
-               "setTimeout", "clearTimeout", "setInterval", "Date", "console", script)(
+               "setTimeout", "clearTimeout", "setInterval", "Date", "console", "requestAnimationFrame", "performance", script)(
     document, window, parent, WebSocket, AudioContext,
-    clock.setTimeout, clock.clearTimeout, clock.setInterval, { now: clock.now }, { log() {} });
+    clock.setTimeout, clock.clearTimeout, clock.setInterval, { now: clock.now }, { log() {} }, frame, { now: clock.now });
   if (layout) lay(elements, layout);
   const env = {
     clock, sockets, posted, scrolled: layout ? layout.scrolled : [],
+    inner: () => window.innerHeight,
+    // what the window's islands and last line take, as ui.html measures it; an island's fold height
+    content: () => elements.scroll.getBoundingClientRect().top + elements.app.getBoundingClientRect().height
+      + elements.end.getBoundingClientRect().height + elements.foot.getBoundingClientRect().height,
+    fold: (fid) => (layout && layout.folds.has(fid) ? layout.folds.get(fid).style.height : null),
+    room: (height) => window.onmessage({ data: { pluginMessage: { type: "room", height } } }),
+    asks: () => posted.filter((m) => m.type === "resize").map((m) => m.height),
     ws: () => sockets[sockets.length - 1],
     tone: () => (contexts.length ? contexts[0].state : "none"),
     exec: (id, timeout) => env.ws().receive({ type: "exec", id, code: "return 1", timeout }),
@@ -132,14 +150,26 @@ function lay(elements, layout) {
   const pinned = () => elements.foot.innerHTML !== "";
   const box = (top, height) => ({ top, height, bottom: top + height });
   const row = { getBoundingClientRect: () => box(0, ROW) };
+  // An open or closing island's fold, while the window draws it: a height of its own
+  // (style.height, from a drive) or the CSS's, the panel whole when open.
+  let drawn = null;
+  layout.folds = new Map();
+  const foldOf = (fid) => {
+    if (drawn !== elements.app.innerHTML) { drawn = elements.app.innerHTML; layout.folds = new Map(); }
+    if (!layout.folds.has(fid)) layout.folds.set(fid, { style: { height: "" }, firstElementChild: { scrollHeight: layout.panel } });
+    return layout.folds.get(fid);
+  };
   // The islands the window drew, top to bottom.
   const slots = () => {
     let top = TOP;
     return [...elements.app.innerHTML.matchAll(/data-fid="([^"]+)"><div class="island([^"]*)"/g)].map((m) => {
-      const height = ROW + (/ open/.test(m[2]) ? layout.panel : 0);
+      const fold = / open| closing/.test(m[2]) ? foldOf(m[1]) : null;
+      const own = fold && fold.style.height !== "" ? parseFloat(fold.style.height) : null;
+      const height = ROW + (own !== null ? own : / open/.test(m[2]) ? layout.panel : 0);
       const at = top;
+      const island = { classList: { add() {} }, querySelector: (sel) => (sel === ".fold" ? fold : null) };
       const slot = { dataset: { fid: m[1] }, getBoundingClientRect: () => box(at, height),
-        querySelector: (sel) => (sel === ".row" ? row : sel === ".fold > div" ? { scrollHeight: layout.panel } : null) };
+        querySelector: (sel) => (sel === ".row" ? row : sel === ".island" ? island : null) };
       top += height + GAP;
       return slot;
     });
@@ -334,21 +364,17 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     const asks = () => env.posted.filter((m) => m.type === "resize");
     const last = () => asks()[asks().length - 1];
-    check("the window asks for all it shows, and for the least it does with: this file's island alone",
-          [last().height, last().least], [6 + 30 + 6 + 30 + 34, 6 + 30 + 6]);
+    check("the window asks the sandbox for the height of all it shows", last(), { type: "resize", height: 6 + 30 + 6 + 30 + 34 });
     const n = asks().length;
     await env.clock.advance(1000);
     check("…and asks again every second, so the sandbox sees a window that moved", asks().length > n, true);
     env.click("toggle", "here");
-    const opened = asks().find((m) => m.lift);
-    check("an island opens: it asks for the room to show it whole",
-          opened && [opened.lift, opened.island], [6 + 30 + 400 + 6, "here"]);
+    check("an island opens with no frames to drive it: the window asks for all it shows at once", last().height, 106 + 400);
     await env.clock.advance(400);
     check("…and nothing is under the window's edge to bring into view: the list stays", env.scrolled, []);
     env.click("toggle", "here");
-    check("it closes: no drop while it folds", asks().filter((m) => m.drop).length, 0);
     await env.clock.advance(400);
-    check("…and once it has, the window may go back down", asks().filter((m) => m.drop).map((m) => m.drop), [["here"]]);
+    check("it closes: the window asks for its height without the panel", last().height, 106);
   }
   {
     const env = load({ layout: { panel: 300, window: 200 } });
@@ -369,8 +395,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     env.click("toggle", "here");
     env.click("toggle", "here");
-    check("less motion: the window may go back down at once",
-          env.posted.filter((m) => m.type === "resize" && m.drop).map((m) => m.drop), [["here"]]);
+    check("less motion: the window asks for its height without the panel at once", env.asks().pop(), 6 + 30 + 34);
   }
   {
     const env = load({ layout: { panel: 400, window: 200 } });
@@ -378,16 +403,106 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.ws().open();
     env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")], { update: { latest: "1.2.0", url: RELEASE } });
     await env.clock.advance(400);
-    const asks = () => env.posted.filter((m) => m.type === "resize");
-    check("a line with a button is pinned at the bottom, and the least the window does with keeps it",
-          [env.pinned(), asks()[asks().length - 1].least], [[false, true], 6 + 30 + 34]);
-    env.click("toggle", "here");
-    check("…as does the room an island asks for to open whole",
-          asks().filter((m) => m.lift).map((m) => m.lift), [6 + 30 + 400 + 34]);
+    check("a line with a button is pinned at the bottom, and the window asks for it too",
+          [env.pinned(), env.asks().pop()], [[false, true], 6 + 30 + 6 + 30 + 34]);
     env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")]);
     await env.clock.advance(400);
-    check("…and with nothing left to do, it goes back to the end of the list",
-          [env.pinned(), asks()[asks().length - 1].least], [[true, false], 6 + 30 + 6]);
+    check("…and with nothing left to do, it goes back to the end of the list", env.pinned(), [true, false]);
+  }
+
+  // ─── an island that opens or closes drives the window ───────────────────
+  // Frames every 16 ms from the click; Figma resizes the window two frames
+  // after it asks, half a frame before one is drawn; each frame is looked at
+  // just after the window drew it.
+  const watch = async (env, ms) => {
+    const frames = [];
+    await env.clock.advance(1);
+    for (let t = 0; t < ms; t += 16) {
+      await env.clock.advance(16);
+      frames.push({ inner: env.inner(), content: env.content(), fold: env.fold("here"), ask: env.asks().pop() });
+    }
+    return frames;
+  };
+  const rises = (list) => list.every((h, i) => i === 0 || h >= list[i - 1]);
+  {
+    const env = load({ layout: { panel: 300, window: 106 }, figma: { lag: 2 } });
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")]);
+    await env.clock.advance(400);
+    const h0 = env.inner(), before = env.asks().length;
+    env.click("toggle", "here");
+    let frames = await watch(env, 640);
+    let asks = env.asks().slice(before);
+    check("an island opens: every frame the window asks for its next height, up to all it shows",
+          [asks.length > 15, rises(asks), asks[asks.length - 1]], [true, true, h0 + 300]);
+    check("…the islands fill the window on every frame: the fold takes the height Figma has given it",
+          frames.filter((f) => Math.abs(f.inner - f.content) > 1).length, 0);
+    check("…it goes the island's curve, slow at first", frames.slice(0, 4).every((f) => f.inner - h0 < 40), true);
+    check("…until the island is whole", [frames.some((f) => f.fold === "300px" && f.inner === h0 + 300)], [true]);
+    await env.clock.advance(400);
+    check("…and once drawn anew, the open island is as tall as when the fold was driven", env.content(), h0 + 300);
+    const mid = env.asks().length;
+    env.click("toggle", "here");
+    frames = await watch(env, 560);
+    asks = env.asks().slice(mid);
+    check("it closes: the window asks for less every frame, down to its height without the panel",
+          [asks.length > 12, rises(asks.slice().reverse()), asks[asks.length - 1]], [true, true, h0]);
+    check("…the islands fill the window on every frame", frames.filter((f) => Math.abs(f.inner - f.content) > 1).length, 0);
+    await env.clock.advance(400);
+    check("…and the island is drawn shut", [env.content(), env.inner()], [h0, h0]);
+  }
+  {
+    const env = load({ layout: { panel: 300, window: 106 }, figma: { lag: 2, room: 106 + 120 } });
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")]);
+    await env.clock.advance(400);
+    env.room(106 + 120);  // the sandbox: no taller than this
+    const before = env.asks().length;
+    env.click("toggle", "here");
+    const frames = await watch(env, 640);
+    const driven = frames.filter((f) => f.fold !== "");
+    check("the canvas lets the window grow only so much: it asks for no more while it drives",
+          Math.max(...driven.filter((f) => f.fold !== "300px").map((f) => f.ask)), 106 + 120);
+    check("…and the fold opens whole, past the window's bottom: the islands scroll",
+          [frames[frames.length - 1].inner, driven[driven.length - 1].fold, env.content()], [106 + 120, "300px", 106 + 300]);
+    check("…never short of the window on the way", frames.filter((f) => f.content < f.inner - 1).length, 0);
+  }
+  {
+    const env = load({ layout: { panel: 300, window: 106 }, figma: { lag: 2, room: 106 } });
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")]);
+    await env.clock.advance(400);
+    env.room(106);  // a window that can't grow at all
+    env.click("toggle", "here");
+    const frames = await watch(env, 640);
+    const half = parseFloat(frames[10].fold);
+    check("a window that can't grow: the fold follows the clock",
+          [half > 50 && half < 250, frames.some((f) => f.fold === "300px"), env.inner()], [true, true, 106]);
+  }
+  {
+    const env = load({ layout: { panel: 300, window: 106 }, figma: { deaf: true } });
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")]);
+    await env.clock.advance(400);
+    env.click("toggle", "here");
+    const frames = await watch(env, 400);
+    await watch(env, 400);
+    check("Figma never gives the window that height: the fold waits for it…", frames[frames.length - 1].fold, "0px");
+    check("…and the island opens whole anyway soon after", env.content(), 106 + 300);
+  }
+  {
+    const env = load({ calm: true, layout: { panel: 300, window: 106 }, figma: { lag: 2 } });
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")]);
+    await env.clock.advance(400);
+    const before = env.asks().length;
+    env.click("toggle", "here");
+    check("less motion: no drive, the window asks for all it shows at once", env.asks().slice(before), [106 + 300]);
   }
 
   // ─── less motion ────────────────────────────────────────────────────────
