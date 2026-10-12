@@ -152,12 +152,13 @@ overwrites a file it didn't make.
 <br>
 
 Run `git pull` in Figaro's folder, or ask your agent to update Figaro. Then
-`figaro doctor` says what to restart. If `plugin/manifest.json` changed, import
-the plugin again (step 2). When a new release is out, the plugin's window says
-so at the bottom, next to the version: **Update** installs exactly that
-release, restarts the bridge and reloads the plugin as soon as no script is
-running. With `FIGARO_UPDATE_BUTTON=off` there is only a link to the release
-([Settings](#settings)).
+`figaro doctor` says what to restart. If `plugin/manifest.json` changed, run
+the plugin again from Figma's menu in each file; the release notes say when it
+has to be imported again (step 2). When a new release is out, the plugin's
+window says so at the bottom, next to the version: **Update** installs exactly
+that release, restarts the bridge and reloads the plugin as soon as no script
+is running. With `FIGARO_UPDATE_BUTTON=off` there is only a link to the
+release ([Settings](#settings)).
 
 To remove Figaro, run the installer with `--uninstall` (`-Uninstall` on
 Windows), remove the plugin under **Plugins → Development → Manage plugins in
@@ -386,8 +387,9 @@ it keeps four promises:
   itself aren't blamed on a script whose code only reads: they are reported and
   left as they are.
 - **An undo that knows when to refuse.** `figaro undo` takes back the last
-  script only if it is yours and nobody has changed the file since. Otherwise
-  it says so and points you to Figma's own undo or the version history.
+  script that changed something, but not another agent's (by its `-A` name)
+  and not once the file has changed since. Then it says so and points you to
+  Figma's own undo or the version history.
 
 <details>
 <summary>🔍 <b>The fine print</b></summary>

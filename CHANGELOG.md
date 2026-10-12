@@ -4,7 +4,8 @@ Notable changes, newest first. Versions follow [semver](https://semver.org/): wh
 scripts and agents depend on — the CLI, the bridge's HTTP API and the `h.*` helpers.
 
 After an update, `figaro doctor` says what to restart: the bridge, or the plugin's code
-(`figaro reload -T <file>`). If `plugin/manifest.json` changed, import it in Figma again.
+(`figaro reload -T <file>`). If `plugin/manifest.json` changed, run the plugin again from Figma's menu in each
+file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
@@ -58,6 +59,8 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 - `FIGARO_NO_UPDATE_CHECK=0` turned the release check off, as any value did. `0`, `false`, `no` and `off` leave
   it on now.
 - `start-bridge.sh` said FAILED without `curl`, though the bridge was up.
+- The skill: what `sel` means in each command, the flags each command takes, `--shot` before inline code,
+  and which script `undo` takes back.
 
 ## [1.2.1] — 2026-10-12
 

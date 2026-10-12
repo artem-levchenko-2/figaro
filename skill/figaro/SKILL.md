@@ -34,7 +34,7 @@ The references next to this file — read each one when you reach its step:
 - The CLI starts the bridge by itself. Don't start it in background tasks, and don't stop it unless the user
   asks (then `bash start-bridge.sh --stop` in the Figaro folder).
 - Name yourself: `-A <name>` in every call, a short role such as `-A designer`. The user sees it in the
-  plugin's window, other agents in the file's queue, and `undo` undoes only what is yours.
+  plugin's window, other agents in the file's queue, and `undo` won't undo another agent's script.
 
 ## 2. The loop: look → change → look
 
@@ -113,8 +113,7 @@ JS
   queue. What changes while code that only reads runs — Figma updating a page the script loaded for the
   first time, the user at work — isn't the script's: a `⚠` line names it, and nothing is rolled back.
 - `--shot` — a picture right after the script: of the layer whose id the script returned (`return { id }`),
-  or else of what it created. Put it after `--stdin` or `-f`, not before inline code, or it takes the code for
-  an id.
+  or else of what it created; `--shot <layer>` — of that layer.
 - `--lib my.js` — your own functions for several scripts (`lib.<name>`). The plugin keeps the file compiled:
   don't paste the library into every script.
 - An error prints `line N: <the script's line>` and `hint:` — read the hint, it knows the common cases.
@@ -127,11 +126,12 @@ JS
 - **A checkpoint is saved by itself**: before the first script that writes to the file, then once an hour —
   a version "Figaro · before changes by …" in File → Version history, which everyone with access to the file
   sees. Before a risky bulk edit add `--checkpoint "before <what>"`.
-- **`figaro undo -T …`** undoes the file's last script only if it changed something, nothing in the file has
-  changed since, and the script is yours. Otherwise it refuses — then tell the user: Cmd+Z in Figma, or a
-  version from the history. A `⚠` warning after `undone:` — read it and check the file. An answer that says
-  the undo took back a step that was not the script's (from `undo` or `-R`): ask the user at once to press
-  Cmd+Shift+Z in Figma, which brings that step back.
+- **`figaro undo -T …`** undoes the last script in the file that changed something: one that changed nothing
+  is skipped, so check whose script and how long ago in the answer. It refuses when the file changed after
+  that script, or when the script was another agent's (a script without `-A` counts as anyone's) — then tell
+  the user: Cmd+Z in Figma, or a version from the history. A `⚠` warning after `undone:` — read it and check
+  the file. An answer that says the undo took back a step that was not the script's (from `undo` or `-R`):
+  ask the user at once to press Cmd+Shift+Z in Figma, which brings that step back.
 - **Figma does not report changes to variables, nor deleted components**: the report won't show them, `-R`
   won't roll them back, and `undo` after such a script refuses. Check variables in the script itself, before
   and after; don't delete components or component sets unless the user asks, and check with `figaro tree`

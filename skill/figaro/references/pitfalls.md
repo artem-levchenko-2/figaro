@@ -141,7 +141,10 @@ order. If you write it by hand:
 
 ## Undo
 
-- **`undo` refuses a script that isn't yours**; `--force` takes it back anyway — only if the user says so.
+- **`undo` refuses another agent's script** (when both name themselves with `-A`); `--force` takes it back
+  anyway — only if the user says so.
+- **`undo` skips scripts that changed nothing**: right after one of them it undoes the script before. Read
+  whose script and how long ago in the answer.
 - **`undone: … (3 Cmd+Z steps)`** — Figma recorded the script as several steps, and all of them were undone.
   `⚠ not everything was undone` — look at what is left and tell the user.
 - **Figma has one Cmd+Z for the whole file**: it undoes the last step, whoever made it.

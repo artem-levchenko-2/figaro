@@ -110,7 +110,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - `bridge_update.py` — the window's Update and Reload: waits until no file runs a script, moves the folder
   to the release and never past it (`git fetch --tags`, `git merge --ff-only vX.Y.Z`), reloads the plugins
   that run older code, restarts the bridge (`os.execv`; on Windows `start-bridge.ps1 -Restart`). Scripts sent
-  meanwhile get a 503 and run nothing. It refuses an update with the button off or no newer release known.
+  during the pull or the restart get a 503 and run nothing; while it waits, they run, and it waits on. It
+  refuses an update with the button off or no newer release known.
 - `bridge_exec.py` — the bridge's side of exec: the fields it sends (`readOnly`, `checkpoint`, `quick`,
   `libs` — a library's code goes once, then its hash), when checkpoints are due, links as targets,
   `POST /undo`, `POST /reload`.
