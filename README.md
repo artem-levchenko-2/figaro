@@ -337,7 +337,7 @@ back to you.
 
 ```sh
 figaro exec -T "<link to the file>" --stdin --shot <<'JS'
-const page = await h.node("page");
+const page = figma.currentPage;
 const card = h.frame(page, {
   layout: "V", w: 360, spacing: 8, padding: 24, radius: 12, name: "Card",
 });

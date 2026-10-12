@@ -62,6 +62,8 @@ file; the release notes say when it has to be imported again.
 - `start-bridge.sh` said FAILED without `curl`, though the bridge was up.
 - The skill: what `sel` means in each command, the flags each command takes, `--shot` before inline code,
   and which script `undo` takes back.
+- The README's first script failed on its first line: `h.node` doesn't take `"page"`, `h.resolve` does. It
+  uses `figma.currentPage` now.
 
 ## [1.2.1] — 2026-10-12
 
