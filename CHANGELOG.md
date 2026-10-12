@@ -9,6 +9,8 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+## [1.2.2] — 2026-10-12
+
 ### Security
 
 - **Only Figma's desktop app can connect as the plugin.** While the bridge ran, a web page could open the
