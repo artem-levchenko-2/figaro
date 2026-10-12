@@ -3,11 +3,11 @@
     FIGARO_TEST_FILE=<key or link> venv/bin/python tests/live_cli.py    # ~1 min
 
 Only in a scratch file of your own (tests/live_file.py). Through the CLI, as
-agents call it: links in -T and in node ids, inspect, shot (a tall frame in
-parts), link, --lib with an error inside the lib, fonts and Font Awesome, the
-auto-layout helpers, find, two-phase rm, clone without moving the view, quick
-reads. It makes a frame "figaro-cli" far off the canvas on the current page
-and removes it at the end. Needs the bridge (8788) and the plugin of the
+agents call it: links in -T and in node ids, wait, inspect, shot (a tall frame
+in parts), link, --lib with an error inside the lib, fonts and Font Awesome,
+the auto-layout helpers, find, two-phase rm, clone without moving the view,
+quick reads. It makes a frame "figaro-cli" far off the canvas on the current
+page and removes it at the end. Needs the bridge (8788) and the plugin of the
 current build running in that file.
 """
 import json
@@ -73,6 +73,8 @@ def main():
     check("a file that is not open: how to open it",
           rc != 0 and f"open https://www.figma.com/design/{other}/Landing" in err
           and "Figaro" in err, err)
+    rc, out, err = cli("wait", "-T", DRAFT_URL, "--timeout", "10")
+    check("figaro wait: a free file answers at once", rc == 0 and "is free" in out, out + err)
 
     # ── a frame to work on, with a picture of it ──────────────────────────
     make = """

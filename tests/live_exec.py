@@ -5,8 +5,8 @@
 
 Only in a scratch file of your own (tests/live_file.py): it makes a frame
 "figaro-live" far off the canvas on the current page, changes it, has a
-read-only script try to change it, undoes it all and checks that nothing is
-left. Needs the bridge (8788) and the plugin of the current build running in
+read-only script try to change it, has a loop that never ends stopped at
+--timeout, undoes it all and checks that nothing is left. Needs the bridge (8788) and the plugin of the current build running in
 that file (`figaro reload`).
 
 The first writing script of the hour saves a checkpoint, a version named
@@ -137,6 +137,16 @@ return 1;""")
           status == 200 and r.get("value") is None and took < 3, r)
     status, r = run('return await h.node("99999:99999");', read_only=True)
     check("…and h.node says so", status == 500 and "no node" in r.get("error", ""), r)
+
+    # ── a loop that never ends ───────────────────────────────────────────
+    t0 = time.time()
+    status, r = run("let n = 0;\nwhile (true) n++;", read_only=True, timeout=3)
+    took = time.time() - t0
+    check(f"while (true) ends at --timeout ({took:.1f}s), on its line",
+          status == 500 and "the loop on line 2 was still running" in r.get("error", "")
+          and r.get("line") == 2 and took < 6, r)
+    status, r = run("return 1;", read_only=True)
+    check("…and the file is free at once", status == 200 and r.get("value") == 1, r)
 
     # ── awake ────────────────────────────────────────────────────────────
     t0 = time.time()
