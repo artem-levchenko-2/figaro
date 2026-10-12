@@ -26,6 +26,8 @@ After an update, `figaro doctor` says what to restart: the bridge, or the plugin
 ### Fixed
 
 - Several commands at once, with no bridge running, each started one. Now one starts it and the others wait.
+- An emoji cut in half in a note left every plugin window without its board. A failed Update's line stays
+  10 minutes, as meant, and two presses at once start one update.
 - A plugin window that sent odd fields made `/status`, `/targets` and `/exec` answer 500. A malformed body
   or a token that isn't text gets a 400 or a 401.
 - Commands end with a message, not a traceback: `exec -f` with a missing or non-UTF-8 file, `-o` into a

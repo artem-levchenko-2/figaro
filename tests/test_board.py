@@ -527,6 +527,46 @@ def test_buttons_count_only_from_a_window_that_said_which_file_it_is(quick_updat
     run(go())
 
 
+def test_two_presses_at_once_start_one_update(quick_update, monkeypatch):
+    monkeypatch.setattr(bridge, "bridge_outdated", lambda: True)
+
+    async def go():
+        assert bridge_update.start(pull=True) is True
+        assert bridge_update.start(pull=True) is False  # before the first one got going
+        assert await until(lambda: "restart" in quick_update)
+        assert quick_update == ["pull", "restart"]
+    run(go())
+
+
+def test_the_line_why_it_failed_goes_when_it_is_old(monkeypatch):
+    """The windows drop it on a board that comes once it is old, so the bridge
+    sends one then."""
+    monkeypatch.setattr(bridge_update, "FAILED_FOR", 0.2)
+    bridge.UPDATE = None
+
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, caps=CAPS) as p:
+            await p.ws.send_str(json.dumps({"type": "update-now"}))
+            await settle()
+            assert boards(p)[-1]["failed"]["error"] == "no new release"
+            assert await until(lambda: boards(p)[-1]["failed"] is None, 3)
+        await c.close()
+    run(go())
+
+
+def test_a_lone_half_of_an_emoji_leaves_the_windows_their_board():
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, caps=CAPS) as p:
+            r = await c.post("/done", json={"agent": "\ud83c bot", "text": "look \udfa8 here"})
+            assert r.status == 200
+            await settle()
+            assert agents(p, "Draft")["\ud83c bot"]["done"]["text"] == "look \udfa8 here"
+        await c.close()
+    run(go())
+
+
 def test_a_script_sent_during_the_restart_is_refused_and_safe_to_repeat():
     async def go():
         c = await make_client()

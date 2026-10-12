@@ -134,7 +134,9 @@ async def _send_soon():
 
 
 async def send(ws=None):
-    text = json.dumps(payload(), ensure_ascii=False)
+    # ASCII: a lone half of an emoji in a name or a note can't be sent as
+    # UTF-8, and one such board left every window without one.
+    text = json.dumps(payload())
     sockets = [ws] if ws is not None else [
         info["ws"] for _, info in bridge._live_plugins() if info.get("hello")]
     for s in sockets:

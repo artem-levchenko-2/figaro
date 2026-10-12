@@ -58,8 +58,8 @@ def start(pull):
     """Begin an update (pull=True) or a reload, unless one is under way or the
     update is refused; the windows say why."""
     global _task
-    if STATE["step"]:
-        return False
+    if STATE["step"] or (_task is not None and not _task.done()):
+        return False  # one under way, or a second press in the same moment
     if pull and not bridge.update_allowed():
         _fail("update", "turned off", None,
               "this bridge runs with FIGARO_UPDATE_BUTTON=off: update Figaro by hand")
@@ -98,6 +98,12 @@ def _fail(what, error, to=None, detail=None):
     FAILED.update(what=what, error=error, detail=detail, at=time.time(),
                   url=bridge.release_url(to) if to else None)
     _set(None)
+    # A board once the line is old, or the windows keep it until something
+    # else changes.
+    try:
+        asyncio.get_running_loop().call_later(FAILED_FOR + 1, bridge_board.changed)
+    except RuntimeError:
+        pass
 
 
 def _busy():
