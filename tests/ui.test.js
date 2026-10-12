@@ -7,7 +7,10 @@
 // until one succeeds — the line under them the Figaro version and a newer one,
 // and their buttons send the bridge and the sandbox what they should. An
 // agent's Stop shows while the pointer is on its row; an island's panel folds
-// open and shut, at once for those who ask for less motion.
+// open and shut, at once for those who ask for less motion. The window asks the
+// sandbox for its height and for the least it does with, again every second; an
+// island that opens asks for the room to show it whole and scrolls into view,
+// and one that closes lets the window go back down.
 //
 //     node tests/ui.test.js
 const fs = require("fs");
@@ -51,8 +54,11 @@ function makeClock() {
 
 // Load the window's script with a stub WebSocket (the test opens, feeds and
 // drops it) and a stub AudioContext whose state is the tone. `calm`: the
-// system asks for less motion.
-function load({ calm = false } = {}) {
+// system asks for less motion. `layout`: boxes as a browser would lay the
+// window out — every island a 30 px row and, open, its `panel` under it, 6 px
+// apart, the list 6 px from the top, the last line 34 px — in a window
+// `window` px tall.
+function load({ calm = false, layout = null } = {}) {
   const clock = makeClock();
   const sockets = [];
   const contexts = [];
@@ -87,14 +93,15 @@ function load({ calm = false } = {}) {
                "setTimeout", "clearTimeout", "setInterval", "Date", "console", script)(
     document, window, parent, WebSocket, AudioContext,
     clock.setTimeout, clock.clearTimeout, clock.setInterval, { now: clock.now }, { log() {} });
+  if (layout) lay(elements, layout);
   const env = {
-    clock, sockets, posted,
+    clock, sockets, posted, scrolled: layout ? layout.scrolled : [],
     ws: () => sockets[sockets.length - 1],
     tone: () => (contexts.length ? contexts[0].state : "none"),
     exec: (id, timeout) => env.ws().receive({ type: "exec", id, code: "return 1", timeout }),
     // The sandbox's answer to a request, on its way to the bridge.
     answer: (id) => window.onmessage({ data: { pluginMessage: { type: "result", id, value: 1 } } }),
-    html: () => elements.app.innerHTML,
+    html: () => elements.app.innerHTML + elements.foot.innerHTML,  // the islands, then the last line
     sent: (type) => env.ws().sent.filter((m) => m.type === type),
     identity: (name, key) => window.onmessage({ data: { pluginMessage: {
       type: "identity", name, fileKey: key, docSig: key, pluginVersion: "test", caps: [] } } }),
@@ -114,6 +121,36 @@ function load({ calm = false } = {}) {
     },
   };
   return env;
+}
+
+function lay(elements, layout) {
+  const TOP = 6, ROW = 30, GAP = 6, FOOT = 34;
+  const box = (top, height) => ({ top, height, bottom: top + height });
+  const row = { getBoundingClientRect: () => box(0, ROW) };
+  // The islands the window drew, top to bottom.
+  const slots = () => {
+    let top = TOP;
+    return [...elements.app.innerHTML.matchAll(/data-fid="([^"]+)"><div class="island([^"]*)"/g)].map((m) => {
+      const height = ROW + (/ open/.test(m[2]) ? layout.panel : 0);
+      const at = top;
+      const slot = { dataset: { fid: m[1] }, getBoundingClientRect: () => box(at, height),
+        querySelector: (sel) => (sel === ".row" ? row : sel === ".fold > div" ? { scrollHeight: layout.panel } : null) };
+      top += height + GAP;
+      return slot;
+    });
+  };
+  const listHeight = () => slots().reduce((h, el) => h + el.getBoundingClientRect().height + GAP, -GAP);
+  layout.scrolled = [];
+  Object.assign(elements.app, {
+    getBoundingClientRect: () => box(TOP, listHeight()),
+    querySelector: (sel) => (sel === ".row" ? row : null),
+    querySelectorAll: (sel) => (sel === ".slot" ? slots() : []),
+  });
+  elements.foot.getBoundingClientRect = () => box(layout.window - FOOT, FOOT);
+  Object.assign(elements.scroll, {
+    getBoundingClientRect: () => box(TOP, layout.window - FOOT - TOP),
+    scrollBy: (o) => layout.scrolled.push(o.top),
+  });
 }
 
 // A file in the bridge's board and an agent in it; times are the bridge's
@@ -279,6 +316,54 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("…and when it goes quiet after it: failed", /designer failed/.test(env.html()), true);
     env.click("toggle", "here");
     check("…with the error under its name", /Line 14: Cannot read properties of null/.test(env.html()), true);
+  }
+
+  // ─── the window's height ────────────────────────────────────────────────
+  {
+    const env = load({ layout: { panel: 400, window: 200 } });
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")]);
+    await env.clock.advance(400);
+    const asks = () => env.posted.filter((m) => m.type === "resize");
+    const last = () => asks()[asks().length - 1];
+    check("the window asks for all it shows, and for the least it does with: this file's island and the last line",
+          [last().height, last().least], [6 + 30 + 6 + 30 + 34, 6 + 30 + 34]);
+    const n = asks().length;
+    await env.clock.advance(1000);
+    check("…and asks again every second, so the sandbox sees a window that moved", asks().length > n, true);
+    env.click("toggle", "here");
+    const opened = asks().find((m) => m.lift);
+    check("an island opens: it asks for the room to show it whole, the last line under it",
+          opened && [opened.lift, opened.island], [6 + 30 + 400 + 34, "here"]);
+    await env.clock.advance(400);
+    check("…and nothing is under the window's edge to bring into view: the list stays", env.scrolled, []);
+    env.click("toggle", "here");
+    check("it closes: no drop while it folds", asks().filter((m) => m.drop).length, 0);
+    await env.clock.advance(400);
+    check("…and once it has, the window may go back down", asks().filter((m) => m.drop).map((m) => m.drop), [["here"]]);
+  }
+  {
+    const env = load({ layout: { panel: 300, window: 200 } });
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$"), file("KEY3", "Kit")]);
+    await env.clock.advance(400);
+    env.click("toggle", "doc:KEY3");
+    await env.clock.advance(500);
+    check("an island opens low in a short window: the list scrolls it up to the top, no further",
+          env.scrolled, [6 + 2 * 36 - 6]);
+  }
+  {
+    const env = load({ calm: true, layout: { panel: 400, window: 200 } });
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard")]);
+    await env.clock.advance(400);
+    env.click("toggle", "here");
+    env.click("toggle", "here");
+    check("less motion: the window may go back down at once",
+          env.posted.filter((m) => m.type === "resize" && m.drop).map((m) => m.drop), [["here"]]);
   }
 
   // ─── less motion ────────────────────────────────────────────────────────

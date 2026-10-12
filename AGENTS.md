@@ -48,6 +48,7 @@ node tests/plugin.test.js                # the plugin writes nothing to the file
 node tests/exec.test.js                  # the exec core: change reports, Cmd+Z, read-only, undo, error lines
 node tests/commands.test.js              # links, quick reads, --lib, inspect, shot, fonts, auto-layout, find
 node tests/ui.test.js                    # the plugin window: islands, buttons; the tone plays only during scripts
+node tests/window.test.js                # the window's height and place: the canvas's bottom, parked, lifted
 node tests/variants.test.js              # h.variant: short names and #ids, "true"/"false"; h.bN with a key
 
 export FIGARO_TEST_FILE="<link to a draft of yours>"   # the live tests need the plugin running in it
@@ -121,9 +122,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   closes the plugins' connections at once.
 - `figma_links.py` — Figma links: the file key and node id in a link, links to layers for reports.
 - `plugin/` — `manifest.json`, `code.js` (the `HELPERS` object behind `h.*`, running scripts with a deadline,
-  change tracking and whose change it was (`codeMayWrite`), undo, selecting a layer from the window),
-  `ui.html` (the window: one island per file where Figaro runs, and under them a line with the version, Update
-  and Reload).
+  change tracking and whose change it was (`codeMayWrite`), undo, selecting a layer from the window, the
+  window's height and place (`fitWindow`)), `ui.html` (the window: one island per file where Figaro runs, in a
+  list that scrolls, and under them a line with the version, Update and Reload).
 - `skill/figaro/` — `SKILL.md` (the loop, the commands, safety, house rules) and `references/`:
   `helpers.md`, `craft.md`, `pitfalls.md`. The recipes in them were checked against real Figma.
 - `tools/install.sh` — the command and the skill's links (`~/.claude/skills`, `~/.agents/skills`); never
@@ -217,9 +218,16 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
 - **Hot reload.** With Figma's *Plugins → Development → Hot reload plugin* on, any write to `plugin/code.js`
   or `ui.html` (even `touch`) restarts the plugin in every file within a second. A running script is cut off
   ("plugin disconnected mid-request") and `undo` forgets everything. Don't touch `plugin/` while agents work.
-- **The window is 320 px wide and as tall as its islands and its last line**: `ui.html` measures itself and
-  `code.js` calls `figma.ui.resize`. The header above it (icon, title, close button) is Figma's: a plugin can
-  put nothing there but the title, "Figaro Relay", which `figma.showUI` sets and only a new `showUI` changes,
+- **The window is 320 px wide and as tall as its islands and its last line**, down to the bottom of Figma's
+  canvas: `ui.html` measures itself, and `code.js` (`fitWindow`) takes the room from `figma.ui.getPosition()`
+  and `figma.viewport` and calls `figma.ui.resize`; past that, the islands scroll. `getPosition` gives the
+  window's corner both in window space and on the canvas, so together with `viewport.bounds` they say where the
+  canvas starts; `FIGMA_HEADER` (41 px) is Figma's header and the line under it. Figma has no event for a moved
+  window or a resized canvas, so the window asks again every second. An island that opens without room under it
+  lifts the window with `figma.ui.reposition`, given canvas coordinates, and puts it back when it closes. An
+  open island's row sticks to the top only because `.island` has `overflow: clip`: `hidden` would make it a
+  scroll container. The header above the window (icon, title, close button) is Figma's: a plugin can put
+  nothing there but the title, "Figaro Relay", which `figma.showUI` sets and only a new `showUI` changes,
   restarting the window. The menu shows the manifest's name, "Figaro". Figma applies a resize a frame or two
   late, so while an island opens the window grows ahead of it (`fit`), or its bottom is cut off on the way.
 - **Figma's theme reaches the window** through `themeColors: true`: Figma sets the `--figma-color-*` variables

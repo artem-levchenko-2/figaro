@@ -428,7 +428,10 @@ Three small pieces, all on your computer. When your agent runs `figaro shot sel`
 
 The plugin's window shows an island for each file where Figaro runs, its own
 file first: black in Figma's dark theme, white in its light one. Click an
-island for its agents and the recent changes. An agent's row says what it is
+island for its agents and the recent changes. The window grows with its islands
+down to the bottom of Figma's canvas, and they scroll in it from there. Parked
+at the bottom of the screen, it shows your file's island, and opening it lifts
+the window until you close it again. An agent's row says what it is
 doing: at work, done (with a note for you), stopped or failed, and the error of
 its last script stays under its name until a script of its succeeds. Point at
 an agent at work for its **Stop** button. A click on a changed layer selects it

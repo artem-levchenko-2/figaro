@@ -12,7 +12,11 @@
    title's left edge (x 41), chevrons on the close button's centre (20 px from
    the right). Inside an island what starts 9 px from its left edge ends 9 px
    from its right one (x 15 to 305). The window's corners are 13 px and the
-   islands sit 6 px in, so theirs are 13 − 6 = 7 px, and they are 6 px apart. */
+   islands sit 6 px in, so theirs are 13 − 6 = 7 px, and they are 6 px apart.
+   The window ends at the bottom of Figma's canvas (code.js), so the islands
+   scroll in it, as one list, above the line at the bottom; the scrollbar runs
+   in the 6 px right of them. An open island's row stays at the top while its
+   panel scrolls under it. */
 * { box-sizing: border-box; }
 :root {
   /* Figma's own window (themeColors), for what sits outside the islands */
@@ -63,10 +67,26 @@ html.figma-light {
   --is-comp: #8a55f5;
   --is-ink: #000;
 }
-html, body { margin: 0; background: var(--win-bg); overflow: hidden; }
-body { font-family: var(--sys); -webkit-font-smoothing: antialiased; }
+html, body { height: 100%; margin: 0; background: var(--win-bg); overflow: hidden; }
+body { display: flex; flex-direction: column; font-family: var(--sys); -webkit-font-smoothing: antialiased; }
 button { font: inherit; }
-#app { padding: 6px; }
+#scroll { flex: 0 1 auto; min-height: 0; margin: 6px 0 0 6px; overflow-y: auto; overscroll-behavior: contain;
+  overflow-anchor: none; scrollbar-gutter: stable; }
+#scroll::-webkit-scrollbar { width: 6px; }
+#scroll::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 3px; background: var(--win-faint) padding-box; }
+#scroll::-webkit-scrollbar-thumb:hover { background-color: var(--win-dim); }
+#foot { flex: none; padding: 6px; }
+/* An island cut by the list's top edge gets round corners there, and its
+   hairline in the light theme, as if it began there; one cut by the bottom
+   edge fades out, so it shows that more of it is below (edges()). */
+#app::before { content: ""; position: sticky; top: 0; z-index: 3; display: none; height: 7px; margin-bottom: -7px; pointer-events: none;
+  background: radial-gradient(circle 7px at 7px 7px, transparent 5.75px, var(--is-edge) 6.25px, var(--is-edge) 6.75px, var(--win-bg) 7.25px) left top / 7px 7px no-repeat,
+    radial-gradient(circle 7px at 0 7px, transparent 5.75px, var(--is-edge) 6.25px, var(--is-edge) 6.75px, var(--win-bg) 7.25px) right top / 7px 7px no-repeat,
+    linear-gradient(var(--is-edge), var(--is-edge)) center top / calc(100% - 14px) 1px no-repeat; }
+#scroll.up #app::before { display: block; }
+#scroll.down {
+  -webkit-mask: linear-gradient(#000 calc(100% - 18px), transparent) left / calc(100% - 6px) 100% no-repeat, linear-gradient(#000, #000) right / 6px 100% no-repeat;
+  mask: linear-gradient(#000 calc(100% - 18px), transparent) left / calc(100% - 6px) 100% no-repeat, linear-gradient(#000, #000) right / 6px 100% no-repeat; }
 
 /* A slot grows and shrinks around its island as it comes and goes. */
 .slot { display: grid; grid-template-rows: 1fr; }
@@ -77,8 +97,11 @@ button { font: inherit; }
 @keyframes rise { from { grid-template-rows: 0fr; margin-top: 0; opacity: 0; } }
 @keyframes pop { from { transform: scale(.96); } }
 @keyframes sink { to { grid-template-rows: 0fr; margin-top: 0; opacity: 0; } }
-.island { --pad: 9px; --bpad: 4px; min-height: 0; overflow: hidden; border-radius: 7px; background: var(--is-bg); box-shadow: inset 0 0 0 1px var(--is-edge); color: var(--is-text); font-size: 12px; line-height: 16px; }
-.row { height: 30px; display: flex; align-items: center; gap: 4px; padding-right: var(--bpad); }
+/* overflow: clip, not hidden, which would keep the row from sticking. The
+   hairline edge goes over the row, which covers what scrolls under it. */
+.island { --pad: 9px; --bpad: 4px; position: relative; min-height: 0; overflow: clip; border-radius: 7px; background: var(--is-bg); color: var(--is-text); font-size: 12px; line-height: 16px; }
+.island::after { content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--is-edge); pointer-events: none; }
+.row { position: sticky; top: 0; z-index: 1; height: 30px; display: flex; align-items: center; gap: 4px; padding-right: var(--bpad); background: var(--is-bg); }
 .tg { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 8px; padding: 0 0 0 var(--pad); border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
 .tg:focus-visible, .chev:focus-visible { outline: 2px solid var(--run); outline-offset: -2px; border-radius: 7px; }
 .ind { width: 18px; height: 18px; flex: none; display: grid; place-items: center; }
@@ -104,7 +127,10 @@ button { font: inherit; }
    it down, and closes the same way back; the window follows it (fit). */
 .fold { display: grid; grid-template-rows: 1fr; }
 .fold > div { min-height: 0; overflow: hidden; }
-.panel { padding-bottom: 5px; border-top: 1px solid var(--is-line); }
+/* The line between an open island's row and its panel goes with the row,
+   which stays at the top while the panel scrolls under it. */
+.panel { padding-bottom: 5px; border-top: 1px solid transparent; }
+.island.open .row, .island.closing .row { box-shadow: 0 1px 0 var(--is-line); }
 .island.opening .fold { animation: unfold .36s cubic-bezier(.45, 0, .2, 1) both; }
 .island.opening .panel { animation: drop .36s cubic-bezier(.2, .8, .2, 1) both; }
 .island.opening .chev { animation: chev-open .36s cubic-bezier(.45, 0, .2, 1); }
@@ -176,7 +202,7 @@ button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), t
    window's edge, as from the island above it and the window's bottom. Why an
    update failed takes a line of its own above it, its button staying on the
    last line. */
-.foot { margin-top: 6px; color: var(--win-faint); font-size: 11px; font-weight: 500; }
+.foot { color: var(--win-faint); font-size: 11px; font-weight: 500; }
 .foot .line { height: 22px; display: flex; align-items: center; gap: 8px; padding: 0 9px; white-space: nowrap; }
 .foot .ver { flex: none; }
 .foot .what { margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--win-dim); }
@@ -204,7 +230,8 @@ button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), t
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div id="scroll"><div id="app"></div></div>
+<div id="foot"></div>
 
 <script>
 const SERVER = "ws://localhost:8788/plugin";
@@ -592,7 +619,9 @@ function footer() {
 // The window is drawn anew from its state. An island that appears grows in,
 // one that goes away shrinks out; a redraw waits for those to finish, and for
 // a pressed button to be released, so it never swallows a click.
-const app = document.getElementById("app");
+const app = document.getElementById("app");        // the islands
+const scroller = document.getElementById("scroll");  // what scrolls them
+const foot = document.getElementById("foot");      // the last line
 const onScreen = new Set();    // islands on screen, by id
 let lastFiles = new Map();
 let animId = null;             // the island whose panel just opened
@@ -602,6 +631,8 @@ let later = null;
 let pressed = false;
 let dirty = false;
 let lastHtml = "";
+let lastFoot = "";
+const drops = [];              // islands that closed, for the sandbox: one that lifted the window takes it down
 let lastSig = "";              // what the islands showed, apart from clocks: signature()
 const ANIM_MS = 400;           // the longest animation: an island coming, going, opening, closing
 
@@ -620,7 +651,11 @@ function render() {
   dirty = false;
   const now = Date.now();
   for (const [key, at] of stopping) if (now - at > 3000) stopping.delete(key);  // the board says by then
-  for (const [id, at] of closing) if (now - at >= ANIM_MS) closing.delete(id);
+  for (const [id, at] of closing) {
+    if (now - at < ANIM_MS) continue;
+    closing.delete(id);
+    drops.push(id);  // the window goes back down once the island has closed
+  }
   lastSig = signature();
   const files = filesNow();
   const byId = new Map(files.map((f) => [f.id, f]));
@@ -645,7 +680,7 @@ function render() {
     const f = lastFiles.get(id);
     if (f) { html += island(f, " leave", false); moving = true; }
   }
-  html += footer();
+  const tail = footer();
   lastFiles = byId;
   animId = null;
   ready = true;
@@ -653,47 +688,97 @@ function render() {
     app.innerHTML = html;
     lastHtml = html;
   }
-  if (opening !== null) growAhead(opening);
+  if (tail !== lastFoot) {
+    foot.innerHTML = tail;
+    lastFoot = tail;
+  }
+  const ask = opening !== null ? growAhead(opening) : null;
   if (moving) {
     animUntil = Date.now() + ANIM_MS;
     clearTimeout(later);
     later = setTimeout(schedule, ANIM_MS);  // then without the animations' classes
   }
-  fit();
+  fit(drops.length ? Object.assign({ drop: drops.splice(0) }, ask) : ask);
 }
 
-// The window follows its islands: Figma sizes it from the sandbox (code.js).
+// The window follows its islands: the sandbox sizes it (code.js), as tall as
+// all of them and the line under them, but no further than the bottom of the
+// canvas, and never shorter than this file's island (`least`). It asks again
+// every second: Figma tells the sandbox nothing when the window moves.
 // Figma resizes it a frame or two after it asks, so while an island opens the
 // window grows ahead of it by two frames of its growth (at most LEAD px), never
 // past where it ends and never back: the island and the line under it are
-// never cut off on the way.
+// never cut off on the way. An island that opens asks for the height it needs
+// whole (`lift`): without that room under the window, the sandbox moves the
+// window up, and when the island closes (`drop`), back down.
 const LEAD = 64;
 let sentHeight = 0;
+let sentLeast = 0;
 let lastHeight = 0;
 let growTo = 0;
 let growUntil = 0;
+const tall = (el) => el.getBoundingClientRect().height;
+const contentHeight = () => scroller.getBoundingClientRect().top + tall(app) + tall(foot);
 function growAhead(id) {
   const slot = [...app.querySelectorAll(".slot")].find((el) => el.dataset.fid === id);
   const inner = slot && slot.querySelector(".fold > div");
-  if (!inner || !app.getBoundingClientRect) return;
-  lastHeight = Math.ceil(app.getBoundingClientRect().height);
+  if (!inner || !app.getBoundingClientRect) return null;
+  lastHeight = Math.ceil(contentHeight());
   growTo = lastHeight + Math.ceil(inner.scrollHeight);
   growUntil = Date.now() + ANIM_MS - 20;
+  const row = slot.querySelector(".row");
+  const need = slot.getBoundingClientRect().top + (row ? tall(row) : 0) + inner.scrollHeight + tall(foot);
+  return { lift: Math.ceil(need), island: id };
 }
-function fit() {
-  const content = Math.ceil(app.getBoundingClientRect ? app.getBoundingClientRect().height : 0);
-  let height = content;
+function fit(extra) {
+  if (!app.getBoundingClientRect) return;
+  const content = Math.ceil(contentHeight());
+  let want = content;
   if (content > 0 && Date.now() < growUntil) {
     const lead = Math.min(LEAD, Math.max(0, 2 * (content - lastHeight)));
-    height = Math.max(content, Math.min(growTo, Math.max(sentHeight, content + lead)));
+    want = Math.max(content, Math.min(growTo, Math.max(sentHeight, content + lead)));
   }
   lastHeight = content;
-  if (height > 0 && height !== sentHeight) {
-    sentHeight = height;
-    parent.postMessage({ pluginMessage: { type: "resize", height } }, "*");
+  const row = app.querySelector(".row");  // this file's island
+  const least = Math.ceil(scroller.getBoundingClientRect().top + (row ? tall(row) : 0) + tall(foot));
+  edges();
+  if (want > 0 && (extra || want !== sentHeight || least !== sentLeast)) {
+    sentHeight = want;
+    sentLeast = least;
+    parent.postMessage({ pluginMessage: Object.assign({ type: "resize", height: want, least }, extra) }, "*");
   }
 }
-if (typeof ResizeObserver === "function") new ResizeObserver(fit).observe(app);
+if (typeof ResizeObserver === "function") {
+  const watch = new ResizeObserver(() => fit());
+  for (const el of [app, foot, scroller]) watch.observe(el);
+}
+
+// An island that the list's top edge cuts gets round corners there; one that
+// its bottom edge cuts fades out. Between two islands an edge needs neither.
+function edges() {
+  if (!scroller.classList || !scroller.getBoundingClientRect) return;
+  const box = scroller.getBoundingClientRect();
+  let up = false, down = false;
+  for (const el of app.querySelectorAll(".slot")) {
+    const r = el.getBoundingClientRect();
+    up = up || (r.top < box.top - 0.5 && r.bottom > box.top + 0.5);
+    down = down || (r.top < box.bottom - 0.5 && r.bottom > box.bottom + 0.5);
+  }
+  scroller.classList.toggle("up", up);
+  scroller.classList.toggle("down", down);
+}
+if (scroller.addEventListener) scroller.addEventListener("scroll", edges, { passive: true });
+
+// An island that opened, once it has: the list scrolls to show as much of it
+// as fits, its row still in view.
+function reveal(id) {
+  const slot = open.has(id) && [...app.querySelectorAll(".slot")].find((el) => el.dataset.fid === id);
+  if (!slot || !scroller.getBoundingClientRect) return;
+  const box = scroller.getBoundingClientRect();
+  const r = slot.getBoundingClientRect();
+  const by = Math.min(r.bottom - box.bottom, r.top - box.top);
+  if (by > 0) scroller.scrollBy({ top: by, behavior: calm() ? "auto" : "smooth" });
+}
 
 // ─── the buttons ─────────────────────────────────────────────────────────
 function act(name, fid, el) {
@@ -702,10 +787,12 @@ function act(name, fid, el) {
     if (open.has(f.id)) {
       open.delete(f.id);
       if (!calm()) closing.set(f.id, Date.now());
+      else drops.push(f.id);
     } else {
       open.add(f.id);
       closing.delete(f.id);
       animId = f.id;
+      setTimeout(() => reveal(f.id), ANIM_MS + 60);  // the window may have grown by then
     }
     render();
   } else if (name === "stop" && f && f.doc && el.dataset.agent) {
@@ -774,6 +861,7 @@ setInterval(() => {
   for (const el of app.querySelectorAll("[data-clock]")) el.textContent = clock(+el.dataset.clock);
   for (const el of app.querySelectorAll("[data-ago]")) el.textContent = el.dataset.long ? agoLong(+el.dataset.ago) : ago(+el.dataset.ago);
   if (signature() !== lastSig) schedule();
+  fit({});  // the window may have moved, or the canvas changed: the sandbox checks its height
 }, 1000);
 
 // ─── the bridge ──────────────────────────────────────────────────────────

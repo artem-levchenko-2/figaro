@@ -1,5 +1,6 @@
 // The window: one island per file (ui.html). It grows and shrinks with them —
-// the UI measures itself and asks for its height (`resize` below).
+// the UI measures itself and asks for its height (`resize`, fitWindow below) —
+// but ends at the bottom of the canvas.
 const UI_WIDTH = 320;
 figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", themeColors: true });
 
@@ -7,7 +8,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-12.4";
+const PLUGIN_VERSION = "2026-10-12.5";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -417,6 +418,86 @@ function makeGate(id, deadline) {
   };
 }
 
+// ─── the window's height and place ───────────────────────────────────────
+// ui.html asks for the height of all it shows (`height`) and of the least it
+// does with (`least`: this file's island and the last line). The window takes
+// that height but ends at the bottom of the canvas, and the islands scroll
+// inside it; parked lower than that, it keeps `least` and what is under it
+// stays out of sight. An island that opens without room under it (`lift`, the
+// height it needs, and `island`) moves the window up, at most to the top of
+// the canvas, and when that island closes (`drop`) the window goes back down,
+// unless the user moved it meanwhile. Figma has no event for a moved window or
+// a resized canvas, so the window asks again every second.
+const FIGMA_HEADER = 41;  // what Figma draws above the window: its header (the plugin's name, the
+                          // close button) and the line under it — to be checked against a live window
+const CANVAS_GAP = 8;     // the window keeps this far from the canvas's top and bottom edges
+const HEIGHT_MAX = 2000;
+const SETTLE_MS = 1500;   // a moved window may still read its old place this long
+const placed = { height: 0, parked: null, lifted: null, island: null, at: 0 };
+
+// The canvas around the window, in px: the room below the window's header
+// down to the canvas's bottom, and how far up the window can go. null when
+// Figma can't tell.
+function windowRoom() {
+  try {
+    const p = figma.ui.getPosition();
+    const zoom = figma.viewport.zoom;
+    const b = figma.viewport.bounds;
+    if (!p || !p.windowSpace || !p.canvasSpace || !b || !(zoom > 0)) return null;
+    // windowSpace and canvasSpace are one point, the window's corner: from it, where the canvas starts
+    const top = p.windowSpace.y - (p.canvasSpace.y - b.y) * zoom;
+    return {
+      at: p, zoom,
+      below: Math.floor(top + b.height * zoom - CANVAS_GAP - p.windowSpace.y - FIGMA_HEADER),
+      above: Math.max(0, Math.floor(p.windowSpace.y - top - CANVAS_GAP)),
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+const near = (a, b) => Math.abs(a.x - b.x) <= 2 && Math.abs(a.y - b.y) <= 2;
+
+// Up (dy < 0) or down by dy px on the screen. reposition takes the canvas's coordinates.
+function moveWindow(room, dy) {
+  const p = room.at;
+  figma.ui.reposition(p.canvasSpace.x, p.canvasSpace.y + dy / room.zoom);
+  return Object.assign({}, room, { below: room.below - dy, above: room.above + dy });
+}
+
+function fitWindow(ask) {
+  const want = Math.round(Number(ask.height));
+  if (!(want > 0)) return;
+  const least = Math.min(want, Math.round(Number(ask.least)) || 0);
+  let room = windowRoom();
+  if (room && typeof figma.ui.reposition === "function") {
+    const here = room.at.windowSpace;
+    if (placed.lifted && !near(here, placed.lifted)
+        && !(Date.now() - placed.at < SETTLE_MS && near(here, placed.parked))) {
+      placed.parked = placed.lifted = placed.island = null;  // the user moved it: its place is theirs
+    }
+    const drop = [].concat(ask.drop === undefined ? [] : ask.drop);
+    if (placed.lifted && drop.indexOf(placed.island) !== -1) {
+      room = moveWindow(room, placed.parked.y - here.y);
+      placed.parked = placed.lifted = placed.island = null;
+    } else if (Number(ask.lift) > room.below && room.above > 0) {
+      const dy = Math.min(Math.ceil(Number(ask.lift) - room.below), room.above);
+      if (!placed.parked) placed.parked = { x: here.x, y: here.y };
+      room = moveWindow(room, -dy);
+      placed.lifted = { x: here.x, y: here.y - dy };
+      placed.island = ask.island;
+      placed.at = Date.now();
+    }
+  }
+  let height = want;
+  if (room) height = Math.max(Math.min(height, room.below), least);
+  height = Math.min(height, HEIGHT_MAX);
+  if (height !== placed.height) {
+    placed.height = height;
+    figma.ui.resize(UI_WIDTH, height);
+  }
+}
+
 figma.ui.onmessage = async (msg) => {
   if (msg.type === "need-identity") { postIdentity(); return; }
   if (msg.type === "open-url") {
@@ -426,11 +507,7 @@ figma.ui.onmessage = async (msg) => {
     }
     return;
   }
-  if (msg.type === "resize") {
-    const height = Math.round(Number(msg.height));
-    if (height > 0) figma.ui.resize(UI_WIDTH, Math.min(height, 2000));
-    return;
-  }
+  if (msg.type === "resize") { fitWindow(msg); return; }
   if (msg.type === "select") { await selectLayer(msg.id); return; }
   if (msg.type === "abort") {
     if (msg.id) markAborted(msg.id);
