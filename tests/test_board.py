@@ -263,6 +263,116 @@ def test_what_a_script_did_in_a_few_words(changes, expected):
     assert bridge_board.summary(changes) == expected
 
 
+# ─── a file that stopped answering ────────────────────────────────────────
+
+class Hanging(FakePlugin):
+    """A window whose script "hang" never ends, as when Figma stops answering;
+    `finish()` sends its answer at last."""
+
+    async def _answer(self, m):
+        if m.get("code") != "hang":
+            return await super()._answer(m)
+        self.hung = m["id"]
+
+    async def finish(self):
+        await self.ws.send_str(json.dumps({"type": "result", "id": self.hung, "value": 1}))
+
+
+@pytest.fixture
+def quick_red(monkeypatch):
+    """Seconds, not minutes: the bridge waits no grace past a deadline, a
+    script still running 0.3 s after it gave up is stuck, and a file whose
+    window closed mid-script shows after 0.2 s and stays 1.5 s."""
+    monkeypatch.setattr(bridge.bridge_exec, "GATE_GRACE", 0.0)
+    monkeypatch.setattr(bridge_board, "STUCK_AFTER", 0.3)
+    monkeypatch.setattr(bridge_board, "LOST_GRACE", 0.2)
+    monkeypatch.setattr(bridge_board, "LOST_KEEP", 1.5)
+
+
+def test_a_script_that_never_ends_turns_its_file_red_until_it_does(quick_red):
+    async def go():
+        c = await make_client()
+        async with Hanging(c, name="Dashboard", key="KEY1", caps=CAPS) as a, \
+                FakePlugin(c, name="UI kit", key="KEY2", caps=CAPS) as b:
+            r = await c.post("/exec", json={"code": "hang", "timeout": 0.2, "agent": "designer",
+                                            "target": "Dashboard"})
+            assert r.status == 504
+            await settle()
+            assert island(b, "Dashboard")["stuck"] is None  # it may yet end
+            await asyncio.sleep(0.5)
+            stuck = island(b, "Dashboard")["stuck"]
+            assert stuck["agent"] == "designer" and island(a, "Dashboard")["stuck"] == stuck
+            assert island(b, "UI kit")["stuck"] is None
+            status = await (await c.get("/status")).json()
+            dash = next(f for f in status["files"] if f["name"] == "Dashboard")
+            assert dash["stuck"]["agent"] == "designer" and dash["stuck"]["for_s"] >= 0
+            assert status["abandoned"][0]["agent"] == "designer"
+            await a.finish()
+            await settle()
+            assert island(b, "Dashboard")["stuck"] is None
+        await c.close()
+    run(go())
+
+
+def test_clear_takes_the_red_off_too(quick_red):
+    async def go():
+        c = await make_client()
+        async with Hanging(c, name="Dashboard", key="KEY1", caps=CAPS) as a:
+            assert (await c.post("/exec", json={"code": "hang", "timeout": 0.2})).status == 504
+            await asyncio.sleep(0.6)
+            assert island(a, "Dashboard")["stuck"]["agent"] == "agent"
+            assert (await c.post("/clear", json={"target": "Dashboard"})).status == 200
+            await settle()
+            assert island(a, "Dashboard")["stuck"] is None
+        await c.close()
+    run(go())
+
+
+@pytest.mark.parametrize("timed_out", [False, True])
+def test_a_window_that_closes_mid_script_leaves_its_file_red_for_a_while(quick_red, timed_out):
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, name="UI kit", key="KEY2", caps=CAPS) as b:
+            a = await Hanging(c, name="Dashboard", key="KEY1", caps=CAPS).__aenter__()
+            call = asyncio.ensure_future(c.post("/exec", json={
+                "code": "hang", "timeout": 0.2 if timed_out else 5, "agent": "designer", "target": "Dashboard"}))
+            await asyncio.sleep(0.3 if timed_out else 0.1)
+            await a.__aexit__()
+            r = await call
+            assert r.status == (504 if timed_out else 500)
+            await settle()
+            assert boards(b)[-1]["lost"] == []  # a restart (Hot reload) would be back by now
+            await asyncio.sleep(0.4)
+            lost = boards(b)[-1]["lost"]
+            assert [(f["doc"], f["name"], f["lost"]["agent"]) for f in lost] == [("doc:KEY1", "Dashboard", "designer")]
+            assert lost[0]["agents"] == []  # nobody works there now; Recent says what happened
+            assert [e["summary"] for e in lost[0]["recent"]] == (["Script timed out"] if timed_out else [])
+            status = await (await c.get("/status")).json()
+            assert [(f["name"], f["fileKey"], f["agent"]) for f in status["lost"]] == [("Dashboard", "KEY1", "designer")]
+            await asyncio.sleep(1.3)
+            assert boards(b)[-1]["lost"] == []  # LOST_KEEP later it goes
+        await c.close()
+    run(go())
+
+
+def test_a_window_back_in_time_takes_the_red_off(quick_red):
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, name="UI kit", key="KEY2", caps=CAPS) as b:
+            a = await Hanging(c, name="Dashboard", key="KEY1", caps=CAPS).__aenter__()
+            call = asyncio.ensure_future(c.post("/exec", json={"code": "hang", "timeout": 5, "target": "Dashboard"}))
+            await asyncio.sleep(0.1)
+            await a.__aexit__()
+            assert (await call).status == 500
+            async with FakePlugin(c, name="Dashboard", key="KEY1", caps=CAPS):
+                await asyncio.sleep(0.3)
+                assert boards(b)[-1]["lost"] == [] and island(b, "Dashboard")["stuck"] is None
+            await asyncio.sleep(0.3)
+            assert boards(b)[-1]["lost"] == []  # closed with no script running: it just goes
+        await c.close()
+    run(go())
+
+
 # ─── Stop ─────────────────────────────────────────────────────────────────
 
 def test_stop_from_any_window_ends_the_agents_script_with_a_409():

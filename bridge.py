@@ -48,7 +48,7 @@ PENDING: dict = {}        # rid -> {"future", "logs", "t0", "conn"}
 PLUGINS: dict = {}        # conn_id -> {"ws", "fileKey", "name", "docSig"}
 SLOT_PROBE_TIMEOUT = 1.0  # how long an incumbent connection has to answer a ping
 LOCKS: dict = {}          # conn_id -> asyncio.Lock — one exec at a time per file
-ABANDONED: dict = {}      # rid -> {"conn", "t0", "timeout"} — timed out, may still be running
+ABANDONED: dict = {}      # rid -> {"conn", "doc", "t0", "timeout", "at", "agent"} — timed out, may still be running
 QUEUE: dict = {}          # conn_id -> {"waiting": [{agent, since}], "running": {agent, since} | None}
 DISCONNECTED = "plugin disconnected mid-request"
 
@@ -560,6 +560,7 @@ async def plugin_ws_handler(request: web.Request):
                         }))
                     except Exception:
                         pass
+                bridge_board.found(_doc_key(conn_id), file_key)  # its window is back
                 await _send_update(ws)
                 await _broadcast_peers()
                 bridge_board.changed()
@@ -596,6 +597,7 @@ async def plugin_ws_handler(request: web.Request):
                     late = time.time() - orphan["t0"]
                     print(f"[orphan] {rid[:8]} finished after {late:.0f}s "
                           f"({mtype}) — client already received a 504")
+                    bridge_board.changed()  # the file answers again
             entry = PENDING.get(rid)
             if not entry:
                 continue
@@ -612,7 +614,14 @@ async def plugin_ws_handler(request: web.Request):
                     entry["future"].set_result(m)
     finally:
         key = _doc_key(conn_id)
-        PLUGINS.pop(conn_id, None)
+        # A script of its still ran, or ran on past its deadline: the window may
+        # have closed because Figma stopped answering. Asked before the
+        # requests are failed below.
+        mid = [e.get("agent") for e in PENDING.values()
+               if e.get("conn") == conn_id and e.get("mtype") == "exec" and e.get("board", True)
+               and not e["future"].done()]
+        mid += [o.get("agent") for o in ABANDONED.values() if o.get("conn") == conn_id]
+        info = PLUGINS.pop(conn_id, None) or {}
         # The lock belongs to the document: keep it while another tab on the same
         # document is still connected or someone is holding / waiting for it.
         if not any(_doc_key(c) == key for c in PLUGINS):
@@ -631,6 +640,8 @@ async def plugin_ws_handler(request: web.Request):
         for rid, orphan in list(ABANDONED.items()):
             if orphan.get("conn") == conn_id:
                 ABANDONED.pop(rid, None)
+        if mid and info.get("hello") and not any(_doc_key(c) == key for c in PLUGINS):
+            bridge_board.lost(key, info, mid[0])
         await _broadcast_peers()
         bridge_board.changed()
     return ws
@@ -913,8 +924,13 @@ def _abandon(rid, conn_id, timeout, target_ws):
     ABANDONED[rid] = {"conn": conn_id,
                       "doc": _doc_key(conn_id),
                       "t0": entry.get("t0", time.time()),
-                      "timeout": timeout}
-    asyncio.get_running_loop().create_task(_send_abort(target_ws, rid))
+                      "timeout": timeout,
+                      "at": time.time(),
+                      "agent": entry.get("agent")}
+    loop = asyncio.get_running_loop()
+    loop.create_task(_send_abort(target_ws, rid))
+    # Still running by then, its file turns red in the windows (bridge_board.stuck).
+    loop.call_later(bridge_board.STUCK_AFTER + 0.1, bridge_board.changed)
 
 
 async def _dispatch(target_ws, conn_id, code, timeout, force, meta=None,
@@ -1110,6 +1126,9 @@ def _files_payload():
                          "for_s": int(time.time() - running["since"])} if running else None),
             "waiting": [w["agent"] or "?" for w in q.get("waiting", [])],
         }
+        late = bridge_board.stuck(_doc_key(cid))  # Figma isn't answering there
+        if late:
+            entry["stuck"] = {"agent": late["agent"], "for_s": int(time.time() - late["since"])}
         if i.get("docSig") is not None and key in seen:
             # Another tab/window on the same document. Harmless — flagged so the
             # count in `files` is not read as "two different files".
@@ -1132,9 +1151,14 @@ async def status_handler(request: web.Request) -> web.Response:
         "files": files,
         "pending": len(PENDING),
         "abandoned": [
-            {"rid": r[:8], "conn": o["conn"][:8], "age_s": int(time.time() - o["t0"])}
+            {"rid": r[:8], "conn": o["conn"][:8], "age_s": int(time.time() - o["t0"]),
+             "agent": o.get("agent")}
             for r, o in ABANDONED.items()
         ],
+        # files whose window closed while a script ran there (bridge_board.lost)
+        "lost": [{"name": l["name"], "fileKey": l.get("fileKey"), "doc": l.get("sig"),
+                  "agent": l["agent"], "ago_s": int(time.time() - l["at"])}
+                 for _, l in bridge_board.lost_files({_doc_key(c) for c, _ in _live_plugins()})],
     })
 
 
@@ -1151,6 +1175,8 @@ async def clear_handler(request: web.Request) -> web.Response:
     dropped = [r for r, o in list(ABANDONED.items()) if o.get("doc", o.get("conn")) == doc]
     for r in dropped:
         ABANDONED.pop(r, None)
+    if dropped:
+        bridge_board.changed()
     return web.json_response({"ok": True, "cleared": [r[:8] for r in dropped],
                               "file": info.get("name")})
 
@@ -1168,7 +1194,7 @@ async def root_handler(request: web.Request) -> web.Response:
                            "read_only?, checkpoint?, quick?, libs?, probe?} -> "
                            "{ok, result, value, logs, elapsed_ms}. Serialized per file "
                            "unless parallel:true (reads only)."),
-            "GET /status": "{plugin_connected, files, pending, abandoned}",
+            "GET /status": "{plugin_connected, files, pending, abandoned, lost}",
             "GET /targets": "{files: [{name, fileKey, conn}]}",
             "POST /clear": "{target} -> drop a file's abandoned-script interlock after a 504",
             "POST /undo": "{target, agent?, force?} -> revert the file's last script",

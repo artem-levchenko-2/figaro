@@ -51,7 +51,7 @@ def clean_state(tmp_path, tmp_path_factory, monkeypatch):
     def reset():
         for registry in (bridge.PENDING, bridge.PLUGINS, bridge.LOCKS, bridge.ABANDONED,
                          bridge.QUEUE, bridge_exec.CHECKPOINTS, bridge_board.FILES,
-                         bridge_update.FAILED):
+                         bridge_board.LOST, bridge_update.FAILED):
             registry.clear()
         bridge.ALLOWED_HOSTS = set()
         bridge.UPDATE = None

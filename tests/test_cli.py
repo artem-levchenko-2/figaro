@@ -353,15 +353,98 @@ def test_done_says_so_in_the_plugin_window(monkeypatch, capsys):
     assert rc == 0 and calls == [{"text": "Check the card", "target": KEY, "agent": "designer"}]
     assert out.strip() == 'the Figaro window in "Sandbox 5$" shows you done, with your note: Check the card'
     assert "until your next script" in err
-    # `wait`, its name while 1.1.0 was being made, still works
+    # `wait "<note>"`, its name while 1.1.0 was being made, still says done
     monkeypatch.setattr(figaro, "AGENT", None)  # -A above stays in the module
-    rc, out, _, calls = cli(monkeypatch, capsys, "wait", "-T", KEY,
-                            bridge_reply={"ok": True, "file": "Sandbox 5$", "text": None})
-    assert rc == 0 and calls == [{"target": KEY}]
-    assert out.strip() == 'the Figaro window in "Sandbox 5$" shows you done'
+    rc, out, err, calls = cli(monkeypatch, capsys, "wait", "Check it", "-T", KEY,
+                              bridge_reply={"ok": True, "file": "Sandbox 5$", "text": "Check it"})
+    assert rc == 0 and calls == [{"text": "Check it", "target": KEY}]
+    assert out.strip() == 'the Figaro window in "Sandbox 5$" shows you done, with your note: Check it'
+    assert "is `figaro done" in err
     old = {"ok": False, "error": "the plugin in \"Sandbox 5$\" runs an older build that can't show it"}
     rc, _, err, _ = cli(monkeypatch, capsys, "done", "Check the card", bridge_reply=old)
     assert rc == 1 and "older build" in err
+
+
+# ─── figaro wait ──────────────────────────────────────────────────────────
+
+def status_of(*files, abandoned=(), lost=None):
+    """An answer of GET /status, as a bridge of 1.0.0 on gives it (`lost` and
+    a file's `stuck` only from 1.3.0)."""
+    body = {"version": "1.3.0", "plugin_connected": bool(files), "files": list(files), "pending": 0,
+            "abandoned": list(abandoned)}
+    if lost is not None:
+        body["lost"] = lost
+    return body
+
+
+def window(name="Sandbox 5$", key=KEY, conn="c0ffee01", doc=KEY, running=None, **extra):
+    return dict({"name": name, "fileKey": key, "conn": conn, "doc": doc, "plugin": "x", "outdated": False,
+                 "queue": {"running": running, "waiting": []}}, **extra)
+
+
+@pytest.fixture
+def quick_wait(monkeypatch):
+    """figaro wait on a clock that its own sleeps move."""
+    class Clock:
+        now = 0.0
+
+        def monotonic(self):
+            return self.now
+
+        def sleep(self, seconds):
+            self.now += seconds
+    monkeypatch.setattr(figaro, "time", Clock())
+
+
+def test_wait_returns_once_the_file_is_free(monkeypatch, capsys, quick_wait):
+    free = status_of(window())
+    rc, out, err, calls = cli(monkeypatch, capsys, "wait", "-T", URL, bridge_reply=free)
+    assert rc == 0 and len(calls) == 1 and err == ""
+    assert out.strip() == '"Sandbox 5$" is free: connected, and no script runs in it'
+    # a script that ran out of time, then another agent's, then nothing
+    late = status_of(window(), abandoned=[{"rid": "r1", "conn": "c0ffee01", "age_s": 70}])
+    busy = status_of(window(running={"agent": "writer", "for_s": 3}))
+    rc, out, err, calls = cli(monkeypatch, capsys, "wait", "-T", "sandbox",
+                              bridge_reply=FakeBridge(late, late, busy, free))
+    assert rc == 0 and len(calls) == 4 and "is free" in out
+    assert err.strip() == '  waiting: a script that ran out of time may still be running in "Sandbox 5$" (it began 70 s ago)'.strip()
+
+
+def test_wait_gives_up_with_what_to_tell_the_user(monkeypatch, capsys, quick_wait):
+    stuck = status_of(window(stuck={"agent": "designer", "for_s": 40}),
+                      abandoned=[{"rid": "r1", "conn": "c0ffee01", "age_s": 100}])
+    rc, out, err, _ = cli(monkeypatch, capsys, "wait", "-T", KEY, "--timeout", "5", bridge_reply=stuck)
+    assert rc == 1 and out == ""
+    assert "not free after 5 s: Figma isn't answering in \"Sandbox 5$\": a script of designer" in err
+    assert ("tell the user: Figma isn't answering in \"Sandbox 5$\": reload the file in Figma (close its "
+            "tab and open it again), then run Figaro in it") in err
+    # an older bridge says only that the script ran out of time: the same advice
+    late = status_of(window(), abandoned=[{"rid": "r1", "conn": "c0ffee01", "age_s": 100}])
+    rc, _, err, _ = cli(monkeypatch, capsys, "wait", "-T", KEY, "-t", "5", bridge_reply=late)
+    assert rc == 1 and "may still be running" in err and "reload the file in Figma" in err
+    # not connected: open it and run Figaro there
+    rc, _, err, _ = cli(monkeypatch, capsys, "wait", "-T", KEY, "-t", "5", bridge_reply=status_of())
+    assert rc == 1 and f"'{KEY}' is not connected" in err
+    assert f"tell the user: open https://www.figma.com/design/{KEY} in Figma and run Plugins" in err
+    # its window closed while a script ran there
+    gone = status_of(lost=[{"name": "Sandbox 5$", "fileKey": KEY, "doc": KEY, "agent": "designer", "ago_s": 20}])
+    rc, _, err, _ = cli(monkeypatch, capsys, "wait", "-T", URL, "-t", "5", bridge_reply=gone)
+    assert rc == 1 and "Figaro's window in \"Sandbox 5$\" closed while a script of designer ran there" in err
+    assert "reload the file in Figma" in err
+
+
+def test_wait_wont_wait_for_what_waiting_cant_fix(monkeypatch, capsys, quick_wait):
+    two = status_of(window(), window(name="Kit", key="KEY2", conn="c0ffee02", doc="KEY2"))
+    rc, _, err, calls = cli(monkeypatch, capsys, "wait", bridge_reply=two)
+    assert rc == 2 and len(calls) == 1
+    assert "2 files connected — name one with -T" in err and "'Sandbox 5$', 'Kit'" in err
+    # one file in two windows is one file
+    tabs = status_of(window(), window(conn="c0ffee02", sameDocAs="c0ffee01"))
+    rc, out, _, _ = cli(monkeypatch, capsys, "wait", bridge_reply=tabs)
+    assert rc == 0 and "is free" in out
+    same = status_of(window(), window(conn="c0ffee02", doc="OTHER"))
+    rc, _, err, _ = cli(monkeypatch, capsys, "wait", "-T", "Sandbox 5$", bridge_reply=same)
+    assert rc == 2 and "2 connected files are named 'Sandbox 5$'" in err
 
 
 def test_doctors_checks_dont_show_in_the_plugin_window(monkeypatch, capsys):

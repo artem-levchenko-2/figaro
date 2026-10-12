@@ -9,6 +9,10 @@ something changes:
   at work from its first script until ACTIVE_FOR seconds pass without one,
   or until it says it is done, with a note for the user; the window also
   shows that the user stopped it, and a last script that failed;
+- a file that stopped answering, in red: a script there still runs
+  STUCK_AFTER seconds after the bridge gave up on it (`stuck`), or its window
+  closed while a script ran in it (`lost`: the file stays on the board for
+  LOST_KEEP, unless its window comes back within LOST_GRACE);
 - the update in progress, or why it failed (bridge_update).
 
     POST /done  {target?, agent?, text?}  -> the agent is done in the file, for now
@@ -39,8 +43,12 @@ SEND_DELAY = 0.05  # one board for a burst of changes
 ACTIVE_FOR = 300   # an agent is at work until five minutes after its last script: 97% of the
                    # pauses between an agent's scripts in one turn are shorter
 HOLD = 600         # a Stop between scripts refuses the agent's next one within ten minutes
+STUCK_AFTER = 30   # a script still running this long after the bridge gave up on it: Figma isn't answering
+LOST_GRACE = 10    # a window that closed mid-script and comes back this soon was a restart (Hot reload)
+LOST_KEEP = 900    # how long a file whose window closed mid-script stays on the board
 
 FILES: dict = {}   # doc key -> {"agents": {name: agent}, "recent": [change]}
+LOST: dict = {}    # doc key -> {"name", "sig", "fileKey", "agent", "at"}: its window closed mid-script
 _send_task = None
 _stale = {"at": 0.0, "value": False}
 
@@ -149,7 +157,9 @@ async def send(ws=None):
 def payload():
     """The board: every connected file, in the order the files connected.
     An agent is `busy` while a script of its runs in the file or waits for it;
-    the window works out the rest from the times and ACTIVE_FOR."""
+    the window works out the rest from the times and ACTIVE_FOR. A file that
+    stopped answering has `stuck`, and one whose window closed mid-script is
+    in `lost`: a window older than both shows neither."""
     files, done = [], set()
     for cid, info in bridge._live_plugins():
         key = bridge._doc_key(cid)
@@ -164,18 +174,67 @@ def payload():
                         "done": a["done"], "stopped": a["stopped"], "error": a["error"]}
                        for n, a in f["agents"].items()],
             "recent": f["recent"],
+            "stuck": stuck(key),
         })
+    lost = [{"doc": key, "sig": l["sig"], "name": l["name"], "agents": [],
+             "recent": (FILES.get(key) or {}).get("recent", []),
+             "lost": {"agent": l["agent"], "at": l["at"]}}
+            for key, l in lost_files(done)]
     # A newer release goes as `update` (the window's Update button) or, with the
     # button off, as `release` (a link to it): a window too old to know `release`
     # shows nothing.
     button = bridge.update_allowed()
     board = {"type": "board", "now": time.time(), "active_for": ACTIVE_FOR,
-             "version": bridge.VERSION, "files": files,
+             "version": bridge.VERSION, "files": files, "lost": lost,
              "update": bridge.UPDATE if button else None,
              "release": None if button else bridge.UPDATE,
              "stale": _bridge_stale()}
     board.update(bridge_update.board())
     return board
+
+
+# ─── a file that stopped answering ────────────────────────────────────────
+
+def stuck(key):
+    """The file's script that has run longest past its deadline, once it is
+    STUCK_AFTER past the moment the bridge gave up on it: {agent, since}, since
+    being its deadline. None while the file answers."""
+    now = time.time()
+    late = [o for o in bridge.ABANDONED.values()
+            if o.get("doc", o.get("conn")) == key and now - o.get("at", now) >= STUCK_AFTER]
+    if not late:
+        return None
+    first = min(late, key=lambda o: o["t0"] + o["timeout"])
+    return {"agent": _who(first.get("agent")), "since": first["t0"] + first["timeout"]}
+
+
+def lost(key, info, agent):
+    """The window of a file closed while a script of `agent` ran there, or
+    ran on past its deadline, and no other window has the file: it may be that
+    Figma stopped answering there."""
+    LOST[key] = {"name": info.get("name") or "Untitled", "sig": info.get("docSig"),
+                 "fileKey": info.get("fileKey"), "agent": _who(agent), "at": time.time()}
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    loop.call_later(LOST_GRACE + 0.1, changed)  # it shows then, if its window isn't back
+    loop.call_later(LOST_KEEP + 0.1, changed)   # and leaves then
+
+
+def found(key, file_key=None):
+    """A window of the file said hello: it answers again."""
+    for k in [k for k, l in LOST.items() if k == key or (file_key and l.get("fileKey") == file_key)]:
+        LOST.pop(k, None)
+
+
+def lost_files(live=()):
+    """(key, entry) of each lost file to show: past LOST_GRACE, not yet past
+    LOST_KEEP, and with no window of the file connected."""
+    now = time.time()
+    for key in [k for k, l in LOST.items() if now - l["at"] > LOST_KEEP]:
+        LOST.pop(key, None)
+    return [(k, l) for k, l in LOST.items() if k not in live and now - l["at"] >= LOST_GRACE]
 
 
 def _busy(key):

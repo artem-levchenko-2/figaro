@@ -28,8 +28,8 @@ The references next to this file — read each one when you reach its step:
   Without `-T` a call goes to the only connected file, and with several connected it fails with 409. So
   always `-T`.
 - The file is not connected — the answer says "open <link> in Figma and run Plugins → Development → Figaro
-  there". Pass that on to the user and wait; don't poll in a loop. `figaro doctor -T "<link>"` shows where
-  the chain breaks.
+  there". Pass that on to the user, then `figaro wait -T "<link>"`: it returns once the file is connected.
+  Don't poll in a loop. `figaro doctor -T "<link>"` shows where the chain breaks.
 - "This frame", "the selection" → `figaro sel -T …`; don't ask for ids.
 - The CLI starts the bridge by itself. Don't start it in background tasks, and don't stop it unless the user
   asks (then `bash start-bridge.sh --stop` in the Figaro folder).
@@ -70,6 +70,7 @@ The references next to this file — read each one when you reach its step:
 | `figaro undo` | undo the file's last script, when that is safe (section 5) |
 | `figaro reload` | restart the plugin in a file with the code on disk, after an update |
 | `figaro done "<what to check>"` | you are done in this file, for now. The plugin's window shows you at work from your first script, and done, with the note, from this command until your next script there that can change the file: the readers and `-R` scripts leave it. It doesn't wait for an answer: ask in the chat too, then end your turn |
+| `figaro wait` | waits until the file is connected and free: no script runs in it, and none that ran out of time still runs. Up to 90 s (`--timeout`); not free by then, it fails with a line to pass on to the user. Use it instead of retries in a loop |
 | `figaro targets` · `doctor` · `status` | the connected files · a connection check with advice · the bridge's raw state |
 | `figaro clear` | unblock a file after a 504 (`pitfalls.md`) |
 
@@ -150,8 +151,12 @@ JS
   with `stopped: the user pressed Stop…` (409); what it changed before that stays in the file. Pressed
   between your scripts, it refuses your next one with the same 409, and nothing runs. Either way, don't run
   it again: ask the user what to do.
-- **504** — the script may still be running and writing. Don't retry blindly: look at the file first
-  (`pitfalls.md`).
+- **504** — the script ran out of time and may still be running and writing. Say so to the user in the
+  first line of your answer. `figaro wait -T …` returns once it has ended; then look at the file before you
+  run anything again (`pitfalls.md`).
+- **"Figma isn't answering"** (from `figaro wait`; the file is red in the plugin's window): a script there
+  runs on long past its time, or the window closed while one ran. Tell the user in the first line of your
+  answer: they reload the file in Figma and run Figaro in it again. Don't retry until then.
 - **Don't edit Figaro's own code from another project**: with Figma's Hot reload on, a write to its `plugin/`
   folder restarts the plugin in every file within a second and cuts other agents' scripts short. Found a
   bug — describe it to the user.

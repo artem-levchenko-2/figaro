@@ -10,7 +10,9 @@
 // open and shut, at once for those who ask for less motion. The window asks the
 // sandbox for its height and for the least it does with, again every second; an
 // island that opens asks for the room to show it whole and scrolls into view,
-// and one that closes lets the window go back down.
+// and one that closes lets the window go back down. A file that stopped
+// answering (a script running on past its time, or a window that closed while
+// one ran) has a red island, first after this file's, that says what to do.
 //
 //     node tests/ui.test.js
 const fs = require("fs");
@@ -410,6 +412,46 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.board([file("KEY1", "Dashboard"), file("KEY3", "Kit")]);
     await env.clock.advance(400);
     check("its plugin closes: its island goes", [/Sandbox/.test(env.html()), /Kit/.test(env.html())], [false, true]);
+  }
+
+  // ─── a file that stopped answering ──────────────────────────────────────
+  {
+    const env = load();
+    const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$"),
+               file("KEY3", "Kit", { stuck: { agent: "icons", since: ago(130) } })]);
+    await env.clock.advance(400);
+    const at = ["Dashboard", "Kit", "Sandbox 5$"].map((n) => env.html().indexOf(`title="${n}"`));
+    check("a file where a script runs on past its time is red, first after this file",
+          [at[0] < at[1] && at[1] < at[2], (env.html().match(/class="sub alarm">Figma isn't answering/g) || []).length],
+          [true, 1]);
+    env.click("toggle", "doc:KEY3");
+    await env.clock.advance(400);
+    check("…open, it says whose script it is, since when, and what to do",
+          [/A script by icons is still running: its time ran out <span[^>]*>2m ago/.test(env.html()),
+           /Reload the file in Figma: close its tab and open it again\. Then run Figaro in it\./.test(env.html())],
+          [true, true]);
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")],
+              { lost: [file("KEY3", "Kit", { lost: { agent: "icons", at: ago(20) } })] });
+    await env.clock.advance(400);
+    check("its window closed while a script ran there: its island stays, red, and says so",
+          [/title="Kit"/.test(env.html()), /Figaro's window there closed while a script by icons was running/.test(env.html())],
+          [true, true]);
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$"), file("KEY3", "Kit")]);
+    await env.clock.advance(400);
+    check("…and back, it is an island like the others", [/title="Kit"/.test(env.html()), /isn't answering/.test(env.html())],
+          [true, false]);
+    env.board([file("KEY1", "Dashboard", { stuck: { agent: "designer", since: ago(40) } })]);
+    await env.clock.advance(400);
+    env.click("toggle", "here");
+    await env.clock.advance(400);
+    check("this file's own script runs on past its time: its island says to reload this file",
+          [/sub alarm|Figma isn't answering/.test(env.html()), /Reload this file in Figma/.test(env.html())], [true, true]);
+    env.board([file("KEY1", "Dashboard")], { lost: [file("KEY1", "Dashboard", { lost: { agent: "x", at: ago(5) } })] });
+    await env.clock.advance(400);
+    check("…and a board that still calls this very file lost draws it once", (env.html().match(/title="Dashboard"/g) || []).length, 1);
   }
 
   // ─── updates and new builds ─────────────────────────────────────────────

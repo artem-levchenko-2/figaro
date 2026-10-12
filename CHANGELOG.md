@@ -9,7 +9,21 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+### Added
+
+- `figaro wait [-T <file>] [--timeout S]` waits until a file is connected and free: no script runs in it,
+  and none that ran out of time still runs. It gives up after 90 s, under the two minutes an agent's shell
+  allows a command, with a line for the agent to pass on to the user. It works with older bridges too. The
+  skill has agents use it instead of retrying in a loop, and say a timeout to the user first.
+
 ### Fixed
+
+- **A file where Figma stops answering turns red** in every window, with what to do: reload the file and run
+  Figaro in it. Before, it looked busy forever, or vanished from the board when its window closed mid-script.
+  It turns red when a script runs on 30 s past its `--timeout`, or when the file's window closes while a
+  script ran and doesn't come back within 10 s. The red goes once the script ends (or `figaro clear`), or
+  the window is back; a closed window's file leaves the board after 15 minutes. `figaro status` shows both
+  (`stuck`, `lost`).
 
 - **A loop that never ends no longer holds Figma.** A script runs on Figma's main thread, so a `while (true)`
   froze Figma, nothing could stop it, and the file stayed busy. Now every `while`, `do … while` and `for (;;)`

@@ -100,7 +100,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 ## Where things are
 
 - `figaro.py` — the CLI: commands, how replies are printed, `exec` flags (`-R`, `--checkpoint`,
-  `--no-checkpoint`, `--lib`, `--shot`).
+  `--no-checkpoint`, `--lib`, `--shot`), `figaro wait` (polls `/status`, so it works with older bridges;
+  `_pick_file` mirrors the bridge's `resolve_target`).
 - `cli_extras.py` — links in arguments, starting the bridge on demand, `inspect`, `shot`, `link`, `--lib`,
   `exec --shot`; `inspect_text.py` — the text `inspect` prints.
 - `bridge.py` — HTTP and WebSocket, routing to files (a file's scripts go to its first live window, and a
@@ -110,7 +111,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - `bridge_board.py` — what every plugin window shows (the `board`: each file's agents — at work from their
   first script until five quiet minutes or `figaro done`, its note, a failed last script, the user's Stop —
   and recent changes; a read leaves a done or a Stop on show, and `figaro doctor`'s checks (`probe`) stay
-  off it), its buttons (Stop for one agent, Update, Reload) and `POST /done`.
+  off it), its buttons (Stop for one agent, Update, Reload) and `POST /done`. A file turns red when Figma
+  stops answering there: a script runs on `STUCK_AFTER` past its time (`stuck`), or its window closed
+  mid-script (`lost`, kept `LOST_KEEP`; a window back within `LOST_GRACE` was a Hot reload).
 - `bridge_update.py` — the window's Update and Reload: waits until no file runs a script, moves the folder
   to the release and never past it (`git fetch --tags`, `git merge --ff-only vX.Y.Z`), reloads the plugins
   that run older code, restarts the bridge (`os.execv`; on Windows `start-bridge.ps1 -Restart`). Scripts sent

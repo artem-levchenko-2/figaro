@@ -119,6 +119,9 @@ button { font: inherit; }
 .ib:disabled { cursor: default; background: var(--is-fill); color: var(--is-faint); }
 .sq { width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
 .ind .sq { color: var(--idle); }
+.ind .warn { display: grid; color: var(--err); }
+.ind .warn svg { width: 12px; height: 12px; }
+.lbl .sub.alarm { color: var(--is-err); }
 .chev { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; background: none; color: var(--is-faint); cursor: pointer; }
 .chev svg { width: 10px; height: 10px; }
 .island.open .chev { transform: rotate(180deg); }
@@ -151,6 +154,7 @@ button { font: inherit; }
 .callout p, .callout code { margin: 0 0 0 26px; }
 .callout p { color: var(--is-dim); font-size: 11.5px; line-height: 16px; }
 .callout code { color: color-mix(in srgb, var(--c) 45%, var(--is-ink)); font: 11px/15px var(--sys-mono); overflow-wrap: anywhere; }
+.callout.alarm { --c: var(--err); }
 /* An agent: its name, a little heavier than the text around it, and what it
    is doing, and under them the note it left (done), grey like the status, or
    the error its last script stopped at, in red. An agent at work shows its
@@ -368,26 +372,36 @@ const stopping = new Map();    // doc + "\n" + agent -> when the user pressed it
 const goneLayers = new Set();  // Recent layers that are no longer in the file
 
 // The board's times are the bridge's clock in seconds; the window counts in its own.
+// A file that stopped answering has `stuck` (a script still running past its
+// deadline); `lost` lists those whose window closed while a script ran there.
 function takeBoard(m) {
   if (shift === null) shift = Date.now() - m.now * 1000;
   const t = (s) => (typeof s === "number" ? s * 1000 + shift : 0);
   if (typeof m.active_for === "number") activeFor = m.active_for * 1000;
   if (m.version) version = m.version;
+  const fileOf = (f) => ({
+    id: f.doc, doc: f.doc, sig: f.sig, name: f.name || "Untitled", here: false,
+    agents: (Array.isArray(f.agents) ? f.agents : []).map((a) => ({
+      name: a.name, since: t(a.since), last: t(a.last), busy: !!a.busy,
+      done: a.done ? { text: a.done.text || "", at: t(a.done.at) } : null,
+      stopped: typeof a.stopped === "number" ? t(a.stopped) : null,
+      error: a.error ? { text: a.error.text || "", line: a.error.line, at: t(a.error.at) } : null,
+    })),
+    recent: (f.recent || []).map((e) => Object.assign({}, e, { at: t(e.at) })),
+    stuck: f.stuck ? { agent: f.stuck.agent || "agent", since: t(f.stuck.since) } : null,
+    lost: f.lost ? { agent: f.lost.agent || "agent", at: t(f.lost.at) } : null,
+  });
   board = {
     version: m.version || "", update: m.update || null, release: m.release || null, stale: !!m.stale,
     updating: m.updating || null, failed: m.failed || null,
-    files: (m.files || []).map((f) => ({
-      id: f.doc, doc: f.doc, sig: f.sig, name: f.name || "Untitled", here: false,
-      agents: (Array.isArray(f.agents) ? f.agents : []).map((a) => ({
-        name: a.name, since: t(a.since), last: t(a.last), busy: !!a.busy,
-        done: a.done ? { text: a.done.text || "", at: t(a.done.at) } : null,
-        stopped: typeof a.stopped === "number" ? t(a.stopped) : null,
-        error: a.error ? { text: a.error.text || "", line: a.error.line, at: t(a.error.at) } : null,
-      })),
-      recent: (f.recent || []).map((e) => Object.assign({}, e, { at: t(e.at) })),
-    })),
+    files: (m.files || []).map(fileOf),
+    lost: (Array.isArray(m.lost) ? m.lost : []).filter((f) => f && f.lost).map(fileOf),
   };
 }
+
+// A file that stopped answering: a script still running past its deadline, or
+// its window closed while one ran.
+const alarm = (f) => (f.stuck || f.lost ? 1 : 0);
 
 // This file first, under the id "here", then the others as the bridge lists them.
 function filesNow() {
@@ -408,6 +422,9 @@ function filesNow() {
       mine = Object.assign({}, f, { id: "here", here: true, name: identity.name || f.name });
     } else others.push(f);
   }
+  for (const f of board.lost) if (!(identity.docSig && f.sig === identity.docSig)) others.push(f);
+  // A file that stopped answering comes first after this one.
+  others.sort((a, b) => alarm(b) - alarm(a));
   return [mine || here].concat(others);
 }
 
@@ -434,7 +451,8 @@ function agentsOf(f) {
     .sort((x, y) => RANK[x.st] - RANK[y.st] || (x.st === "working" ? x.since - y.since : y.at - x.at));
 }
 // Every file where Figaro runs has its island, quiet or not: the board lists
-// the files whose plugin is connected. One whose plugin closes leaves.
+// the files whose plugin is connected. One whose plugin closes leaves, unless
+// a script ran there then: the board keeps it a while, in red (`lost`).
 function shown(f) {
   return f.here || conn === "ok";
 }
@@ -480,6 +498,7 @@ const av = (name) => `<span class="av" style="--av: ${color(name)}">${esc((Array
 function headline(f) {
   if (f.here && conn === "connecting") return { kind: "connecting", ind: '<span class="spin" style="--c: var(--idle)"></span>', sub: "connecting…" };
   if (f.here && conn === "nobridge") return { kind: "nobridge", ind: '<span class="dot" style="--c: var(--idle)"></span>', sub: "no bridge yet" };
+  if (alarm(f)) return { kind: "alarm", ind: `<span class="warn">${ICON.warn}</span>`, sub: "Figma isn't answering", alarm: true };
   const list = agentsOf(f);
   const working = list.filter((a) => a.st === "working");
   if (working.length) {
@@ -502,7 +521,7 @@ function row(f) {
   const h = headline(f);
   const isOpen = open.has(f.id);
   const right = `<button type="button" class="chev" data-act="toggle" aria-label="${isOpen ? "Collapse" : "Expand"}" tabindex="-1">${ICON.chev}</button>`;
-  const sub = h.sub && !isOpen ? `<span class="sub">${h.sub}</span>` : "";
+  const sub = h.sub && !isOpen ? `<span class="sub${h.alarm ? " alarm" : ""}">${h.sub}</span>` : "";
   return `<div class="row"><button type="button" class="tg" data-act="toggle" aria-expanded="${isOpen}">`
     + `<span class="ind">${h.ind}</span><span class="lbl"><b title="${esc(f.name)}">${esc(f.name)}</b>${sub}</span></button>`
     + `<div class="right">${right}</div></div>`;
@@ -512,6 +531,15 @@ function callout(f) {
   const h = headline(f);
   if (h.kind === "connecting") return `<div class="callout"><div class="h"><span class="ind">${h.ind}</span>Looking for the bridge</div><p>It runs on this computer and answers in a second or two.</p></div>`;
   if (h.kind === "nobridge") return `<div class="callout"><div class="h"><span class="ind">${h.ind}</span>Waiting for the bridge</div><p>It starts with your agent's first figaro command. To start it now, run <code>figaro doctor</code> in a terminal.</p></div>`;
+  if (h.kind === "alarm") {
+    // Still running past its deadline, or its window closed meanwhile: either
+    // way only a fresh start of the file brings Figaro back there.
+    const why = f.stuck
+      ? `A script by ${esc(f.stuck.agent)} is still running: its time ran out ${agoSpan(f.stuck.since)}.`
+      : `Figaro's window there closed while a script by ${esc(f.lost.agent)} was running, ${agoSpan(f.lost.at)}.`;
+    return `<div class="callout alarm"><div class="h"><span class="ind">${h.ind}</span>Figma isn't answering</div><p>${why}</p>`
+      + `<p>Reload ${f.here ? "this file" : "the file"} in Figma: close its tab and open it again. Then run Figaro in it.</p></div>`;
+  }
   return "";
 }
 
