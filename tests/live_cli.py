@@ -74,7 +74,8 @@ def main():
           rc != 0 and f"open https://www.figma.com/design/{other}/Landing" in err
           and "Figaro" in err, err)
     rc, out, err = cli("wait", "-T", DRAFT_URL, "--timeout", "10")
-    check("figaro wait: a free file answers at once", rc == 0 and "is free" in out, out + err)
+    check("figaro wait: a file with nothing stuck is ready at once", rc == 0 and out.startswith("ready:"),
+          out + err)
 
     # ── a frame to work on, with a picture of it ──────────────────────────
     make = """

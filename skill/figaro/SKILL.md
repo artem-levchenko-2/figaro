@@ -70,7 +70,7 @@ The references next to this file — read each one when you reach its step:
 | `figaro undo` | undo the file's last script, when that is safe (section 5) |
 | `figaro reload` | restart the plugin in a file with the code on disk, after an update |
 | `figaro done "<what to check>"` | you are done in this file, for now. The plugin's window shows you at work from your first script, and done, with the note, from this command until your next script there that can change the file: the readers and `-R` scripts leave it. It doesn't wait for an answer: ask in the chat too, then end your turn |
-| `figaro wait` | waits until the file is connected and free: no script runs in it, and none that ran out of time still runs. Up to 90 s (`--timeout`); not free by then, it fails with a line to pass on to the user. Use it instead of retries in a loop |
+| `figaro wait` | waits until the file is ready: connected, and no script that ran out of time still runs in it. Other agents' scripts within their time don't count: the file's queue runs yours after them. Up to 90 s (`--timeout`); not ready by then, it fails with a line to pass on to the user. Use it instead of retries in a loop |
 | `figaro targets` · `doctor` · `status` | the connected files · a connection check with advice · the bridge's raw state |
 | `figaro clear` | unblock a file after a 504 (`pitfalls.md`) |
 
@@ -157,7 +157,8 @@ JS
   run anything again (`pitfalls.md`).
 - **"Figma isn't answering"** (from `figaro wait`; the file is red in the plugin's window): a script there
   runs on long past its time, or the window closed while one ran. Tell the user in the first line of your
-  answer: they reload the file in Figma and run Figaro in it again. Don't retry until then.
+  answer: they reload the file in Figma (or quit Figma, if its tab won't close) and run Figaro in it again.
+  Don't retry until then.
 - **Don't edit Figaro's own code from another project**: with Figma's Hot reload on, a write to its `plugin/`
   folder restarts the plugin in every file within a second and cuts other agents' scripts short. Found a
   bug — describe it to the user.

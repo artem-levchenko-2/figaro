@@ -318,7 +318,7 @@ Keep it running
   figaro status                   the bridge's raw state, as JSON
   figaro reload                   load new plugin code into a running plugin
   figaro done "Check the card"    done for now, with a note for you
-  figaro wait                     wait until a file is connected and free
+  figaro wait                     wait until a file is connected, nothing stuck
   figaro clear                    free a file after a script ran out of time
 ```
 
@@ -513,7 +513,7 @@ at the first broken link it says what to do.
 | **"Specify&nbsp;a&nbsp;target"** | The plugin runs in several files, so add `-T "<link>"`. `figaro targets` lists them |
 | **First&nbsp;call&nbsp;fails** | The plugin hasn't connected yet: a Figma window in the background can take up to a minute. Run the command again |
 | **504,&nbsp;out&nbsp;of&nbsp;time** | It may still be running: `figaro wait -T <file>` returns once it has ended. Look at the file before you retry. If the file stays blocked after the script has ended, run `figaro clear -T <file>` |
-| **Figma&nbsp;isn't&nbsp;answering** | The file is red in the plugin's window: a script there runs on long past its time, or the window closed while one ran. Reload the file in Figma (close its tab and open it again) and run Figaro in it |
+| **Figma&nbsp;isn't&nbsp;answering** | The file is red in the plugin's window: a script there runs on long past its time, or the window closed while one ran. Reload the file in Figma (close its tab and open it again, or quit Figma if the tab won't close) and run Figaro in it |
 | **"Older&nbsp;build"** | The plugin in that file runs older code. Press **Reload** at the bottom of its window, or run `figaro reload -T <file>` |
 | **zsh:&nbsp;no&nbsp;matches&nbsp;found** | Put the link in quotes |
 | **Computer&nbsp;won't&nbsp;sleep** | Figma "plays audio": the silent tone that keeps a background Figma quick. It stops three minutes after the last script ends, or as soon as the bridge stops |

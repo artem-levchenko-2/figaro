@@ -396,17 +396,21 @@ def quick_wait(monkeypatch):
     monkeypatch.setattr(figaro, "time", Clock())
 
 
-def test_wait_returns_once_the_file_is_free(monkeypatch, capsys, quick_wait):
+def test_wait_returns_once_the_file_is_ready(monkeypatch, capsys, quick_wait):
     free = status_of(window())
     rc, out, err, calls = cli(monkeypatch, capsys, "wait", "-T", URL, bridge_reply=free)
     assert rc == 0 and len(calls) == 1 and err == ""
-    assert out.strip() == '"Sandbox 5$" is free: connected, and no script runs in it'
-    # a script that ran out of time, then another agent's, then nothing
+    assert out.strip() == 'ready: connected, nothing stuck in "Sandbox 5$"'
+    # other agents at work in the file, within their time: the queue takes care of them
+    busy = status_of(window(running={"agent": "writer", "for_s": 80},
+                            queue={"running": {"agent": "writer", "for_s": 80}, "waiting": ["a", "b", "c"]}))
+    rc, out, err, calls = cli(monkeypatch, capsys, "wait", "-T", URL, bridge_reply=busy)
+    assert rc == 0 and len(calls) == 1 and out.startswith("ready:")
+    # a script that ran out of time, until it ends
     late = status_of(window(), abandoned=[{"rid": "r1", "conn": "c0ffee01", "age_s": 70}])
-    busy = status_of(window(running={"agent": "writer", "for_s": 3}))
     rc, out, err, calls = cli(monkeypatch, capsys, "wait", "-T", "sandbox",
-                              bridge_reply=FakeBridge(late, late, busy, free))
-    assert rc == 0 and len(calls) == 4 and "is free" in out
+                              bridge_reply=FakeBridge(late, late, busy))
+    assert rc == 0 and len(calls) == 3 and out.startswith("ready:")
     assert err.strip() == '  waiting: a script that ran out of time may still be running in "Sandbox 5$" (it began 70 s ago)'.strip()
 
 
@@ -415,9 +419,9 @@ def test_wait_gives_up_with_what_to_tell_the_user(monkeypatch, capsys, quick_wai
                       abandoned=[{"rid": "r1", "conn": "c0ffee01", "age_s": 100}])
     rc, out, err, _ = cli(monkeypatch, capsys, "wait", "-T", KEY, "--timeout", "5", bridge_reply=stuck)
     assert rc == 1 and out == ""
-    assert "not free after 5 s: Figma isn't answering in \"Sandbox 5$\": a script of designer" in err
+    assert "not ready after 5 s: Figma isn't answering in \"Sandbox 5$\": a script of designer" in err
     assert ("tell the user: Figma isn't answering in \"Sandbox 5$\": reload the file in Figma (close its "
-            "tab and open it again), then run Figaro in it") in err
+            "tab and open it again, or quit Figma if the tab won't close), then run Figaro in it") in err
     # an older bridge says only that the script ran out of time: the same advice
     late = status_of(window(), abandoned=[{"rid": "r1", "conn": "c0ffee01", "age_s": 100}])
     rc, _, err, _ = cli(monkeypatch, capsys, "wait", "-T", KEY, "-t", "5", bridge_reply=late)
@@ -441,7 +445,7 @@ def test_wait_wont_wait_for_what_waiting_cant_fix(monkeypatch, capsys, quick_wai
     # one file in two windows is one file
     tabs = status_of(window(), window(conn="c0ffee02", sameDocAs="c0ffee01"))
     rc, out, _, _ = cli(monkeypatch, capsys, "wait", bridge_reply=tabs)
-    assert rc == 0 and "is free" in out
+    assert rc == 0 and out.startswith("ready:")
     same = status_of(window(), window(conn="c0ffee02", doc="OTHER"))
     rc, _, err, _ = cli(monkeypatch, capsys, "wait", "-T", "Sandbox 5$", bridge_reply=same)
     assert rc == 2 and "2 connected files are named 'Sandbox 5$'" in err

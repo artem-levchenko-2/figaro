@@ -18,7 +18,7 @@ Commands:
     figaro undo                     # undo the file's last script, when that is safe
     figaro reload                   # load plugin/code.js from disk into the open plugin
     figaro done "<note>"            # you are done in the file: the plugin's window says so, with the note
-    figaro wait                     # until the file is connected and free (no script running or stuck)
+    figaro wait                     # until the file is ready: connected, nothing stuck in it
     figaro inspect <id> [--json | -o f.json]   # layout, styles, text, keys of what it uses
     figaro shot <id> ...            # picture(s) saved to files; tall ones cut in parts
     figaro link <id|sel> ...        # clickable links to layers, for reports
@@ -395,13 +395,15 @@ def cmd_done(args):
 WAIT_FOR = 90      # figaro wait's default: under the two minutes an agent's shell gives a command
 WAIT_EVERY = 0.5   # how often it asks the bridge
 RELOAD = ("Figma isn't answering in \"{}\": reload the file in Figma (close its tab and open it "
-          "again), then run Figaro in it")
+          "again, or quit Figma if the tab won't close), then run Figaro in it")
 
 
 def cmd_wait(args):
-    """Wait until the file is connected and free: no script runs in it, and
-    none that ran out of time may still be running. It asks /status, which
-    every bridge has, so it works with an older one too."""
+    """Wait until the file is ready: connected, and nothing stuck in it — no
+    script that ran out of time may still be running, and its window didn't
+    close mid-script. Other agents' scripts within their time don't count:
+    the file's queue takes the next script after them. It asks /status,
+    which every bridge has, so it works with an older one too."""
     if args.text is not None:  # `figaro wait "<note>"`: what done was called before 1.1.0
         print("figaro: `figaro wait \"<note>\"` is `figaro done \"<note>\"` now — ran done",
               file=sys.stderr)
@@ -412,7 +414,7 @@ def cmd_wait(args):
         status, resp = _request("GET", "/status", timeout=10)
         state = _file_state(status, resp, TARGET)
         if state.get("ready"):
-            print(f"\"{state['name']}\" is free: connected, and no script runs in it")
+            print(f"ready: connected, nothing stuck in \"{state['name']}\"")
             return 0
         if state.get("fail"):  # waiting won't help
             print(f"figaro: {state['fail']}", file=sys.stderr)
@@ -425,14 +427,15 @@ def cmd_wait(args):
         if time.monotonic() + WAIT_EVERY > end:
             break
         time.sleep(WAIT_EVERY)
-    print(f"figaro: not free after {args.timeout:g} s: {state['why']}", file=sys.stderr)
+    print(f"figaro: not ready after {args.timeout:g} s: {state['why']}", file=sys.stderr)
     print(f"   tell the user: {state['tell']}", file=sys.stderr)
     return 1
 
 
 def _file_state(status, resp, target):
     """What figaro wait sees in an answer of /status: {ready, name}, {why,
-    tell} while it is not free, or {fail} when waiting can't help."""
+    tell} while it is not ready, or {fail} when waiting can't help. A script
+    that runs or waits in the file's queue within its time leaves it ready."""
     if status == 0:
         if resp.get("hint"):  # a sandbox keeps the command off the network
             return {"fail": resp.get("error")}
@@ -467,13 +470,6 @@ def _file_state(status, resp, target):
         return {"why": f"a script that ran out of time may still be running in \"{name}\" "
                        f"(it began {late[0].get('age_s')} s ago)",
                 "tell": RELOAD.format(name)}
-    running = next((f["queue"]["running"] for f in picked
-                    if isinstance(f.get("queue"), dict) and f["queue"].get("running")), None)
-    if running:
-        who = running.get("agent") or "an agent"
-        return {"why": f"a script of {who} runs in \"{name}\" ({running.get('for_s')} s so far)",
-                "tell": f"a script of {who} has held \"{name}\" a long time — Stop in Figaro's "
-                        f"window ends it"}
     return {"ready": True, "name": name}
 
 
@@ -902,8 +898,8 @@ def build_parser():
     p_done.add_argument("text", nargs="?", default="",
                         help="what the user should look at or answer, in their language")
 
-    p_wait = sub.add_parser("wait", help="wait until the file is connected and free: no script runs "
-                                         "in it, and none that ran out of time; at most --timeout "
+    p_wait = sub.add_parser("wait", help="wait until the file is ready: connected, and no script that "
+                                         "ran out of time still runs in it; at most --timeout "
                                          f"seconds ({WAIT_FOR})")
     _add_common_flags(p_wait)
     p_wait.set_defaults(timeout=WAIT_FOR)

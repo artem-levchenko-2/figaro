@@ -11,15 +11,17 @@ file; the release notes say when it has to be imported again.
 
 ### Added
 
-- `figaro wait [-T <file>] [--timeout S]` waits until a file is connected and free: no script runs in it,
-  and none that ran out of time still runs. It gives up after 90 s, under the two minutes an agent's shell
-  allows a command, with a line for the agent to pass on to the user. It works with older bridges too. The
-  skill has agents use it instead of retrying in a loop, and say a timeout to the user first.
+- `figaro wait [-T <file>] [--timeout S]` waits until a file is ready: connected, and no script that ran
+  out of time still runs in it. Other agents' scripts within their time don't count, as the file's queue
+  runs the next script after them. It gives up after 90 s, under the two minutes an agent's shell allows a
+  command, with a line for the agent to pass on to the user. It works with older bridges too. The skill has
+  agents use it instead of retrying in a loop, and say a timeout to the user first.
 
 ### Fixed
 
-- **A file where Figma stops answering turns red** in every window, with what to do: reload the file and run
-  Figaro in it. Before, it looked busy forever, or vanished from the board when its window closed mid-script.
+- **A file where Figma stops answering turns red** in every window, with what to do: reload the file (or quit
+  Figma, if its tab won't close) and run Figaro in it. Before, it looked busy forever, or vanished from the
+  board when its window closed mid-script.
   It turns red when a script runs on 30 s past its `--timeout`, or when the file's window closes while a
   script ran and doesn't come back within 10 s. The red goes once the script ends (or `figaro clear`), or
   the window is back; a closed window's file leaves the board after 15 minutes. `figaro status` shows both

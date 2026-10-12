@@ -453,7 +453,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     check("…open, it says whose script it is, since when, and what to do",
           [/A script by icons is still running: its time ran out <span[^>]*>2m ago/.test(env.html()),
-           /Reload the file in Figma: close its tab and open it again\. Then run Figaro in it\./.test(env.html())],
+           /Reload the file in Figma: close its tab and open it again, or quit Figma if the tab won't close\. Then run Figaro in it\./.test(env.html())],
           [true, true]);
     env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")],
               { lost: [file("KEY3", "Kit", { lost: { agent: "icons", at: ago(20) } })] });

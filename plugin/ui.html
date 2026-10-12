@@ -551,7 +551,7 @@ function callout(f) {
       ? `A script by ${esc(f.stuck.agent)} is still running: its time ran out ${agoSpan(f.stuck.since)}.`
       : `Figaro's window there closed while a script by ${esc(f.lost.agent)} was running, ${agoSpan(f.lost.at)}.`;
     return `<div class="callout alarm"><div class="h"><span class="ind">${h.ind}</span>Figma isn't answering</div><p>${why}</p>`
-      + `<p>Reload ${f.here ? "this file" : "the file"} in Figma: close its tab and open it again. Then run Figaro in it.</p></div>`;
+      + `<p>Reload ${f.here ? "this file" : "the file"} in Figma: close its tab and open it again, or quit Figma if the tab won't close. Then run Figaro in it.</p></div>`;
   }
   return "";
 }

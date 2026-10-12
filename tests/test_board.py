@@ -281,12 +281,13 @@ class Hanging(FakePlugin):
 @pytest.fixture
 def quick_red(monkeypatch):
     """Seconds, not minutes: the bridge waits no grace past a deadline, a
-    script still running 0.3 s after it gave up is stuck, and a file whose
-    window closed mid-script shows after 0.2 s and stays 1.5 s."""
+    script still running 0.6 s after it gave up is stuck, and a file whose
+    window closed mid-script shows after 0.6 s and stays 2 s. What must not
+    show yet is checked well before those; what must, until it does."""
     monkeypatch.setattr(bridge.bridge_exec, "GATE_GRACE", 0.0)
-    monkeypatch.setattr(bridge_board, "STUCK_AFTER", 0.3)
-    monkeypatch.setattr(bridge_board, "LOST_GRACE", 0.2)
-    monkeypatch.setattr(bridge_board, "LOST_KEEP", 1.5)
+    monkeypatch.setattr(bridge_board, "STUCK_AFTER", 0.6)
+    monkeypatch.setattr(bridge_board, "LOST_GRACE", 0.6)
+    monkeypatch.setattr(bridge_board, "LOST_KEEP", 2.0)
 
 
 def test_a_script_that_never_ends_turns_its_file_red_until_it_does(quick_red):
@@ -299,7 +300,7 @@ def test_a_script_that_never_ends_turns_its_file_red_until_it_does(quick_red):
             assert r.status == 504
             await settle()
             assert island(b, "Dashboard")["stuck"] is None  # it may yet end
-            await asyncio.sleep(0.5)
+            assert await until(lambda: island(b, "Dashboard")["stuck"] is not None)
             stuck = island(b, "Dashboard")["stuck"]
             assert stuck["agent"] == "designer" and island(a, "Dashboard")["stuck"] == stuck
             assert island(b, "UI kit")["stuck"] is None
@@ -319,7 +320,7 @@ def test_clear_takes_the_red_off_too(quick_red):
         c = await make_client()
         async with Hanging(c, name="Dashboard", key="KEY1", caps=CAPS) as a:
             assert (await c.post("/exec", json={"code": "hang", "timeout": 0.2})).status == 504
-            await asyncio.sleep(0.6)
+            assert await until(lambda: island(a, "Dashboard")["stuck"] is not None)
             assert island(a, "Dashboard")["stuck"]["agent"] == "agent"
             assert (await c.post("/clear", json={"target": "Dashboard"})).status == 200
             await settle()
@@ -341,16 +342,15 @@ def test_a_window_that_closes_mid_script_leaves_its_file_red_for_a_while(quick_r
             r = await call
             assert r.status == (504 if timed_out else 500)
             await settle()
-            assert boards(b)[-1]["lost"] == []  # a restart (Hot reload) would be back by now
-            await asyncio.sleep(0.4)
+            assert boards(b)[-1]["lost"] == []  # a restart (Hot reload) may yet come back
+            assert await until(lambda: boards(b)[-1]["lost"] != [])
             lost = boards(b)[-1]["lost"]
             assert [(f["doc"], f["name"], f["lost"]["agent"]) for f in lost] == [("doc:KEY1", "Dashboard", "designer")]
             assert lost[0]["agents"] == []  # nobody works there now; Recent says what happened
             assert [e["summary"] for e in lost[0]["recent"]] == (["Script timed out"] if timed_out else [])
             status = await (await c.get("/status")).json()
             assert [(f["name"], f["fileKey"], f["agent"]) for f in status["lost"]] == [("Dashboard", "KEY1", "designer")]
-            await asyncio.sleep(1.3)
-            assert boards(b)[-1]["lost"] == []  # LOST_KEEP later it goes
+            assert await until(lambda: boards(b)[-1]["lost"] == [], 4)  # LOST_KEEP later it goes
         await c.close()
     run(go())
 
