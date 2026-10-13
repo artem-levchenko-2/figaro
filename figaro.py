@@ -404,7 +404,10 @@ def cmd_wait(args):
     close mid-script. Other agents' scripts within their time don't count:
     the file's queue takes the next script after them. It asks /status,
     which every bridge has, so it works with an older one too."""
-    if args.text is not None:  # `figaro wait "<note>"`: what done was called before 1.1.0
+    target = TARGET
+    if args.text is not None and figma_links.parse(args.text):  # `figaro wait "<link>"`: its file
+        target = target or args.text
+    elif args.text is not None:  # `figaro wait "<note>"`: what done was called before 1.1.0
         print("figaro: `figaro wait \"<note>\"` is `figaro done \"<note>\"` now — ran done",
               file=sys.stderr)
         return cmd_done(args)
@@ -412,7 +415,7 @@ def cmd_wait(args):
     said = None
     while True:
         status, resp = _request("GET", "/status", timeout=10)
-        state = _file_state(status, resp, TARGET)
+        state = _file_state(status, resp, target)
         if state.get("ready"):
             print(f"ready: connected, nothing stuck in \"{state['name']}\"")
             return 0

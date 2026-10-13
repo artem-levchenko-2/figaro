@@ -19,27 +19,6 @@ file; the release notes say when it has to be imported again.
 
 ### Fixed
 
-- **A file where Figma stops answering turns red** in every window, with what to do: reload the file (or quit
-  Figma, if its tab won't close) and run Figaro in it. Before, it looked busy forever, or vanished from the
-  board when its window closed mid-script.
-  It turns red when a script runs on 30 s past its `--timeout`, or when the file's window closes while a
-  script ran and doesn't come back within 10 s. The red goes once the script ends (or `figaro clear`), or
-  the window is back; a closed window's file leaves the board after 15 minutes. `figaro status` shows both
-  (`stuck`, `lost`).
-- A script that imports by key (`importComponentByKeyAsync`, `importVariableByKeyAsync`, `h.importComp`,
-  `h.importVar`, …) counted as one that writes, so changes Figma made while it ran were rolled back by `-R`
-  as the script's. Importing changes no layer: such a script reads, and those changes are reported instead.
-- After a 504 the file's next script gets a 409 that now says what to do from a shell: `figaro wait -T
-  <file>` until the abandoned script ends, and `figaro clear -T <file>` if the file stays blocked after
-  that. It named only the HTTP API (`POST /clear`, `"force": true`), which `figaro doctor` repeated.
-
-- **A loop that never ends no longer holds Figma.** A script runs on Figma's main thread, so a `while (true)`
-  froze Figma, nothing could stop it, and the file stayed busy. Now every `while`, `do … while` and `for (;;)`
-  loop of a script or a `--lib` file ends at the script's `--timeout`: "the loop on line N was still running
-  when --timeout ran out — the script was stopped", and the file is free. Strings, comments and line numbers
-  in errors stay as they were; a round costs ~25 ns more. `for … of` loops are left as they are: call `h.ck()`
-  in a long one. Its error, like every other, shows only the lines of the script and its `--lib` files.
-
 - **The plugin's window stays on the canvas.** With a long island open, or many files, it grew past the bottom
   of the screen, and what was under the edge couldn't be reached. Now an island that opens with room under the
   window grows down; with no room, the window moves up instead, just enough and no higher than the canvas's
@@ -50,6 +29,25 @@ file; the release notes say when it has to be imported again.
   stays at the top while its panel scrolls under it, and the scrollbar is thin and shows only while the list
   scrolls or the pointer is on it. The line with the version comes last, and stays at the window's bottom
   only while it has a button (Update, Reload) or says why an update failed.
+- **A loop that never ends no longer holds Figma.** A script runs on Figma's main thread, so a `while (true)`
+  froze Figma, nothing could stop it, and the file stayed busy. Now every `while`, `do … while` and `for (;;)`
+  loop of a script or a `--lib` file ends at the script's `--timeout`: "the loop on line N was still running
+  when --timeout ran out — the script was stopped", and the file is free. Strings, comments and line numbers
+  in errors stay as they were; a round costs ~25 ns more. `for … of` loops are left as they are: call `h.ck()`
+  in a long one. Its error, like every other, shows only the lines of the script and its `--lib` files.
+- **A file where Figma stops answering turns red** in every window, with what to do: reload the file (or quit
+  Figma, if its tab won't close) and run Figaro in it. Before, it looked busy forever, or vanished from the
+  board when its window closed mid-script.
+  It turns red when a script runs on 30 s past its `--timeout`, or when the file's window closes while a
+  script ran and doesn't come back within 10 s. The red goes once the script ends (or `figaro clear`), or
+  the window is back; a closed window's file leaves the board after 15 minutes. `figaro status` shows both
+  (`stuck`, `lost`).
+- After a 504 the file's next script gets a 409 that now says what to do from a shell: `figaro wait -T
+  <file>` until the abandoned script ends, and `figaro clear -T <file>` if the file stays blocked after
+  that. It named only the HTTP API (`POST /clear`, `"force": true`), which `figaro doctor` repeated.
+- A script that imports by key (`importComponentByKeyAsync`, `importVariableByKeyAsync`, `h.importComp`,
+  `h.importVar`, …) counted as one that writes, so changes Figma made while it ran were rolled back by `-R`
+  as the script's. Importing changes no layer: such a script reads, and those changes are reported instead.
 
 ## [1.2.2] — 2026-10-12
 

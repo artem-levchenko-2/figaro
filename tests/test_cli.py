@@ -401,6 +401,11 @@ def test_wait_returns_once_the_file_is_ready(monkeypatch, capsys, quick_wait):
     rc, out, err, calls = cli(monkeypatch, capsys, "wait", "-T", URL, bridge_reply=free)
     assert rc == 0 and len(calls) == 1 and err == ""
     assert out.strip() == 'ready: connected, nothing stuck in "Sandbox 5$"'
+    # a link without -T is the file to wait for, not a note for done
+    two = status_of(window(), window(name="Kit", key="KEY2", conn="c0ffee02", doc="KEY2"))
+    rc, out, err, calls = cli(monkeypatch, capsys, "wait", URL, bridge_reply=two)
+    assert rc == 0 and len(calls) == 1 and err == ""
+    assert out.strip() == 'ready: connected, nothing stuck in "Sandbox 5$"'
     # other agents at work in the file, within their time: the queue takes care of them
     busy = status_of(window(running={"agent": "writer", "for_s": 80},
                             queue={"running": {"agent": "writer", "for_s": 80}, "waiting": ["a", "b", "c"]}))
