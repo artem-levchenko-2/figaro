@@ -84,9 +84,9 @@ button { font: inherit; }
 #scroll::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 3px; background: transparent padding-box; }
 #scroll:hover::-webkit-scrollbar-thumb, #scroll.moving::-webkit-scrollbar-thumb { background-color: var(--win-bar); }
 #scroll::-webkit-scrollbar-thumb:hover, #scroll::-webkit-scrollbar-thumb:active { background-color: var(--win-bar-hot); }
-#end { padding: 6px 0; }
-#foot { flex: none; padding: 6px; }
-#end:empty, #foot:empty { display: none; }
+#end { height: 6px; }  /* under the last island: the window's bottom edge, or its last line */
+#foot { flex: none; padding: 0 6px 6px; }
+#foot:empty { display: none; }
 /* An island cut by the list's top edge gets round corners there, and its
    hairline in the light theme, as if it began there; one cut by the bottom
    edge fades out, so it shows that more of it is below, and so does the line
@@ -215,24 +215,23 @@ button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), t
 .layer.comp svg { color: var(--is-comp); }
 .more { align-self: center; padding: 0 2px; color: var(--is-faint); font-size: 11px; }
 
-/* The window's last line, under the islands: the Figaro version, always, and on
-   the right a newer release to update to (or, where the bridge has no Update
-   button, a link to it), the update under way, or newer plugin code to
-   reload. With none of those it is the list's last item (#end), which a
-   window that scrolls its islands shows only at the end of the list; with
-   one, it stays at the window's bottom (#foot).
+/* The window's last line, under the islands, is there only when there is
+   something to do about the Figaro version: a newer release to update to (or,
+   where the bridge has no Update button, a link to it), the update under way,
+   or newer plugin code to reload. It stays at the window's bottom. Why an
+   update or a reload failed goes under it, as a field's error goes under the
+   field. With the pointer in the window, a newer release offers Skip too,
+   which puts the line away until the next release.
    Its text keeps the islands' inner edges, x 15 to 305;
    a button runs out to their outer edge, x 314, so it is 6 px from the
-   window's edge, as from the island above it and the window's bottom. Why an
-   update failed takes a line of its own above it, its button staying on the
-   last line. */
+   window's edge, as from the island above it and the window's bottom. */
 .foot { color: var(--win-faint); font-size: 11px; font-weight: 500; }
 .foot .line { height: 22px; display: flex; align-items: center; gap: 8px; padding: 0 9px; white-space: nowrap; }
 .foot .ver { flex: none; }
 .foot .what { margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--win-dim); }
 .foot .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .foot .spin { flex: none; width: 10px; height: 10px; border-width: 1.5px; }
-.foot .why { display: flex; gap: 6px; padding: 3px 9px; color: var(--win-dim); line-height: 16px; overflow-wrap: anywhere; }
+.foot .why { display: flex; gap: 6px; padding: 4px 9px 2px; color: var(--win-dim); line-height: 16px; overflow-wrap: anywhere; }
 .foot .warn { flex: none; height: 16px; display: grid; place-items: center; color: var(--wait); }
 .foot .warn svg { width: 12px; height: 12px; }
 .go { flex: none; height: 22px; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; border: 0; border-radius: 11px; background: var(--run); color: #fff; font: 600 11px/1 var(--sys); cursor: pointer; }
@@ -245,10 +244,22 @@ button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), t
 .foot .out span { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 2px; }
 .foot .out:hover span { text-decoration-color: currentColor; }
 .foot .out svg { width: 9px; height: 9px; }
+/* Skip: a button without a fill until the pointer is on it, unlike the
+   blue and purple ones; it shows only while the pointer is in the window
+   (#foot.inside) or it has the focus, and its hint comes after a moment. */
+.foot .skip-w { position: relative; flex: none; display: flex; }
+.foot .skip { height: 22px; padding: 0 8px; border: 0; border-radius: 11px; background: none; color: var(--win-faint); font: inherit; cursor: pointer;
+  opacity: 0; pointer-events: none; transition: opacity .15s, background-color .12s, color .12s; }
+#foot.inside .skip, .foot .skip:focus-visible { opacity: 1; pointer-events: auto; }
+.foot .skip:hover, .foot .skip:focus-visible { background: var(--is-fill); color: var(--win-dim); }
+.foot .tip { position: absolute; left: 50%; bottom: calc(100% + 6px); z-index: 2; padding: 5px 8px; border-radius: 5px; background: #1e1e1e; color: #fff;
+  font: 500 11px/14px var(--sys); white-space: nowrap; box-shadow: 0 2px 10px rgba(0, 0, 0, .3); pointer-events: none;
+  opacity: 0; transform: translate(-50%, 2px); transition: opacity .12s, transform .12s; }
+#foot.tip .tip, .foot:has(.skip:focus-visible) .tip { opacity: 1; transform: translate(-50%, 0); }
 
 @media (prefers-reduced-motion: reduce) {
   .slot.enter, .slot.enter > .island, .slot.leave, .island.opening :is(.fold, .panel, .chev) { animation: none; }
-  .agent[data-agent], .act, .act .ib { transition: none; }
+  .agent[data-agent], .act, .act .ib, .foot .skip, .foot .tip { transition: none; }
   .spin { animation-duration: 2.4s; }
 }
 </style>
@@ -482,7 +493,8 @@ const PALETTE = ["#7b61ff", "#f2711c", "#12a594", "#e5489b", "#3e7bfa", "#b7791f
 const ICON = {
   check: '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="M3.5 6.2 5.2 7.9 8.5 4.4" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   chev: '<svg viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  up: '<svg viewBox="0 0 10 10"><path d="M5 8.6V1.6M1.9 4.6 5 1.5l3.1 3.1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  down: '<svg viewBox="0 0 10 10"><path d="M5 1.2v5.5M2.5 4.3 5 6.8l2.5-2.5M1.8 9h6.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  again: '<svg viewBox="0 0 10 10"><path d="M8.6 5.9A3.75 3.75 0 1 1 7.8 2.3M8.6.9v2.1H6.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   out: '<svg viewBox="0 0 10 10"><path d="M2.4 7.6 7.4 2.6M3.6 2.6h3.8v3.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   warn: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M8 4.5v4.2" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.3" r=".95" fill="#fff"/></svg>',
   FRAME: '<svg viewBox="0 0 12 12"><path d="M4 1.5v9M8 1.5v9M1.5 4h9M1.5 8h9" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>',
@@ -632,37 +644,51 @@ function island(f, cls, anim) {
     + (isOpen || shut ? `<div class="fold"><div>${panel(f)}</div></div>` : "") + "</div></div>";
 }
 
-// The window's last line: the Figaro version, and what there is to do about a
-// newer one — update to a release, or reload newer plugin code from disk. Why
-// an update or a reload failed goes on a line above it. `pin`: it has
-// something to do, so it stays at the window's bottom.
+// The window's last line, when there is something to do about the Figaro
+// version: update to a newer release, or reload newer plugin code from disk.
+// Why an update or a reload failed goes on a line under it. A release the user
+// skipped here (`skipped`) has no line, until a newer one comes out; the bridge
+// keeps the skip for every window, and this one keeps it for itself with a
+// bridge that doesn't.
+let skipped = null;
 function footer() {
   const on = conn === "ok";
   const latest = on && ((board && board.update && board.update.latest) || (update && update.latest));
   const release = on && !latest && board && board.release;  // newer, and the bridge has no Update button
   const doing = on && board && board.updating;
   const failed = on && !doing && board && board.failed;
-  let why = "", right = "";
+  const newer = latest || (release && release.latest) || "";
+  const away = !!newer && newer === skipped;
+  const reload = '<button type="button" class="go build" data-act="reload" title="Reload the plugin with the code on disk, once the scripts finish">'
+    + ICON.again + "Reload</button>";
+  let why = "", right = "", skip = false;
   if (doing) {
-    const reload = doing.what === "reload";
-    const text = doing.step === "wait" ? (reload ? "Reloads once the scripts finish" : "Updates once the scripts finish")
+    const reloading = doing.what === "reload";
+    const text = doing.step === "wait" ? (reloading ? "Reloads once the scripts finish" : "Updates once the scripts finish")
       : doing.step === "pull" ? `Updating to ${esc(doing.to || latest || "the new version")}…`
-      : reload ? "Reloading Figaro…" : "Restarting Figaro…";
+      : reloading ? "Reloading Figaro…" : "Restarting Figaro…";
     right = `<span class="spin"></span><span class="txt">${text}</span>`;
-  } else if (failed) {
-    const what = failed.what === "reload" ? "reload" : "update" + (latest ? " to " + esc(latest) : "");
-    why = `<div class="why"><span class="warn">${ICON.warn}</span><span title="${esc(failed.detail || failed.error)}">Couldn't ${what}: ${esc(failed.error)}</span></div>`;
+  } else if (failed && failed.what === "reload") {
+    why = `<div class="why"><span class="warn">${ICON.warn}</span><span title="${esc(failed.detail || failed.error)}">Couldn't reload: ${esc(failed.error)}</span></div>`;
+    if (stale()) right = reload;  // try again
+  } else if (failed && !away) {
+    why = `<div class="why"><span class="warn">${ICON.warn}</span><span title="${esc(failed.detail || failed.error)}">Couldn't update${latest ? " to " + esc(latest) : ""}: ${esc(failed.error)}</span></div>`;
     if (failed.url) right = `<button type="button" class="go" data-act="release" data-url="${esc(failed.url)}">Open release</button>`;
-  } else if (latest) {
-    right = `<button type="button" class="go" data-act="update" title="Download it, restart the bridge and reload the plugin, once the scripts finish">${ICON.up}Update to ${esc(latest)}</button>`;
+    skip = !!newer;
+  } else if (latest && !away) {
+    right = `<button type="button" class="go" data-act="update" title="Download it, restart the bridge and reload the plugin, once the scripts finish">${ICON.down}Update to ${esc(latest)}</button>`;
+    skip = true;
   } else if (on && stale()) {
-    right = '<span class="txt">New build</span><button type="button" class="go build" data-act="reload" title="Reload the plugin with the code on disk, once the scripts finish">Reload</button>';
-  } else if (release && release.latest) {
+    right = '<span class="txt">New build</span>' + reload;
+  } else if (release && release.latest && !away) {
     right = `<button type="button" class="out" data-act="release" data-url="${esc(release.url || "")}" title="The Update button is off on this computer. To update: git pull in the Figaro folder, restart the bridge, then press Reload here"><span>${esc(release.latest)} is out</span>${ICON.out}</button>`;
+    skip = true;
   }
-  const html = `<div class="foot">${why}<div class="line"><span class="ver">Figaro${version ? " " + esc(version) : ""}</span>`
-    + (right ? `<span class="what">${right}</span>` : "") + "</div></div>";
-  return { html, pin: !!(why || right) };
+  if (!why && !right) return "";
+  const skipper = skip ? `<span class="skip-w"><button type="button" class="skip" data-act="skip" data-version="${esc(newer)}" aria-describedby="skip-tip">Skip</button>`
+    + '<span class="tip" id="skip-tip" role="tooltip">Hide until the next release</span></span>' : "";
+  return `<div class="foot"><div class="line"><span class="ver">Figaro${version ? " " + esc(version) : ""}</span>`
+    + `<span class="what">${skipper}${right}</span></div>${why}</div>`;
 }
 
 // ─── rendering ───────────────────────────────────────────────────────────
@@ -672,8 +698,8 @@ function footer() {
 // released, so it never swallows a click.
 const app = document.getElementById("app");        // the islands
 const scroller = document.getElementById("scroll");  // what scrolls them
-const end = document.getElementById("end");        // the last line, as the list's last item
-const foot = document.getElementById("foot");      // …or at the window's bottom
+const end = document.getElementById("end");        // the gap under the last island
+const foot = document.getElementById("foot");      // the last line, at the window's bottom
 const onScreen = new Set();    // islands on screen, by id
 let lastFiles = new Map();
 let animId = null;             // the island whose panel just opened
@@ -741,11 +767,9 @@ function render() {
     app.innerHTML = html;
     lastHtml = html;
   }
-  const line = (tail.pin ? "foot:" : "end:") + tail.html;
-  if (line !== lastFoot) {
-    (tail.pin ? foot : end).innerHTML = tail.html;
-    (tail.pin ? end : foot).innerHTML = "";
-    lastFoot = line;
+  if (tail !== lastFoot) {
+    foot.innerHTML = tail;
+    lastFoot = tail;
   }
   if (moving) {
     animUntil = Date.now() + ANIM_MS;
@@ -913,6 +937,11 @@ function act(name, fid, el) {
     send({ type: "update-now" });
   } else if (name === "reload") {
     send({ type: "reload-all" });
+  } else if (name === "skip" && el.dataset.version) {
+    skipped = el.dataset.version;
+    send({ type: "skip", version: skipped });
+    hint(false);
+    render();
   } else if (name === "release") {
     parent.postMessage({ pluginMessage: { type: "open-url", url: el.dataset.url } }, "*");
   } else if (name === "layer") {
@@ -931,12 +960,26 @@ function point(key) {
     el.classList.toggle("hot", !!slot && slot.dataset.fid + "\n" + el.dataset.agent === key);
   }
 }
+// The pointer in the window: the last line shows Skip; on Skip, its hint comes after a moment.
+let hintTimer = null;
+let onSkip = false;
+function inside(on) { if (foot.classList) foot.classList.toggle("inside", on); }
+function hint(on) {
+  onSkip = on;
+  clearTimeout(hintTimer);
+  if (!foot.classList) return;
+  if (on) hintTimer = setTimeout(() => foot.classList.add("tip"), 400);
+  else foot.classList.remove("tip");
+}
 document.addEventListener("pointerover", (e) => {
   const row = e.target && e.target.closest ? e.target.closest(".agent[data-agent]") : null;
   const slot = row && row.closest("[data-fid]");
   point(slot ? slot.dataset.fid + "\n" + row.dataset.agent : "");
+  inside(true);
+  const skip = !!(e.target && e.target.closest && e.target.closest(".skip"));
+  if (skip !== onSkip) hint(skip);
 });
-document.addEventListener("pointerout", (e) => { if (!e.relatedTarget) point(""); });  // it left the window
+document.addEventListener("pointerout", (e) => { if (!e.relatedTarget) { point(""); inside(false); hint(false); } });  // it left the window
 const calm = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
 document.addEventListener("click", (e) => {

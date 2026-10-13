@@ -17,6 +17,14 @@ file; the release notes say when it has to be imported again.
   command, with a line for the agent to pass on to the user. It works with older bridges too. The skill has
   agents use it instead of retrying in a loop, and say a timeout to the user first.
 
+### Changed
+
+- **The window's last line shows only when there is something to do:** a new release (Update, or a link with
+  `FIGARO_UPDATE_BUTTON=off`), a new build of the plugin (Reload), or why an update or a reload failed, which
+  now comes under the line, like a field's error; after a failed reload the line offers Reload again. While
+  the pointer is on the window, **Skip** hides a release until a newer one, in that window until the plugin
+  runs again. Update has a download icon, Reload a circular arrow. `figaro doctor` still shows the version.
+
 ### Fixed
 
 - **The plugin's window stays on the canvas.** With a long island open, or many files, it grew past the bottom
@@ -27,8 +35,7 @@ file; the release notes say when it has to be imported again.
   way, whichever edge moves. What you dragged below the canvas's bottom edge stays out of sight there. Only a
   window taller than the whole canvas is cut short, and its islands scroll as one list: an open island's row
   stays at the top while its panel scrolls under it, and the scrollbar is thin and shows only while the list
-  scrolls or the pointer is on it. The line with the version comes last, and stays at the window's bottom
-  only while it has a button (Update, Reload) or says why an update failed.
+  scrolls or the pointer is on it. The line with the version comes last, at the window's bottom.
 - **A loop that never ends no longer holds Figma.** A script runs on Figma's main thread, so a `while (true)`
   froze Figma, nothing could stop it, and the file stayed busy. Now every `while`, `do … while` and `for (;;)`
   loop of a script or a `--lib` file ends at the script's `--timeout`: "the loop on line N was still running

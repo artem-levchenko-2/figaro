@@ -154,11 +154,12 @@ overwrites a file it didn't make.
 Run `git pull` in Figaro's folder, or ask your agent to update Figaro. Then
 `figaro doctor` says what to restart. If `plugin/manifest.json` changed, run
 the plugin again from Figma's menu in each file; the release notes say when it
-has to be imported again (step 2). When a new release is out, the plugin's
-window says so at the bottom, next to the version: **Update** installs exactly
-that release, restarts the bridge and reloads the plugin as soon as no script
-is running. With `FIGARO_UPDATE_BUTTON=off` there is only a link to the
-release ([Settings](#settings)).
+has to be imported again (step 2). When a new release is out, a line at the
+bottom of the plugin's window says so: **Update** installs exactly that
+release, restarts the bridge and reloads the plugin as soon as no script is
+running. With `FIGARO_UPDATE_BUTTON=off` there is only a link to the release
+([Settings](#settings)). **Skip**, there while the pointer is on the window,
+hides the line until a newer release, or until the plugin runs again.
 
 To remove Figaro, run the installer with `--uninstall` (`-Uninstall` on
 Windows), remove the plugin under **Plugins → Development → Manage plugins in
@@ -438,8 +439,9 @@ until a script of its succeeds. A file where Figma stops answering, with a
 script still running long after its time or a window that closed while one ran,
 turns red in every window, with what to do.
 Point at an agent at work for its **Stop** button. A click on a changed layer selects it
-in Figma. Under the islands: Figaro's version, and an **Update** button when a
-new one is out, which keeps that line at the bottom of the window.
+in Figma. Under the islands, only when there is something to do:
+a new release with its **Update** button, **Reload** for a new build of the
+plugin, or why an update failed.
 
 <details>
 <summary>🔌 <b>Under the hood</b></summary>

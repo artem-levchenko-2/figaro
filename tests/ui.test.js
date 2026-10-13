@@ -60,8 +60,8 @@ function makeClock() {
 // drops it) and a stub AudioContext whose state is the tone. `calm`: the
 // system asks for less motion. `layout`: boxes as a browser would lay the
 // window out — every island a 30 px row and, open, its `panel` under it, 6 px
-// apart, the list 6 px from the top, the last line 34 px, after the islands or
-// pinned at the bottom — in a window `window` px tall. `figma`: frames
+// apart, the list 6 px from the top and 6 px over its end, and the last line,
+// when there is one, 28 px at the bottom — in a window `window` px tall. `figma`: frames
 // (requestAnimationFrame every 16 ms) and a Figma that gives the window the
 // height it asks for `lag` frames later, half a frame before one is drawn, at
 // most `room` px (the sandbox's cap); `deaf`: it never does.
@@ -123,7 +123,7 @@ function load({ calm = false, layout = null, figma = null } = {}) {
     // The sandbox's answer to a request, on its way to the bridge.
     answer: (id) => window.onmessage({ data: { pluginMessage: { type: "result", id, value: 1 } } }),
     html: () => elements.app.innerHTML + elements.end.innerHTML + elements.foot.innerHTML,  // the islands, then the last line
-    pinned: () => [elements.end.innerHTML !== "", elements.foot.innerHTML !== ""],  // [in the list, at the bottom]
+    pinned: () => elements.foot.innerHTML !== "",  // the last line, at the bottom
     sent: (type) => env.ws().sent.filter((m) => m.type === type),
     identity: (name, key) => window.onmessage({ data: { pluginMessage: {
       type: "identity", name, fileKey: key, docSig: key, pluginVersion: "test", caps: [] } } }),
@@ -146,7 +146,7 @@ function load({ calm = false, layout = null, figma = null } = {}) {
 }
 
 function lay(elements, layout) {
-  const TOP = 6, ROW = 30, GAP = 6, LINE = 34;
+  const TOP = 6, ROW = 30, GAP = 6, END = 6, LINE = 28;
   const pinned = () => elements.foot.innerHTML !== "";
   const box = (top, height) => ({ top, height, bottom: top + height });
   const row = { getBoundingClientRect: () => box(0, ROW) };
@@ -181,7 +181,7 @@ function lay(elements, layout) {
     querySelector: (sel) => (sel === ".row" ? row : null),
     querySelectorAll: (sel) => (sel === ".slot" ? slots() : []),
   });
-  elements.end.getBoundingClientRect = () => (pinned() ? box(0, 0) : box(TOP + listHeight(), LINE));
+  elements.end.getBoundingClientRect = () => box(TOP + listHeight(), END);
   elements.foot.getBoundingClientRect = () => (pinned() ? box(layout.window - LINE, LINE) : box(0, 0));
   Object.assign(elements.scroll, {
     getBoundingClientRect: () => box(TOP, layout.window - (pinned() ? LINE : 0) - TOP),
@@ -277,7 +277,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("no bridge: the window keeps knocking every 2 s", env.sockets.length, 6);
     check("…and never plays", env.tone(), "none");
     check("…and says there is no bridge yet", /no bridge yet/.test(env.html()), true);
-    check("…and its last line is Figaro, with no version yet", /<span class="ver">Figaro<\/span>/.test(env.html()), true);
+    check("…and has no last line: there is nothing to do about the version", env.pinned(), false);
   }
 
   // ─── this file's island ─────────────────────────────────────────────────
@@ -296,9 +296,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     const closed = env.html();
     check("an agent at work: the file, the agent and its clock",
           [/Dashboard/.test(closed), /designer/.test(closed), /data-clock/.test(closed)], [true, true, true]);
-    check("under the islands: the Figaro version",
-          [/<span class="ver">Figaro 1\.1\.0<\/span>/.test(closed), closed.indexOf('class="foot"') > closed.lastIndexOf('class="slot')], [true, true]);
-    check("…as the list's last item: with nothing to do, it isn't pinned at the bottom", env.pinned(), [true, false]);
+    check("nothing to do about the version: no last line under the islands", [/class="foot"/.test(closed), env.pinned()], [false, false]);
     env.click("toggle", "here");
     const open = env.html();
     check("open: its panel grows from nothing", /class="island open opening"/.test(open), true);
@@ -321,8 +319,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("…shown while it waits, the pointer gone", /class="agent held" data-agent="designer"/.test(env.html()), true);
     await env.clock.advance(MIN);
     check("between its scripts the agent is still at work", /working/.test(env.html()), true);
-    check("open: the recent changes, and the version still under them",
-          [/Created KPI card/.test(env.html()), /<span class="ver">Figaro 1\.1\.0<\/span>/.test(env.html())], [true, true]);
+    check("open: the recent changes", /Created KPI card/.test(env.html()), true);
     env.click("layer", "here", { id: "5:6" });
     check("a layer of this file: select it in Figma", env.posted.filter((m) => m.type === "select"), [{ type: "select", id: "5:6" }]);
     await env.clock.advance(4 * MIN);
@@ -368,17 +365,17 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     const asks = () => env.posted.filter((m) => m.type === "resize");
     const last = () => asks()[asks().length - 1];
-    check("the window asks the sandbox for the height of all it shows", last(), { type: "resize", height: 6 + 30 + 6 + 30 + 34 });
+    check("the window asks the sandbox for the height of all it shows", last(), { type: "resize", height: 6 + 30 + 6 + 30 + 6 });
     const n = asks().length;
     await env.clock.advance(1000);
     check("…and asks again every second, so the sandbox sees a window that moved", asks().length > n, true);
     env.click("toggle", "here");
-    check("an island opens with no frames to drive it: the window asks for all it shows at once", last().height, 106 + 400);
+    check("an island opens with no frames to drive it: the window asks for all it shows at once", last().height, 78 + 400);
     await env.clock.advance(400);
     check("…and nothing is under the window's edge to bring into view: the list stays", env.scrolled, []);
     env.click("toggle", "here");
     await env.clock.advance(400);
-    check("it closes: the window asks for its height without the panel", last().height, 106);
+    check("it closes: the window asks for its height without the panel", last().height, 78);
   }
   {
     const env = load({ layout: { panel: 300, window: 200 } });
@@ -399,7 +396,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     env.click("toggle", "here");
     env.click("toggle", "here");
-    check("less motion: the window asks for its height without the panel at once", env.asks().pop(), 6 + 30 + 34);
+    check("less motion: the window asks for its height without the panel at once", env.asks().pop(), 6 + 30 + 6);
   }
   {
     const env = load({ layout: { panel: 400, window: 200 } });
@@ -408,10 +405,10 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")], { update: { latest: "1.2.0", url: RELEASE } });
     await env.clock.advance(400);
     check("a line with a button is pinned at the bottom, and the window asks for it too",
-          [env.pinned(), env.asks().pop()], [[false, true], 6 + 30 + 6 + 30 + 34]);
+          [env.pinned(), env.asks().pop()], [true, 6 + 30 + 6 + 30 + 6 + 28]);
     env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")]);
     await env.clock.advance(400);
-    check("…and with nothing left to do, it goes back to the end of the list", env.pinned(), [true, false]);
+    check("…and with nothing left to do, it goes, and so does its height", [env.pinned(), env.asks().pop()], [false, 6 + 30 + 6 + 30 + 6]);
   }
 
   // ─── an island that opens or closes drives the window ───────────────────
@@ -470,7 +467,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("the canvas lets the window grow only so much: it asks for no more while it drives",
           Math.max(...driven.filter((f) => f.fold !== "300px").map((f) => f.ask)), 106 + 120);
     check("…and the fold opens whole, past the window's bottom: the islands scroll",
-          [frames[frames.length - 1].inner, driven[driven.length - 1].fold, env.content()], [106 + 120, "300px", 106 + 300]);
+          [frames[frames.length - 1].inner, driven[driven.length - 1].fold, env.content()], [106 + 120, "300px", 78 + 300]);
     check("…never short of the window on the way", frames.filter((f) => f.content < f.inner - 1).length, 0);
   }
   {
@@ -496,7 +493,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     const frames = await watch(env, 400);
     await watch(env, 400);
     check("Figma never gives the window that height: the fold waits for it…", frames[frames.length - 1].fold, "0px");
-    check("…and the island opens whole anyway soon after", env.content(), 106 + 300);
+    check("…and the island opens whole anyway soon after", env.content(), 78 + 300);
   }
   {
     const env = load({ calm: true, layout: { panel: 300, window: 106 }, figma: { lag: 2 } });
@@ -506,7 +503,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     const before = env.asks().length;
     env.click("toggle", "here");
-    check("less motion: no drive, the window asks for all it shows at once", env.asks().slice(before), [106 + 300]);
+    check("less motion: no drive, the window asks for all it shows at once", env.asks().slice(before), [78 + 300]);
   }
 
   // ─── less motion ────────────────────────────────────────────────────────
@@ -603,9 +600,11 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     const files = [file("KEY1", "Dashboard")];
     env.board(files, { update: { latest: "1.2.0", current: "1.1.0", url: RELEASE } });
     await env.clock.advance(400);
-    check("a new release: Update on the last line, next to the version, pinned at the bottom",
-          [/<span class="ver">Figaro 1\.1\.0<\/span><span class="what"><button[^>]*data-act="update"[^>]*>.*Update to 1\.2\.0</.test(env.html()), env.pinned()],
-          [true, [false, true]]);
+    check("a new release: a last line, the version and Update with a download arrow, pinned at the bottom",
+          [/<span class="ver">Figaro 1\.1\.0<\/span><span class="what">.*<button[^>]*data-act="update"[^>]*><svg[^>]*><path d="M5 1\.2v5\.5[^"]*h6\.4"[^>]*><\/svg>Update to 1\.2\.0</.test(env.html()), env.pinned()],
+          [true, true]);
+    check("…and Skip before it, with its hint, until the next release",
+          /<button[^>]*class="skip" data-act="skip" data-version="1\.2\.0"[^>]*>Skip<\/button><span class="tip"[^>]*>Hide until the next release<\/span><\/span><button[^>]*data-act="update"/.test(env.html()), true);
     env.click("update");
     check("Update asks the bridge", env.sent("update-now").length, 1);
     env.board(files, { update: { latest: "1.2.0" }, updating: { step: "wait", what: "update", to: "1.2.0" } });
@@ -613,19 +612,59 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("…which waits for the scripts first", /Updates once the scripts finish/.test(env.html()), true);
     env.board(files, { update: { latest: "1.2.0" }, failed: { what: "update", error: "local changes", url: RELEASE } });
     await env.clock.advance(400);
-    check("a failed update says why on a line of its own, the release page on the last line",
-          [/<div class="why">.*Couldn't update to 1\.2\.0: local changes<\/span><\/div><div class="line">/.test(env.html()),
-           /<div class="line">.*data-act="release"[^>]*>Open release</.test(env.html())], [true, true]);
+    check("a failed update: the release page on the last line, and why under it, as a field's error",
+          [/<div class="line">.*data-act="release"[^>]*>Open release<\/button><\/span><\/div><div class="why">.*Couldn't update to 1\.2\.0: local changes<\/span><\/div><\/div>$/.test(env.html()),
+           /data-act="skip"/.test(env.html())], [true, true]);
     env.click("release", null, { url: RELEASE });
     check("…in the browser", env.posted.filter((m) => m.type === "open-url").map((m) => m.url), [RELEASE]);
 
     env.ws().receive({ type: "outdated", running: "2026-10-08.6", expected: "2026-10-08.7" });
     env.board(files);
     await env.clock.advance(400);
-    check("newer plugin code on disk: Reload, on the last line, pinned",
-          [/<div class="line">.*New build<\/span><button[^>]*data-act="reload"/.test(env.html()), env.pinned()], [true, [false, true]]);
+    check("newer plugin code on disk: Reload with a circling arrow, on the last line, pinned, and no Skip",
+          [/<div class="line">.*New build<\/span><button[^>]*data-act="reload"[^>]*><svg[^>]*><path d="M8\.6 5\.9A/.test(env.html()), env.pinned(), /data-act="skip"/.test(env.html())],
+          [true, true, false]);
     env.click("reload", "here");
     check("Reload asks the bridge", env.sent("reload-all").length, 1);
+    env.board(files, { failed: { what: "reload", error: "files stayed busy" } });
+    await env.clock.advance(400);
+    check("a failed reload: why under the line, and Reload again",
+          /<div class="line">.*data-act="reload".*<\/div><div class="why">.*Couldn't reload: files stayed busy/.test(env.html()), true);
+  }
+
+  // ─── Skip: a release goes away until the next one ───────────────────────
+  {
+    const env = load();
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    const files = [file("KEY1", "Dashboard")];
+    env.board(files, { update: { latest: "1.2.0", current: "1.1.0", url: RELEASE } });
+    await env.clock.advance(400);
+    env.click("skip", null, { version: "1.2.0" });
+    check("Skip tells the bridge which release", env.sent("skip"), [{ type: "skip", version: "1.2.0" }]);
+    check("…and the line goes at once", env.pinned(), false);
+    env.board(files, { update: { latest: "1.2.0", current: "1.1.0", url: RELEASE } });
+    await env.clock.advance(400);
+    check("…and stays away with a bridge that still offers it", env.pinned(), false);
+    env.board(files, { release: { latest: "1.2.0", url: RELEASE } });
+    await env.clock.advance(400);
+    check("…as a link too", env.pinned(), false);
+    env.ws().receive({ type: "outdated", running: "2026-10-08.6", expected: "2026-10-08.7" });
+    env.board(files, { update: { latest: "1.2.0", url: RELEASE } });
+    await env.clock.advance(400);
+    check("newer plugin code on disk still shows, with Reload", [/New build/.test(env.html()), /data-act="update"/.test(env.html())], [true, false]);
+  }
+  {
+    const env = load();
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    const files = [file("KEY1", "Dashboard")];
+    env.board(files, { update: { latest: "1.2.0", url: RELEASE } });
+    await env.clock.advance(400);
+    env.click("skip", null, { version: "1.2.0" });
+    env.board(files, { update: { latest: "1.2.1", url: RELEASE } });
+    await env.clock.advance(400);
+    check("a newer release than the skipped one brings the line back", /Update to 1\.2\.1/.test(env.html()), true);
   }
 
   // ─── a bridge with the Update button off ────────────────────────────────
@@ -636,8 +675,8 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     const files = [file("KEY1", "Dashboard")];
     env.board(files, { release: { latest: "1.2.0", current: "1.1.0", url: RELEASE } });
     await env.clock.advance(400);
-    check("a new release: the last line links to it, with no Update",
-          [/<span class="what"><button[^>]*class="out"[^>]*data-act="release"[^>]*><span>1\.2\.0 is out<\/span>/.test(env.html()),
+    check("a new release: the last line links to it, with no Update, and Skip before it",
+          [/<span class="what"><span class="skip-w">.*<\/span><button[^>]*class="out"[^>]*data-act="release"[^>]*><span>1\.2\.0 is out<\/span>/.test(env.html()),
            /data-act="update"/.test(env.html())], [true, false]);
     env.click("release", null, { url: RELEASE });
     check("…which opens in the browser and asks nothing of the bridge",
