@@ -281,6 +281,10 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
   }
 
   // ─── this file's island ─────────────────────────────────────────────────
+  // (The stubs have no layout: what keeps an island as narrow as the window,
+  // whatever its names, is in the CSS.)
+  check("an island is never wider than the window, however long the names in its row",
+        /\n\.island \{[^}]*\bmin-width: 0;[^}]*overflow: clip;/.test(html), true);
   {
     const env = load();
     const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;  // the bridge's time, `sec` seconds ago

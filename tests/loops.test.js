@@ -86,6 +86,16 @@ const DEADLINE = /^aborted: the loop on line (\d+)( of [^ ]+)? was still running
     check(label + ": ends at the deadline, on its line", [r.type, m && Number(m[1]), r.line], ["error", line, line]);
   }
   {
+    // the try catches the inner loop's stop and the outer loop goes round again; 3 s is the
+    // test's own way out, should no guard ask the clock again
+    const t0 = Date.now();
+    const code = "const t0 = Date.now();\nfor (let r = 0; r < 2; r++) {\n  try { while (Date.now() - t0 < 3000) {} } catch (e) {}\n}\nreturn 'went on';";
+    const r = await exec(env, code, { timeout: 0.15 });
+    const m = DEADLINE.exec(r.text || "");
+    check("a try that catches its inner loop's stop: the loop around it stops next, on its line",
+      [r.type, m && Number(m[1]), r.line, Date.now() - t0 < 1500], ["error", 2, 2, true]);
+  }
+  {
     const r = await exec(env, "const t = [1, 2].map((x) => {\n  while (x) {}\n  return x;\n});", { timeout: 0.15, quick: false });
     check("…also with the exec's change tracking", [r.type, DEADLINE.test(r.text), r.line], ["error", true, 2]);
   }

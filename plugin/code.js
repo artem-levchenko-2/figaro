@@ -8,7 +8,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-13.1";
+const PLUGIN_VERSION = "2026-10-13.2";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -1255,8 +1255,10 @@ function guardLoops(code) {
     }
     return lo + 1;
   };
-  // --N is 0 every `step` rounds, and G(line) gives the next step, never 0
-  const guard = (at) => "(--" + GUARD_N + " || (" + GUARD_N + " = " + GUARD_G + "(" + lineAt(at) + ")))";
+  // --N gets down to 0 every `step` rounds, and G(line) gives the next step,
+  // never 0. When G throws into a try of the script's around an inner loop, N
+  // stays at 0 and goes below it, and every round after asks G again.
+  const guard = (at) => "(--" + GUARD_N + " > 0 || (" + GUARD_N + " = " + GUARD_G + "(" + lineAt(at) + ")))";
   const ins = [];  // [index, text]
   const head = /(^|[^\w$#.\u0080-\uffff])(while|for)\s*(await\b)?\s*\(/g;  // not in a name (éwhile)
   let m;
