@@ -182,12 +182,15 @@ def payload():
             for key, l in lost_files(done)]
     # A newer release goes as `update` (the window's Update button) or, with the
     # button off, as `release` (a link to it): a window too old to know `release`
-    # shows nothing.
+    # shows nothing. One the user skipped goes as neither, and `skipped` names it
+    # for the window that heard of it from the bridge's `update` message.
     button = bridge.update_allowed()
+    offer = bridge.offered()
     board = {"type": "board", "now": time.time(), "active_for": ACTIVE_FOR,
              "version": bridge.VERSION, "files": files, "lost": lost,
-             "update": bridge.UPDATE if button else None,
-             "release": None if button else bridge.UPDATE,
+             "update": offer if button else None,
+             "release": None if button else offer,
+             "skipped": bridge.SKIPPED,
              "stale": _bridge_stale()}
     board.update(bridge_update.board())
     return board
@@ -417,6 +420,8 @@ async def handle(conn_id, m):
         bridge_update.start(pull=True)
     elif mtype == "reload-all":
         bridge_update.start(pull=False)
+    elif mtype == "skip":
+        bridge.skip_release(m.get("version"))
     else:
         return False
     return True

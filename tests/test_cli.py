@@ -478,6 +478,15 @@ def test_doctor_asks_the_agent_to_tell_the_user_of_a_release(monkeypatch, capsys
     assert f"→ tell the user: {how}" in out and "git pull" not in out
 
 
+def test_doctor_keeps_quiet_about_a_release_the_user_skipped(monkeypatch, capsys):
+    status = {"ok": True, "version": "1.1.0", "plugin_connected": True, "files": [], "skipped": "1.2.0",
+              "update": {"latest": "1.2.0", "current": "1.1.0", "url": "https://example.com/r"}}
+    trip = lambda p: {"ok": True, "value": 2 if "1 + 1" in p["code"] else {"file": "Draft"}}  # noqa: E731
+    rc, out, _, _ = cli(monkeypatch, capsys, "doctor", bridge_reply=FakeBridge(status, trip))
+    assert rc == 0 and "✓  Figaro 1.2.0 is released (this is 1.1.0): the user skipped it" in out
+    assert "tell the user" not in out
+
+
 def test_created_names_the_outermost_new_layers():
     url = "https://www.figma.com/design/K/F?node-id="
     items = [{"op": "+", "id": "5:2", "name": "Icon", "url": url + "5-2"}]

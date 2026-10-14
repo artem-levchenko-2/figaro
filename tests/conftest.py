@@ -55,6 +55,7 @@ def clean_state(tmp_path, tmp_path_factory, monkeypatch):
             registry.clear()
         bridge.ALLOWED_HOSTS = set()
         bridge.UPDATE = None
+        bridge.SKIPPED = None
         bridge_exec._loaded = False
         bridge_board._send_task = None
         bridge_update.STATE.update(step=None, what=None, to=None)

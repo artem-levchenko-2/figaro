@@ -666,6 +666,15 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     check("a newer release than the skipped one brings the line back", /Update to 1\.2\.1/.test(env.html()), true);
   }
+  {
+    const env = load();
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.ws().receive({ type: "update", latest: "1.2.0", current: "1.1.0", url: RELEASE });
+    env.board([file("KEY1", "Dashboard")], { skipped: "1.2.0" });
+    await env.clock.advance(400);
+    check("a release skipped in another window has no line here, though the bridge said update at hello", env.pinned(), false);
+  }
 
   // ─── a bridge with the Update button off ────────────────────────────────
   {

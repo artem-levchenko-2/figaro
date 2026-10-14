@@ -159,7 +159,8 @@ bottom of the plugin's window says so: **Update** installs exactly that
 release, restarts the bridge and reloads the plugin as soon as no script is
 running. With `FIGARO_UPDATE_BUTTON=off` there is only a link to the release
 ([Settings](#settings)). **Skip**, there while the pointer is on the window,
-hides the line until a newer release, or until the plugin runs again.
+hides that release in every window until a newer one, and agents stop
+mentioning it.
 
 To remove Figaro, run the installer with `--uninstall` (`-Uninstall` on
 Windows), remove the plugin under **Plugins → Development → Manage plugins in

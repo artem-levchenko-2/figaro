@@ -425,6 +425,7 @@ function takeBoard(m) {
   board = {
     version: m.version || "", update: m.update || null, release: m.release || null, stale: !!m.stale,
     updating: m.updating || null, failed: m.failed || null,
+    skipped: typeof m.skipped === "string" ? m.skipped : null,
     files: (m.files || []).map(fileOf),
     lost: (Array.isArray(m.lost) ? m.lost : []).filter((f) => f && f.lost).map(fileOf),
   };
@@ -647,9 +648,9 @@ function island(f, cls, anim) {
 // The window's last line, when there is something to do about the Figaro
 // version: update to a newer release, or reload newer plugin code from disk.
 // Why an update or a reload failed goes on a line under it. A release the user
-// skipped here (`skipped`) has no line, until a newer one comes out; the bridge
-// keeps the skip for every window, and this one keeps it for itself with a
-// bridge that doesn't.
+// skipped has no line, until a newer one comes out: the bridge keeps the skip for
+// every window and names it on the board (`board.skipped`), and this window keeps
+// its own (`skipped`) for a bridge too old to know Skip.
 let skipped = null;
 function footer() {
   const on = conn === "ok";
@@ -658,7 +659,7 @@ function footer() {
   const doing = on && board && board.updating;
   const failed = on && !doing && board && board.failed;
   const newer = latest || (release && release.latest) || "";
-  const away = !!newer && newer === skipped;
+  const away = !!newer && (newer === skipped || newer === (board && board.skipped));
   const reload = '<button type="button" class="go build" data-act="reload" title="Reload the plugin with the code on disk, once the scripts finish">'
     + ICON.again + "Reload</button>";
   let why = "", right = "", skip = false;

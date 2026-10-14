@@ -15,6 +15,7 @@ import pytest
 import bridge
 import bridge_board
 import bridge_update
+import figaro_token
 from test_bridge import make_client, run
 from test_exec import CAPS as OLD_CAPS, FakePlugin
 
@@ -582,6 +583,51 @@ def test_the_update_button_is_on_unless_turned_off(monkeypatch):
         bridge.UPDATE = {"latest": NEWER, "current": bridge.VERSION, "url": bridge.release_url(NEWER)}
         board = bridge_board.payload()
         assert board["update"]["latest"] == NEWER and board["release"] is None
+
+
+def test_skip_hides_a_release_from_every_window_and_the_agents_until_a_newer_one():
+    bridge.UPDATE = {"latest": NEWER, "current": bridge.VERSION, "url": bridge.release_url(NEWER)}
+    kept = figaro_token.token_path(bridge.PORT).parent / "skipped-release"
+
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, name="A", key="KEY1", caps=CAPS) as a, \
+                FakePlugin(c, name="B", key="KEY2", caps=CAPS) as b:
+            await a.ws.send_str(json.dumps({"type": "skip", "version": "9.9.8"}))  # not the one on offer
+            await settle()
+            assert boards(b)[-1]["update"]["latest"] == NEWER and bridge.SKIPPED is None
+            await a.ws.send_str(json.dumps({"type": "skip", "version": NEWER}))
+            await settle()
+            for p in (a, b):
+                board = boards(p)[-1]
+                assert (board["update"], board["release"], board["skipped"]) == (None, None, NEWER)
+            assert kept.read_text(encoding="utf-8").strip() == NEWER
+            r = await c.post("/exec", json={"code": "return 1"})
+            assert "released" not in ((await r.json()).get("notice") or "")
+            status = await (await c.get("/status")).json()
+            assert status["update"]["latest"] == NEWER and status["skipped"] == NEWER
+            async with FakePlugin(c, name="C", key="KEY3", caps=CAPS) as late:
+                assert not late.of("update")  # a window that comes later hears nothing of it
+        await c.close()
+
+        bridge.SKIPPED = None  # the bridge starts again: the file keeps the skip
+        c = await make_client()
+        assert bridge.SKIPPED == NEWER
+        async with FakePlugin(c, caps=CAPS) as p:
+            assert boards(p)[-1]["update"] is None
+            await bridge.set_update("10.0.0")  # a newer release is offered again
+            await settle()
+            assert boards(p)[-1]["update"]["latest"] == "10.0.0" and p.of("update")
+        await c.close()
+    run(go())
+
+
+def test_skip_with_the_update_button_off_hides_the_link(monkeypatch):
+    monkeypatch.setenv("FIGARO_UPDATE_BUTTON", "off")
+    bridge.UPDATE = {"latest": NEWER, "current": bridge.VERSION, "url": bridge.release_url(NEWER)}
+    assert bridge_board.payload()["release"]["latest"] == NEWER
+    assert bridge.skip_release(NEWER)
+    assert bridge_board.payload()["release"] is None
 
 
 def test_update_now_with_no_newer_release_pulls_nothing(quick_update):

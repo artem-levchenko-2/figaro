@@ -107,7 +107,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - `bridge.py` — HTTP and WebSocket, routing to files (a file's scripts go to its first live window, and a
   later window of the same file waits until that one closes), the queue and lock per file, Origin/Host
   checks, the API token and the plugin socket's User-Agent (`_guard`; `figaro_token.py` is the path and the
-  reader both sides share), the release check, `ERROR_HINTS`.
+  reader both sides share), the release check and the release the user skipped (the window's Skip,
+  kept in `skipped-release` next to the token), `ERROR_HINTS`.
 - `bridge_board.py` — what every plugin window shows (the `board`: each file's agents — at work from their
   first script until five quiet minutes or `figaro done`, its note, a failed last script, the user's Stop —
   and recent changes; a read leaves a done or a Stop on show, and `figaro doctor`'s checks (`probe`) stay

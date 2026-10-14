@@ -133,6 +133,7 @@ VERSION = "1.2.2"
 REPO = "artem-levchenko-2/figaro"
 UPDATE_EVERY = 6 * 60 * 60   # seconds between checks
 UPDATE: dict | None = None   # {"latest", "current", "url"} once a newer release exists
+SKIPPED: str | None = None   # the release the user skipped with the window's Skip (skip_release)
 _SEMVER = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 
 
@@ -196,12 +197,51 @@ async def set_update(latest):
 
 
 async def _send_update(ws):
-    if not UPDATE or not update_allowed():
+    if not offered() or not update_allowed():
         return
     try:
         await ws.send_str(json.dumps({"type": "update", **UPDATE}))
     except Exception:
         pass
+
+
+# The window's Skip hides a release until a newer one: from every window, and
+# from the agents' notes, which would have them tell the user about it again.
+# It is kept next to the API token (~/.figaro/skipped-release), so it holds
+# across restarts of the bridge and of the plugin.
+def _skipped_file():
+    return figaro_token.token_path(PORT).parent / "skipped-release"
+
+
+def load_skipped():
+    global SKIPPED
+    try:
+        text = _skipped_file().read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        text = ""
+    SKIPPED = text if parse_version(text) else None
+
+
+def skip_release(version):
+    """The window's Skip. Only the release on offer: False for any other."""
+    global SKIPPED
+    if not UPDATE or version != UPDATE["latest"]:
+        return False
+    SKIPPED = version
+    path = _skipped_file()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(version + "\n", encoding="utf-8")
+    except OSError as e:
+        print(f"[update] can't keep the skipped release in {path} ({e}): until the bridge restarts")
+    print(f"[update] Figaro {version} skipped in the plugin's window")
+    bridge_board.changed()
+    return True
+
+
+def offered():
+    """The newer release, unless the user skipped it."""
+    return UPDATE if UPDATE and UPDATE["latest"] != SKIPPED else None
 
 
 async def _update_loop(app):
@@ -1104,7 +1144,7 @@ def _version_notice(info):
                      f"({info.get('pluginVersion') or 'unversioned'}, current "
                      f"{expected_plugin_version()}) — update it: figaro reload "
                      f"(or re-run it in Figma: Plugins → Development → Figaro)")
-    if UPDATE:
+    if offered():
         # Not "git pull": an agent's pull lands under other agents' running scripts
         # (with Hot reload on, Figma restarts the plugin at once). Update waits for them.
         parts.append(f"Figaro {UPDATE['latest']} is released (this is {VERSION}) — tell the user: "
@@ -1154,6 +1194,7 @@ async def status_handler(request: web.Request) -> web.Response:
         "plugin_version": expected_plugin_version(),
         "bridge_outdated": bridge_outdated(),
         "update": UPDATE,
+        "skipped": SKIPPED,
         "update_button": update_allowed(),
         "files": files,
         "pending": len(PENDING),
@@ -1215,6 +1256,7 @@ async def root_handler(request: web.Request) -> web.Response:
 
 
 def build_app() -> web.Application:
+    load_skipped()
     app = web.Application(client_max_size=64 * 1024 * 1024,  # 16 → 64 MB, like the WebSocket
                           middlewares=[guard])
     app.router.add_get("/", root_handler)

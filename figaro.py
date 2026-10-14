@@ -564,7 +564,10 @@ def cmd_doctor(args):
     if current and not stale:
         ok(f"plugin build {current} everywhere")
     update = resp.get("update")
-    if update:
+    if update and update.get("latest") == resp.get("skipped"):
+        ok(f"Figaro {update.get('latest')} is released (this is {update.get('current')}): "
+           "the user skipped it in the plugin's window")
+    elif update:
         # Not a failure — everything works, there is just something newer. Not "git pull":
         # an agent's pull lands under other agents' scripts, while Update waits for them.
         print(f"  !  Figaro {update.get('latest')} is released (this is {update.get('current')})")

@@ -22,8 +22,9 @@ file; the release notes say when it has to be imported again.
 - **The window's last line shows only when there is something to do:** a new release (Update, or a link with
   `FIGARO_UPDATE_BUTTON=off`), a new build of the plugin (Reload), or why an update or a reload failed, which
   now comes under the line, like a field's error; after a failed reload the line offers Reload again. While
-  the pointer is on the window, **Skip** hides a release until a newer one, in that window until the plugin
-  runs again. Update has a download icon, Reload a circular arrow. `figaro doctor` still shows the version.
+  the pointer is on the window, **Skip** hides a release until a newer one, in every window and across
+  restarts (the bridge keeps it in `~/.figaro/skipped-release`), and agents are no longer asked to tell the
+  user about it. Update has a download icon, Reload a circular arrow. `figaro doctor` still shows the version.
 
 ### Fixed
 
