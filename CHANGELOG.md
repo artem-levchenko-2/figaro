@@ -36,7 +36,8 @@ file; the release notes say when it has to be imported again.
   way, whichever edge moves. What you dragged below the canvas's bottom edge stays out of sight there. Only a
   window taller than the whole canvas is cut short, and its islands scroll as one list: an open island's row
   stays at the top while its panel scrolls under it, and the scrollbar is thin and shows only while the list
-  scrolls or the pointer is on it. The line with the version comes last, at the window's bottom.
+  scrolls or the pointer is on it. The line with the version, when there is one, comes last, at the window's
+  bottom.
 - **A loop that never ends no longer holds Figma.** A script runs on Figma's main thread, so a `while (true)`
   froze Figma, nothing could stop it, and the file stayed busy. Now every `while`, `do … while` and `for (;;)`
   loop of a script or a `--lib` file ends at the script's `--timeout`: "the loop on line N was still running

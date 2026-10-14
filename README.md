@@ -160,7 +160,8 @@ release, restarts the bridge and reloads the plugin as soon as no script is
 running. With `FIGARO_UPDATE_BUTTON=off` there is only a link to the release
 ([Settings](#settings)). **Skip**, there while the pointer is on the window,
 hides that release in every window until a newer one, and agents stop
-mentioning it.
+mentioning it. To bring it back, delete `.figaro/skipped-release` in your home
+folder and restart the bridge, as in [Settings](#settings).
 
 To remove Figaro, run the installer with `--uninstall` (`-Uninstall` on
 Windows), remove the plugin under **Plugins → Development → Manage plugins in
