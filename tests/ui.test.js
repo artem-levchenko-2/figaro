@@ -736,6 +736,32 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
           [grids(), /<span><span class="shim">working<\/span> <span[^>]*data-clock/.test(env.html())], [2, true]);
   }
 
+  // ─── an open island with nothing in it yet ─────────────────────────────
+  {
+    const env = load();
+    const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Kit")]);
+    await env.clock.advance(400);
+    env.click("toggle", "here");
+    env.click("toggle", "doc:KEY2");
+    const ghosts = () => (env.html().match(/class="agent empty"/g) || []).length;
+    check("no agent, no change: a ghost of an agent's row says how to get one, in this file and the other",
+          [ghosts(), /No agents yet/.test(env.html()), /a link to this file:/.test(env.html()), /a link to the file:/.test(env.html())],
+          [2, true, true, true]);
+    env.board([file("KEY1", "Dashboard", { recent: [{ agent: "designer", at: ago(5), kind: "ok", summary: "Created KPI card" }] }),
+               file("KEY2", "Kit", { agents: [agent("icons", { since: ago(30), last: ago(0), busy: true })] })]);
+    await env.clock.advance(400);
+    check("…and goes once there is a change or an agent", [ghosts(), /Recent/.test(env.html()), /Agents/.test(env.html())], [0, true, true]);
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Kit")]);
+    await env.clock.advance(400);
+    env.ws().drop();
+    await env.clock.advance(50);
+    check("…nor shows while the bridge is away: the window says that instead",
+          [ghosts(), /Looking for the bridge|Waiting for the bridge/.test(env.html())], [0, true]);
+  }
+
   // ─── sounds ─────────────────────────────────────────────────────────────
   {
     const env = load();
