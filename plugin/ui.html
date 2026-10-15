@@ -923,13 +923,15 @@ function render() {
 }
 
 // Every pixel grid and shimmer keeps one beat, however late it was drawn: their
-// animations count from the page's start, not each from its own.
+// animations count from the page's start, not each from its own. After a
+// redraw, and whenever one starts anew without one (a page that was hidden).
 function inStep() {
   if (typeof document.getAnimations !== "function") return;
   for (const a of document.getAnimations()) {
     if ((a.animationName === "px" || a.animationName === "shim") && a.startTime !== 0) a.startTime = 0;
   }
 }
+document.addEventListener("animationstart", (e) => { if (e.animationName === "px" || e.animationName === "shim") inStep(); });
 
 // The window follows its islands: it asks the sandbox (code.js) for the height
 // of all of them and the line under them, and the sandbox puts it where that
