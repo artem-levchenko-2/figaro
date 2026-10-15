@@ -125,8 +125,8 @@ button { font: inherit; }
    Copyright (c) 2026 Shane Levine). The 650 ms cycle is shorter than the sweep,
    so two fronts are always in flight; every grid and shimmer keeps one beat
    (inStep). */
-.px { --c: var(--run); flex: none; display: grid; grid-template-columns: repeat(3, 3px); gap: 1px; }
-.px i { width: 3px; height: 3px; border-radius: .5px; background: var(--c); opacity: .18; animation: px 650ms ease-in-out 90ms infinite; }
+.px { --c: var(--run); flex: none; display: grid; grid-template-columns: repeat(3, 2.5px); gap: 1px; }
+.px i { width: 2.5px; height: 2.5px; border-radius: .5px; background: var(--c); opacity: .18; animation: px 650ms ease-in-out 90ms infinite; }
 .px i:nth-child(4) { animation-delay: 0ms; }
 .px i:nth-child(2), .px i:nth-child(6), .px i:nth-child(8) { animation-delay: 180ms; }
 .px i:nth-child(3), .px i:nth-child(9) { animation-delay: 270ms; }
@@ -386,26 +386,24 @@ function toSandbox(msg) {
 }
 
 // ─── sounds ──────────────────────────────────────────────────────────────
-// Short, quiet cues: for what you press in the window, and for what happens in
-// this window's own file, so it is heard once, not once per window: an agent
-// begins, is done, a script of its fails, Figma stops answering. The five for
-// presses are Beautiful UI's interaction sounds (MIT, Copyright (c) 2026 Shane
-// Levine), played the way @web-kits/audio plays them; the four for the file
-// are made of the same parts. A layer: its source (an oscillator's type and
-// Hz, or a sweep [from, to], or white noise), a filter [type, Hz, Q], when it
-// starts (s), its envelope [attack, decay, release] (s) and its gain.
+// Short, quiet cues: for what you press in the window, and when Figma stops
+// answering in this window's own file, so that is heard once, not once per
+// window. press, tick, page and pulse are Beautiful UI's interaction sounds
+// (MIT, Copyright (c) 2026 Shane Levine), played the way @web-kits/audio plays
+// them; the others are made of the same parts. A layer: its source (an oscillator's
+// type and Hz, or a sweep [from, to], or white noise), a filter [type, Hz or a
+// sweep, Q], when it starts (s), its envelope [attack, decay, release] (s) and
+// its gain.
 const CUES = {
   press: [{ src: "noise", filter: ["highpass", 2400], env: [0.0003, 0.009], gain: 0.13 },
           { src: "sine", hz: 680, env: [0.0006, 0.022, 0.008], gain: 0.24 }],
   tick: [{ src: "square", hz: 2100, filter: ["bandpass", 2600, 1.6], env: [0.0004, 0.028], gain: 0.24 }],
-  release: [{ src: "noise", filter: ["lowpass", 1600, 0.9], env: [0.001, 0.055], gain: 0.32 }],
   page: [{ src: "sine", hz: [430, 640], env: [0.002, 0.11, 0.03], gain: 0.4 }],
   pulse: [{ src: "sine", hz: 330, filter: ["lowpass", 2200], env: [0.002, 0.13, 0.04], gain: 0.5 }],
-  start: [{ src: "sine", hz: [520, 780], env: [0.002, 0.09, 0.02], gain: 0.25 }],
-  done: [{ src: "sine", hz: 660, env: [0.002, 0.16, 0.04], gain: 0.34 },
-         { src: "sine", hz: 990, at: 0.075, env: [0.002, 0.22, 0.05], gain: 0.3 }],
-  oops: [{ src: "triangle", hz: 440, filter: ["lowpass", 1800], env: [0.002, 0.14, 0.03], gain: 0.42 },
-         { src: "triangle", hz: 330, at: 0.09, filter: ["lowpass", 1800], env: [0.002, 0.2, 0.04], gain: 0.42 }],
+  stop: [{ src: "noise", filter: ["lowpass", 1400, 0.8], env: [0.0008, 0.035], gain: 0.3 },
+         { src: "sine", hz: [340, 140], env: [0.002, 0.12, 0.02], gain: 0.5 }],
+  skip: [{ src: "noise", filter: ["bandpass", [700, 5000], 1.2], env: [0.03, 0.2], gain: 0.7 },
+         { src: "sine", hz: [600, 1500], env: [0.01, 0.14, 0.03], gain: 0.12 }],
   alarm: [{ src: "square", hz: 220, filter: ["lowpass", 900], env: [0.002, 0.12], gain: 0.3 },
           { src: "square", hz: 220, at: 0.14, filter: ["lowpass", 900], env: [0.002, 0.12], gain: 0.3 }],
 };
@@ -454,7 +452,7 @@ function voice(ctx, l, t) {
   let src;
   if (l.src === "noise") {
     if (!cueNoise) {
-      cueNoise = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.25), ctx.sampleRate);
+      cueNoise = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.5), ctx.sampleRate);
       const data = cueNoise.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     }
@@ -471,7 +469,9 @@ function voice(ctx, l, t) {
   if (l.filter) {
     const f = ctx.createBiquadFilter();
     f.type = l.filter[0];
-    f.frequency.setValueAtTime(l.filter[1], t);
+    const [from, to] = Array.isArray(l.filter[1]) ? l.filter[1] : [l.filter[1]];
+    f.frequency.setValueAtTime(from, t);
+    if (to) f.frequency.exponentialRampToValueAtTime(to, t + length);
     f.Q.value = l.filter[2] || 1;
     out.connect(f);
     out = f;
@@ -487,29 +487,13 @@ function voice(ctx, l, t) {
   return t + length + 0.1;
 }
 
-// What this window's own file went through since the last board, as one cue,
-// the most urgent: Figma stopped answering there, a script of an agent's
-// failed (at most one cue in OOPS_EVERY_MS), an agent is done, an agent began.
-// Nothing for the first board after the window connects.
-const OOPS_EVERY_MS = 15 * 1000;
-let oopsAt = -Infinity;
+// Figma stopped answering in this window's own file since the last board: the
+// alarm. Nothing for the first board after the window connects.
 function hear(before, after) {
   if (!before || !after || !identity.docSig) return;
   const mine = (b) => b.files.find((f) => f.sig === identity.docSig);
   const was = mine(before), now = mine(after);
-  if (!now) return;
-  if (now.stuck && !(was && was.stuck)) return cue("alarm");
-  const old = new Map((was ? was.agents : []).map((a) => [a.name, a]));
-  let oops = false, done = false, start = false;
-  for (const a of now.agents) {
-    const o = old.get(a.name);
-    if (a.error && !(o && o.error && o.error.at === a.error.at)) oops = true;
-    if (a.done && !(o && o.done && o.done.at === a.done.at)) done = true;
-    if (stateOf(a) === "working" && !(o && stateOf(o) === "working")) start = true;
-  }
-  if (oops && Date.now() - oopsAt >= OOPS_EVERY_MS) { oopsAt = Date.now(); cue("oops"); }
-  else if (done) cue("done");
-  else if (start && !oops) cue("start");
+  if (now && now.stuck && !(was && was.stuck)) cue("alarm");
 }
 
 // For debugging via the plugin console.
@@ -1071,7 +1055,7 @@ function reveal(id) {
 function act(name, fid, el) {
   const f = fid ? filesNow().find((x) => x.id === fid) : null;
   if (name === "toggle" && f) {
-    cue(open.has(f.id) ? "release" : "tick");
+    cue(open.has(f.id) ? "press" : "tick");
     if (open.has(f.id)) {
       open.delete(f.id);
       if (!calm()) { closing.set(f.id, Date.now()); shutId = f.id; }
@@ -1083,7 +1067,7 @@ function act(name, fid, el) {
     }
     render();
   } else if (name === "stop" && f && f.doc && el.dataset.agent) {
-    cue("release");
+    cue("stop");
     stopping.set(f.doc + "\n" + el.dataset.agent, Date.now());
     send({ type: "stop", doc: f.doc, agent: el.dataset.agent });
     render();
@@ -1094,7 +1078,7 @@ function act(name, fid, el) {
     cue("pulse");
     send({ type: "reload-all" });
   } else if (name === "skip" && el.dataset.version) {
-    cue("release");
+    cue("skip");
     skipped = el.dataset.version;
     send({ type: "skip", version: skipped });
     hint(false);

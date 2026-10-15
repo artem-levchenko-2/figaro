@@ -753,34 +753,26 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("opening an island: a tick", env.heard(), ["square 2100"]);
     env.click("toggle", "here");
     await env.clock.advance(50);
-    check("…closing it: a clack", env.heard(), ["noise"]);
-    env.board([file("KEY1", "Dashboard", { agents: [designer(), icons] }), kit([])]);
-    await env.clock.advance(50);
-    check("an agent begins in this file: a blip up", env.heard(), ["sine 520"]);
-    env.board([file("KEY1", "Dashboard", { agents: [designer({ busy: false, done: { text: "Have a look", at: ago(0) } }), icons] }),
-               kit([agent("tokens", { since: ago(1), last: ago(0), busy: true })])]);
-    await env.clock.advance(50);
-    check("an agent is done: two notes up; another file's agent beginning is that window's to play", env.heard(), ["sine 660", "sine 990"]);
+    check("…closing it: a press", env.heard(), ["noise", "sine 680"]);
     const failing = (at) => agent("icons", { since: ago(30), last: ago(0), busy: true, error: { text: "boom", line: 3, at } });
-    env.board([file("KEY1", "Dashboard", { agents: [failing(ago(0))] }), kit([])]);
+    env.board([file("KEY1", "Dashboard", { agents: [designer(), icons] }), kit([])]);
+    env.board([file("KEY1", "Dashboard", { agents: [designer({ busy: false, done: { text: "Have a look", at: ago(0) } }), failing(ago(0))] }), kit([])]);
     await env.clock.advance(50);
-    check("a script of an agent's fails: two notes down", env.heard(), ["triangle 440", "triangle 330"]);
-    await env.clock.advance(5000);
-    env.board([file("KEY1", "Dashboard", { agents: [failing(ago(0))] }), kit([])]);
-    await env.clock.advance(50);
-    check("…another within 15 s: quiet", env.heard(), []);
-    await env.clock.advance(15000);
-    env.board([file("KEY1", "Dashboard", { agents: [failing(ago(0))] }), kit([])]);
-    await env.clock.advance(50);
-    check("…and after them, two notes down again", env.heard(), ["triangle 440", "triangle 330"]);
+    check("an agent begins, is done, a script fails: quiet", env.heard(), []);
     env.board([file("KEY1", "Dashboard", { agents: [failing(ago(20))], stuck: { agent: "icons", since: ago(40) } }), kit([])]);
     await env.clock.advance(50);
     check("Figma stops answering in this file: two low knocks", env.heard(), ["square 220", "square 220"]);
+    env.board([file("KEY1", "Dashboard", { agents: [failing(ago(20))], stuck: { agent: "icons", since: ago(40) } }),
+               kit([]), file("KEY3", "Sandbox", { stuck: { agent: "tokens", since: ago(40) } })]);
+    await env.clock.advance(50);
+    check("…once, and another file's is that window's to play", env.heard(), []);
     env.click("stop", "here", { agent: "icons" });
     env.click("update");
     env.click("layer", null, { id: "1:2" });
+    env.click("skip", null, { version: "1.2.0" });
     await env.clock.advance(50);
-    check("Stop clacks, Update pulses, a layer blips", env.heard(), ["noise", "sine 330", "sine 430"]);
+    check("Stop thuds down, Update pulses, a layer blips, Skip flies off", env.heard(),
+          ["noise", "sine 340", "sine 330", "sine 430", "noise", "sine 600"]);
     await env.clock.advance(4000);
     check("the sounds' AudioContext sleeps a moment after the last", env.tone() === "none" && env.cues(), "suspended");
   }
