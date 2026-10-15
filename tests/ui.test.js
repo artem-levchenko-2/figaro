@@ -719,7 +719,6 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("its scripts still show in this file's island", /designer/.test(env.html()), true);
   }
 
-  console.log(failed ? `\n${failed} FAILED` : "\nall window checks passed");
   // ─── at work: a pixel grid, and the word shimmers ───────────────────────
   {
     const env = load();
@@ -774,6 +773,9 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.board([file("KEY1", "Dashboard", { agents: [designer()] }), kit([])]);
     await env.clock.advance(400);
     check("no sound for what the first board finds", env.heard(), []);
+    check("…and no AudioContext for the sounds yet", env.cues(), "none");
+    await env.clock.advance(200);
+    check("…but a moment later there is one, asleep, so the first click needn't wait for it", env.cues(), "suspended");
     env.click("toggle", "here");
     await env.clock.advance(50);
     check("opening an island: a blip up", env.heard(), ["sine 430"]);
@@ -816,7 +818,16 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(50);
     check("…and turned on again, they do", env.heard(), ["sine 640"]);
   }
+  {
+    const env = load();
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard")], { sounds: false });
+    await env.clock.advance(2000);
+    check("with the sounds off from the start, no AudioContext is made for them", env.cues(), "none");
+  }
 
+  console.log(failed ? `\n${failed} FAILED` : "\nall window checks passed");
   process.exit(failed ? 1 : 0);
 })().catch((e) => {
   console.error(e);

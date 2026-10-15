@@ -414,22 +414,43 @@ const CUES = {
 const CUE_VOLUME = 0.32;   // Beautiful UI's
 const CUE_LATE_MS = 300;   // a cue that couldn't play by then is dropped, not played late
 const CUE_HUSH_MS = 3000;  // the cues' own AudioContext, apart from the tone's, sleeps after that
+const CUE_WARM_MS = 500;   // after the first board, the cues' AudioContext is made (warmCues)
 let cueAudio = null;
 let cueOut = null;
 let cueNoise = null;
 let cueHush = null;
+let cueWarm = null;
+
+function cueContext() {
+  if (!cueAudio) {
+    cueAudio = new AudioContext();
+    cueOut = cueAudio.createGain();
+    cueOut.gain.value = CUE_VOLUME;
+    cueOut.connect(cueAudio.destination);
+  }
+  return cueAudio;
+}
+
+// A window's first AudioContext takes Chromium half a second to make, and the
+// window stands still meanwhile: made on a click, it would hold up the island
+// the click opens. So it is made a moment after the first board with sounds
+// on, and sleeps until a cue wakes it.
+function warmCues() {
+  if (cueAudio || cueWarm || !board || !board.sounds || typeof AudioContext !== "function") return;
+  cueWarm = setTimeout(() => {
+    try {
+      if (!cueAudio && board.sounds && cueContext().state === "running") cueAudio.suspend();
+    } catch (e) {
+      log("[sound] " + e.message);
+    }
+  }, CUE_WARM_MS);
+}
 
 function cue(name) {
   const layers = CUES[name];
   if (!layers || (board && !board.sounds) || typeof AudioContext !== "function") return;
   try {
-    if (!cueAudio) {
-      cueAudio = new AudioContext();
-      cueOut = cueAudio.createGain();
-      cueOut.gain.value = CUE_VOLUME;
-      cueOut.connect(cueAudio.destination);
-    }
-    const ctx = cueAudio, asked = Date.now();
+    const ctx = cueContext(), asked = Date.now();
     const play = () => {
       if (Date.now() - asked > CUE_LATE_MS) return;
       try {
@@ -1231,6 +1252,7 @@ function connect() {
       const before = board;
       takeBoard(msg);
       hear(before, board);
+      warmCues();
       schedule();
     } else if (msg.type === "update") {
       // A newer release (vX.Y.Z tag) than the bridge's VERSION; url = its release page.
