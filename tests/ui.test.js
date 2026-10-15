@@ -282,7 +282,8 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
   // ─── no bridge at all ───────────────────────────────────────────────────
   {
     const env = load();
-    check("before the bridge answers: this file's island, connecting", /connecting…/.test(env.html()), true);
+    check("before the bridge answers: this file's island, connecting, with a spinner",
+          [/connecting…/.test(env.html()), /class="spin"/.test(env.html()), /class="px"/.test(env.html())], [true, true, false]);
     for (let i = 0; i < 5; i++) {
       env.ws().drop();
       await env.clock.advance(2000);
@@ -622,7 +623,9 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("Update asks the bridge", env.sent("update-now").length, 1);
     env.board(files, { update: { latest: "1.2.0" }, updating: { step: "wait", what: "update", to: "1.2.0" } });
     await env.clock.advance(400);
-    check("…which waits for the scripts first", /Updates once the scripts finish/.test(env.html()), true);
+    check("…which waits for the scripts first, with Figaro's spinner, not an agent's grid",
+          [/Updates once the scripts finish/.test(env.html()), /<div class="foot">.*class="spin"/.test(env.html()), /<div class="foot">.*class="px"/.test(env.html())],
+          [true, true, false]);
     env.board(files, { update: { latest: "1.2.0" }, failed: { what: "update", error: "local changes", url: RELEASE } });
     await env.clock.advance(400);
     check("a failed update: the release page on the last line, and why under it, as a field's error",

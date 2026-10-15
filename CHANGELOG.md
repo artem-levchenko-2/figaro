@@ -21,7 +21,8 @@ file; the release notes say when it has to be imported again.
 
 - **An agent at work shows a pixel grid** instead of the spinner: a 3x3 grid with a wavefront driving right,
   after Beautiful UI's Loading State, and the word "working" shimmers. Every grid and shimmer in the window
-  keeps one beat, wherever and whenever it was drawn.
+  keeps one beat, wherever and whenever it was drawn. What Figaro itself does, connecting, updating or
+  restarting, keeps the spinner.
 - **An open island with no agent and no change yet** isn't blank any more: where the first agent will show, the
   faint outline of an agent's row says "No agents yet" and to give an agent a link to the file.
 

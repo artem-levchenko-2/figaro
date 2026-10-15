@@ -119,8 +119,11 @@ button { font: inherit; }
 .tg { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 8px; padding: 0 0 0 var(--pad); border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
 .tg:focus-visible, .chev:focus-visible { outline: 2px solid var(--run); outline-offset: -2px; border-radius: 7px; }
 .ind { width: 18px; height: 18px; flex: none; display: grid; place-items: center; }
+/* Figaro itself at work (connecting, updating, restarting): a spinner. */
+.spin { --c: var(--run); width: 12px; height: 12px; border: 2px solid color-mix(in srgb, var(--c) 24%, transparent); border-top-color: var(--c); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .dot { --c: var(--ok); width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 24%, transparent); }
-/* At work: a 3x3 pixel grid with a chevron wavefront driving right, and a
+/* An agent at work: a 3x3 pixel grid with a chevron wavefront driving right, and a
    shimmer running over the word. After Beautiful UI's Loading State (MIT,
    Copyright (c) 2026 Shane Levine). The 650 ms cycle is shorter than the sweep,
    so two fronts are always in flight; every grid and shimmer keeps one beat
@@ -245,6 +248,7 @@ button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), t
 .foot .ver { flex: none; }
 .foot .what { margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--win-dim); }
 .foot .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.foot .spin { flex: none; width: 10px; height: 10px; border-width: 1.5px; }
 .foot .why { display: flex; gap: 6px; padding: 4px 9px 2px; color: var(--win-dim); line-height: 16px; overflow-wrap: anywhere; }
 .foot .warn { flex: none; height: 16px; display: grid; place-items: center; color: var(--wait); }
 .foot .warn svg { width: 12px; height: 12px; }
@@ -274,6 +278,7 @@ button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), t
 @media (prefers-reduced-motion: reduce) {
   .slot.enter, .slot.enter > .island, .slot.leave, .island.opening :is(.fold, .panel, .chev) { animation: none; }
   .agent[data-agent], .act, .act .ib, .foot .skip, .foot .tip { transition: none; }
+  .spin { animation-duration: 2.4s; }
   .px i { animation: none; opacity: .6; }
   .shim { animation: none; background: none; color: inherit; }
 }
@@ -639,6 +644,7 @@ function shown(f) {
 
 // ─── drawing it ──────────────────────────────────────────────────────────
 const PALETTE = ["#7b61ff", "#f2711c", "#12a594", "#e5489b", "#3e7bfa", "#b7791f"];
+// An agent at work; what Figaro itself does (connecting, updating) has the spinner.
 const LOADER = '<span class="px" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>';
 const ICON = {
   check: '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="M3.5 6.2 5.2 7.9 8.5 4.4" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -678,7 +684,7 @@ const av = (name) => `<span class="av" style="--av: ${color(name)}">${esc((Array
 
 // What a closed island shows: the file, then what matters most in it.
 function headline(f) {
-  if (f.here && conn === "connecting") return { kind: "connecting", ind: LOADER.replace('class="px"', 'class="px" style="--c: var(--idle)"'), sub: "connecting…" };
+  if (f.here && conn === "connecting") return { kind: "connecting", ind: '<span class="spin" style="--c: var(--idle)"></span>', sub: "connecting…" };
   if (f.here && conn === "nobridge") return { kind: "nobridge", ind: '<span class="dot" style="--c: var(--idle)"></span>', sub: "no bridge yet" };
   if (alarm(f)) return { kind: "alarm", ind: `<span class="warn">${ICON.warn}</span>`, sub: "Figma isn't answering", alarm: true };
   const list = agentsOf(f);
@@ -821,7 +827,7 @@ function footer() {
     const text = doing.step === "wait" ? (reloading ? "Reloads once the scripts finish" : "Updates once the scripts finish")
       : doing.step === "pull" ? `Updating to ${esc(doing.to || latest || "the new version")}…`
       : reloading ? "Reloading Figaro…" : "Restarting Figaro…";
-    right = `${LOADER}<span class="txt">${text}</span>`;
+    right = `<span class="spin"></span><span class="txt">${text}</span>`;
   } else if (failed && failed.what === "reload") {
     why = `<div class="why"><span class="warn">${ICON.warn}</span><span title="${esc(failed.detail || failed.error)}">Couldn't reload: ${esc(failed.error)}</span></div>`;
     if (stale()) right = reload;  // try again
