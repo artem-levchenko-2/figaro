@@ -9,6 +9,8 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-10-15
+
 ### Added
 
 - `figaro wait [-T <file>] [--timeout S]` waits until a file is ready: connected, and no script that ran
