@@ -120,8 +120,20 @@ button { font: inherit; }
 .tg:focus-visible, .chev:focus-visible { outline: 2px solid var(--run); outline-offset: -2px; border-radius: 7px; }
 .ind { width: 18px; height: 18px; flex: none; display: grid; place-items: center; }
 .dot { --c: var(--ok); width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 24%, transparent); }
-.spin { --c: var(--run); width: 12px; height: 12px; border: 2px solid color-mix(in srgb, var(--c) 24%, transparent); border-top-color: var(--c); border-radius: 50%; animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+/* At work: a 3x3 pixel grid with a chevron wavefront driving right, and a
+   shimmer running over the word. After Beautiful UI's Loading State (MIT,
+   Copyright (c) 2026 Shane Levine). The 650 ms cycle is shorter than the sweep,
+   so two fronts are always in flight; every grid and shimmer keeps one beat
+   (inStep). */
+.px { --c: var(--run); flex: none; display: grid; grid-template-columns: repeat(3, 3px); gap: 1px; }
+.px i { width: 3px; height: 3px; border-radius: .5px; background: var(--c); opacity: .18; animation: px 650ms ease-in-out 90ms infinite; }
+.px i:nth-child(4) { animation-delay: 0ms; }
+.px i:nth-child(2), .px i:nth-child(6), .px i:nth-child(8) { animation-delay: 180ms; }
+.px i:nth-child(3), .px i:nth-child(9) { animation-delay: 270ms; }
+@keyframes px { 0%, 100% { opacity: .18; } 18%, 42% { opacity: 1; } 62% { opacity: .18; } }
+.shim { background: linear-gradient(90deg, var(--is-dim) 35%, var(--is-text) 50%, var(--is-dim) 65%) 0 0 / 200% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent; animation: shim 1.8s linear infinite; }
+@keyframes shim { from { background-position: 150% center; } to { background-position: -50% center; } }
 .chk { display: grid; color: var(--ok); }
 .chk svg { width: 12px; height: 12px; }
 .lbl { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -186,7 +198,6 @@ button { font: inherit; }
 .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .st { flex: none; display: flex; align-items: center; gap: 6px; color: var(--is-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
 .st .dot { width: 6px; height: 6px; box-shadow: none; }
-.st .spin { width: 10px; height: 10px; border-width: 1.5px; }
 .st .chk svg { width: 10px; height: 10px; }
 .st .sq { width: 6px; height: 6px; color: var(--is-faint); }
 .act { flex: none; width: 0; height: 18px; margin-left: -8px; display: flex; justify-content: flex-end;
@@ -230,7 +241,6 @@ button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), t
 .foot .ver { flex: none; }
 .foot .what { margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--win-dim); }
 .foot .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.foot .spin { flex: none; width: 10px; height: 10px; border-width: 1.5px; }
 .foot .why { display: flex; gap: 6px; padding: 4px 9px 2px; color: var(--win-dim); line-height: 16px; overflow-wrap: anywhere; }
 .foot .warn { flex: none; height: 16px; display: grid; place-items: center; color: var(--wait); }
 .foot .warn svg { width: 12px; height: 12px; }
@@ -260,7 +270,8 @@ button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), t
 @media (prefers-reduced-motion: reduce) {
   .slot.enter, .slot.enter > .island, .slot.leave, .island.opening :is(.fold, .panel, .chev) { animation: none; }
   .agent[data-agent], .act, .act .ib, .foot .skip, .foot .tip { transition: none; }
-  .spin { animation-duration: 2.4s; }
+  .px i { animation: none; opacity: .6; }
+  .shim { animation: none; background: none; color: inherit; }
 }
 </style>
 </head>
@@ -372,6 +383,133 @@ function toSandbox(msg) {
   const ready = wake(msg);
   const send = () => parent.postMessage({ pluginMessage: msg }, "*");
   if (ready) ready.then(send, send); else send();
+}
+
+// ─── sounds ──────────────────────────────────────────────────────────────
+// Short, quiet cues: for what you press in the window, and for what happens in
+// this window's own file, so it is heard once, not once per window: an agent
+// begins, is done, a script of its fails, Figma stops answering. The five for
+// presses are Beautiful UI's interaction sounds (MIT, Copyright (c) 2026 Shane
+// Levine), played the way @web-kits/audio plays them; the four for the file
+// are made of the same parts. A layer: its source (an oscillator's type and
+// Hz, or a sweep [from, to], or white noise), a filter [type, Hz, Q], when it
+// starts (s), its envelope [attack, decay, release] (s) and its gain.
+const CUES = {
+  press: [{ src: "noise", filter: ["highpass", 2400], env: [0.0003, 0.009], gain: 0.13 },
+          { src: "sine", hz: 680, env: [0.0006, 0.022, 0.008], gain: 0.24 }],
+  tick: [{ src: "square", hz: 2100, filter: ["bandpass", 2600, 1.6], env: [0.0004, 0.028], gain: 0.24 }],
+  release: [{ src: "noise", filter: ["lowpass", 1600, 0.9], env: [0.001, 0.055], gain: 0.32 }],
+  page: [{ src: "sine", hz: [430, 640], env: [0.002, 0.11, 0.03], gain: 0.4 }],
+  pulse: [{ src: "sine", hz: 330, filter: ["lowpass", 2200], env: [0.002, 0.13, 0.04], gain: 0.5 }],
+  start: [{ src: "sine", hz: [520, 780], env: [0.002, 0.09, 0.02], gain: 0.25 }],
+  done: [{ src: "sine", hz: 660, env: [0.002, 0.16, 0.04], gain: 0.34 },
+         { src: "sine", hz: 990, at: 0.075, env: [0.002, 0.22, 0.05], gain: 0.3 }],
+  oops: [{ src: "triangle", hz: 440, filter: ["lowpass", 1800], env: [0.002, 0.14, 0.03], gain: 0.42 },
+         { src: "triangle", hz: 330, at: 0.09, filter: ["lowpass", 1800], env: [0.002, 0.2, 0.04], gain: 0.42 }],
+  alarm: [{ src: "square", hz: 220, filter: ["lowpass", 900], env: [0.002, 0.12], gain: 0.3 },
+          { src: "square", hz: 220, at: 0.14, filter: ["lowpass", 900], env: [0.002, 0.12], gain: 0.3 }],
+};
+const CUE_VOLUME = 0.32;   // Beautiful UI's
+const CUE_LATE_MS = 300;   // a cue that couldn't play by then is dropped, not played late
+const CUE_HUSH_MS = 3000;  // the cues' own AudioContext, apart from the tone's, sleeps after that
+let cueAudio = null;
+let cueOut = null;
+let cueNoise = null;
+let cueHush = null;
+
+function cue(name) {
+  const layers = CUES[name];
+  if (!layers || typeof AudioContext !== "function") return;
+  try {
+    if (!cueAudio) {
+      cueAudio = new AudioContext();
+      cueOut = cueAudio.createGain();
+      cueOut.gain.value = CUE_VOLUME;
+      cueOut.connect(cueAudio.destination);
+    }
+    const ctx = cueAudio, asked = Date.now();
+    const play = () => {
+      if (Date.now() - asked > CUE_LATE_MS) return;
+      try {
+        const t = ctx.currentTime + 0.005;
+        let end = t;
+        for (const l of layers) end = Math.max(end, voice(ctx, l, t + (l.at || 0)));
+        clearTimeout(cueHush);
+        cueHush = setTimeout(() => ctx.suspend(), (end - ctx.currentTime) * 1000 + CUE_HUSH_MS);
+      } catch (e) {
+        log("[sound] " + e.message);
+      }
+    };
+    if (ctx.state === "running") play();
+    else ctx.resume().then(play, () => {});
+  } catch (e) {
+    log("[sound] " + e.message);
+  }
+}
+
+// One layer of a cue, from `t`; when it is over.
+function voice(ctx, l, t) {
+  const [attack, decay, release = 0] = l.env;
+  const length = attack + decay + release;
+  let src;
+  if (l.src === "noise") {
+    if (!cueNoise) {
+      cueNoise = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.25), ctx.sampleRate);
+      const data = cueNoise.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    }
+    src = ctx.createBufferSource();
+    src.buffer = cueNoise;
+  } else {
+    src = ctx.createOscillator();
+    src.type = l.src;
+    const [from, to] = Array.isArray(l.hz) ? l.hz : [l.hz];
+    src.frequency.setValueAtTime(from, t);
+    if (to) src.frequency.exponentialRampToValueAtTime(to, t + length);
+  }
+  let out = src;
+  if (l.filter) {
+    const f = ctx.createBiquadFilter();
+    f.type = l.filter[0];
+    f.frequency.setValueAtTime(l.filter[1], t);
+    f.Q.value = l.filter[2] || 1;
+    out.connect(f);
+    out = f;
+  }
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(l.gain, t + attack);
+  g.gain.setTargetAtTime(0.0001, t + attack, decay / 3);
+  out.connect(g);
+  g.connect(cueOut);
+  src.start(t);
+  src.stop(t + length + 0.1);
+  return t + length + 0.1;
+}
+
+// What this window's own file went through since the last board, as one cue,
+// the most urgent: Figma stopped answering there, a script of an agent's
+// failed (at most one cue in OOPS_EVERY_MS), an agent is done, an agent began.
+// Nothing for the first board after the window connects.
+const OOPS_EVERY_MS = 15 * 1000;
+let oopsAt = -Infinity;
+function hear(before, after) {
+  if (!before || !after || !identity.docSig) return;
+  const mine = (b) => b.files.find((f) => f.sig === identity.docSig);
+  const was = mine(before), now = mine(after);
+  if (!now) return;
+  if (now.stuck && !(was && was.stuck)) return cue("alarm");
+  const old = new Map((was ? was.agents : []).map((a) => [a.name, a]));
+  let oops = false, done = false, start = false;
+  for (const a of now.agents) {
+    const o = old.get(a.name);
+    if (a.error && !(o && o.error && o.error.at === a.error.at)) oops = true;
+    if (a.done && !(o && o.done && o.done.at === a.done.at)) done = true;
+    if (stateOf(a) === "working" && !(o && stateOf(o) === "working")) start = true;
+  }
+  if (oops && Date.now() - oopsAt >= OOPS_EVERY_MS) { oopsAt = Date.now(); cue("oops"); }
+  else if (done) cue("done");
+  else if (start && !oops) cue("start");
 }
 
 // For debugging via the plugin console.
@@ -491,6 +629,7 @@ function shown(f) {
 
 // ─── drawing it ──────────────────────────────────────────────────────────
 const PALETTE = ["#7b61ff", "#f2711c", "#12a594", "#e5489b", "#3e7bfa", "#b7791f"];
+const LOADER = '<span class="px" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>';
 const ICON = {
   check: '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="M3.5 6.2 5.2 7.9 8.5 4.4" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   chev: '<svg viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -529,14 +668,14 @@ const av = (name) => `<span class="av" style="--av: ${color(name)}">${esc((Array
 
 // What a closed island shows: the file, then what matters most in it.
 function headline(f) {
-  if (f.here && conn === "connecting") return { kind: "connecting", ind: '<span class="spin" style="--c: var(--idle)"></span>', sub: "connecting…" };
+  if (f.here && conn === "connecting") return { kind: "connecting", ind: LOADER.replace('class="px"', 'class="px" style="--c: var(--idle)"'), sub: "connecting…" };
   if (f.here && conn === "nobridge") return { kind: "nobridge", ind: '<span class="dot" style="--c: var(--idle)"></span>', sub: "no bridge yet" };
   if (alarm(f)) return { kind: "alarm", ind: `<span class="warn">${ICON.warn}</span>`, sub: "Figma isn't answering", alarm: true };
   const list = agentsOf(f);
   const working = list.filter((a) => a.st === "working");
   if (working.length) {
     const sub = working.length > 1 ? working.map((a) => esc(a.name)).join(", ") : esc(working[0].name) + " " + clockSpan(working[0].since);
-    return { kind: "working", ind: '<span class="spin"></span>', sub };
+    return { kind: "working", ind: LOADER, sub };
   }
   const failed = list.find((a) => a.st === "failed");
   if (failed) return { kind: "failed", ind: '<span class="dot" style="--c: var(--err)"></span>', sub: esc(failed.name) + " failed" };
@@ -585,7 +724,7 @@ function agentRow(f, a) {
   let st, act = "", msg = "", cls = "agent", data = "";
   const err = a.error ? `<p class="msg err">${a.error.line ? `Line ${a.error.line}: ` : ""}${esc(a.error.text)}</p>` : "";
   if (a.st === "working") {
-    st = `<span class="spin"></span>working ${clockSpan(a.since)}`;
+    st = `${LOADER}<span><span class="shim">working</span> ${clockSpan(a.since)}</span>`;
     msg = err;
     if (f.doc) {
       const pressed = stopping.has(f.doc + "\n" + a.name);
@@ -668,7 +807,7 @@ function footer() {
     const text = doing.step === "wait" ? (reloading ? "Reloads once the scripts finish" : "Updates once the scripts finish")
       : doing.step === "pull" ? `Updating to ${esc(doing.to || latest || "the new version")}…`
       : reloading ? "Reloading Figaro…" : "Restarting Figaro…";
-    right = `<span class="spin"></span><span class="txt">${text}</span>`;
+    right = `${LOADER}<span class="txt">${text}</span>`;
   } else if (failed && failed.what === "reload") {
     why = `<div class="why"><span class="warn">${ICON.warn}</span><span title="${esc(failed.detail || failed.error)}">Couldn't reload: ${esc(failed.error)}</span></div>`;
     if (stale()) right = reload;  // try again
@@ -772,6 +911,7 @@ function render() {
     foot.innerHTML = tail;
     lastFoot = tail;
   }
+  inStep();
   if (moving) {
     animUntil = Date.now() + ANIM_MS;
     clearTimeout(later);
@@ -780,6 +920,15 @@ function render() {
   if (opening !== null) startDrive(opening, true);
   else if (shutting !== null) startDrive(shutting, false);
   fit();
+}
+
+// Every pixel grid and shimmer keeps one beat, however late it was drawn: their
+// animations count from the page's start, not each from its own.
+function inStep() {
+  if (typeof document.getAnimations !== "function") return;
+  for (const a of document.getAnimations()) {
+    if ((a.animationName === "px" || a.animationName === "shim") && a.startTime !== 0) a.startTime = 0;
+  }
 }
 
 // The window follows its islands: it asks the sandbox (code.js) for the height
@@ -920,6 +1069,7 @@ function reveal(id) {
 function act(name, fid, el) {
   const f = fid ? filesNow().find((x) => x.id === fid) : null;
   if (name === "toggle" && f) {
+    cue(open.has(f.id) ? "release" : "tick");
     if (open.has(f.id)) {
       open.delete(f.id);
       if (!calm()) { closing.set(f.id, Date.now()); shutId = f.id; }
@@ -931,21 +1081,27 @@ function act(name, fid, el) {
     }
     render();
   } else if (name === "stop" && f && f.doc && el.dataset.agent) {
+    cue("release");
     stopping.set(f.doc + "\n" + el.dataset.agent, Date.now());
     send({ type: "stop", doc: f.doc, agent: el.dataset.agent });
     render();
   } else if (name === "update") {
+    cue("pulse");
     send({ type: "update-now" });
   } else if (name === "reload") {
+    cue("pulse");
     send({ type: "reload-all" });
   } else if (name === "skip" && el.dataset.version) {
+    cue("release");
     skipped = el.dataset.version;
     send({ type: "skip", version: skipped });
     hint(false);
     render();
   } else if (name === "release") {
+    cue("page");
     parent.postMessage({ pluginMessage: { type: "open-url", url: el.dataset.url } }, "*");
   } else if (name === "layer") {
+    cue("page");
     parent.postMessage({ pluginMessage: { type: "select", id: el.dataset.id } }, "*");
   }
 }
@@ -1077,7 +1233,9 @@ function connect() {
       // marks it so h.ck() throws.
       parent.postMessage({ pluginMessage: { type: "abort", id: msg.id } }, "*");
     } else if (msg.type === "board") {
+      const before = board;
       takeBoard(msg);
+      hear(before, board);
       schedule();
     } else if (msg.type === "update") {
       // A newer release (vX.Y.Z tag) than the bridge's VERSION; url = its release page.

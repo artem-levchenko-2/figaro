@@ -9,6 +9,20 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+### Added
+
+- **The plugin's window plays short, quiet sounds.** For what you press: a tick when an island opens and a clack
+  when it closes, for Stop and for Skip; a blip for a layer or a release link; a pulse for Update and Reload.
+  And for what happens in the window's own file, so each is heard once, not in every window: an agent begins,
+  is done, a script of its fails (at most once in 15 s), Figma stops answering there. The sounds for presses
+  are Beautiful UI's interaction sounds; the others are made of the same parts.
+
+### Changed
+
+- **An agent at work shows a pixel grid** instead of the spinner: a 3x3 grid with a wavefront driving right,
+  after Beautiful UI's Loading State, and the word "working" shimmers. Every grid and shimmer in the window
+  keeps one beat, wherever and whenever it was drawn.
+
 ## [1.3.0] — 2026-10-15
 
 ### Added

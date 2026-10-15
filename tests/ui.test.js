@@ -78,10 +78,21 @@ function load({ calm = false, layout = null, figma = null } = {}) {
     drop() { this.readyState = 3; if (this.onerror) this.onerror(); this.onclose(); }
   }
   Object.assign(WebSocket, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 });
+  // A sound's layers, as `heard()` lists them: "sine 660", "noise", …
+  const voices = [];
+  const param = () => ({ setValueAtTime() {}, linearRampToValueAtTime() {}, setTargetAtTime() {}, exponentialRampToValueAtTime() {} });
   class AudioContext {
-    constructor() { this.state = "suspended"; this.destination = {}; contexts.push(this); }
-    createOscillator() { return { frequency: {}, connect() {}, start() {} }; }
-    createGain() { return { gain: {}, connect() {} }; }
+    constructor() { this.state = "suspended"; this.destination = {}; this.currentTime = 0; this.sampleRate = 48000; this.oscs = []; contexts.push(this); }
+    createOscillator() {
+      const osc = { type: "sine", frequency: Object.assign(param(), { setValueAtTime(v) { this.value = v; } }), connect() {},
+                    start: () => voices.push(`${osc.type} ${osc.frequency.value}`), stop() {} };
+      this.oscs.push(osc);
+      return osc;
+    }
+    createBufferSource() { return { connect() {}, start: () => voices.push("noise"), stop() {} }; }
+    createBuffer(channels, length) { const data = new Float32Array(length); return { getChannelData: () => data }; }
+    createBiquadFilter() { return { frequency: param(), Q: {}, connect() {} }; }
+    createGain() { return { gain: param(), connect() {} }; }
     resume() { this.state = "running"; return Promise.resolve(); }
     suspend() { this.state = "suspended"; return Promise.resolve(); }
   }
@@ -118,7 +129,9 @@ function load({ calm = false, layout = null, figma = null } = {}) {
     room: (height) => window.onmessage({ data: { pluginMessage: { type: "room", height } } }),
     asks: () => posted.filter((m) => m.type === "resize").map((m) => m.height),
     ws: () => sockets[sockets.length - 1],
-    tone: () => (contexts.length ? contexts[0].state : "none"),
+    tone: () => { const c = contexts.find((x) => x.oscs.some((o) => o.frequency.value === 20)); return c ? c.state : "none"; },
+    heard: () => voices.splice(0),  // the sounds' layers since the last look
+    cues: () => { const c = contexts.find((x) => !x.oscs.some((o) => o.frequency.value === 20)); return c ? c.state : "none"; },
     exec: (id, timeout) => env.ws().receive({ type: "exec", id, code: "return 1", timeout }),
     // The sandbox's answer to a request, on its way to the bridge.
     answer: (id) => window.onmessage({ data: { pluginMessage: { type: "result", id, value: 1 } } }),
@@ -707,6 +720,71 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
   }
 
   console.log(failed ? `\n${failed} FAILED` : "\nall window checks passed");
+  // ─── at work: a pixel grid, and the word shimmers ───────────────────────
+  {
+    const env = load();
+    const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard", { agents: [agent("designer", { since: ago(12), last: ago(1), busy: true })] })]);
+    await env.clock.advance(400);
+    const grids = () => (env.html().match(/<span class="px" aria-hidden="true">(<i><\/i>){9}<\/span>/g) || []).length;
+    check("an agent at work: a 3x3 pixel grid by the file's name", [grids(), /class="spin"/.test(env.html())], [1, false]);
+    env.click("toggle", "here");
+    await env.clock.advance(400);
+    check("…and open, one by the agent too, with the word shimmering and the clock steady",
+          [grids(), /<span><span class="shim">working<\/span> <span[^>]*data-clock/.test(env.html())], [2, true]);
+  }
+
+  // ─── sounds ─────────────────────────────────────────────────────────────
+  {
+    const env = load();
+    const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    const designer = (extra) => agent("designer", Object.assign({ since: ago(60), last: ago(1), busy: true }, extra));
+    const icons = agent("icons", { since: ago(30), last: ago(0), busy: true });
+    const kit = (agents) => file("KEY2", "Kit", { agents });
+    env.board([file("KEY1", "Dashboard", { agents: [designer()] }), kit([])]);
+    await env.clock.advance(400);
+    check("no sound for what the first board finds", env.heard(), []);
+    env.click("toggle", "here");
+    await env.clock.advance(50);
+    check("opening an island: a tick", env.heard(), ["square 2100"]);
+    env.click("toggle", "here");
+    await env.clock.advance(50);
+    check("…closing it: a clack", env.heard(), ["noise"]);
+    env.board([file("KEY1", "Dashboard", { agents: [designer(), icons] }), kit([])]);
+    await env.clock.advance(50);
+    check("an agent begins in this file: a blip up", env.heard(), ["sine 520"]);
+    env.board([file("KEY1", "Dashboard", { agents: [designer({ busy: false, done: { text: "Have a look", at: ago(0) } }), icons] }),
+               kit([agent("tokens", { since: ago(1), last: ago(0), busy: true })])]);
+    await env.clock.advance(50);
+    check("an agent is done: two notes up; another file's agent beginning is that window's to play", env.heard(), ["sine 660", "sine 990"]);
+    const failing = (at) => agent("icons", { since: ago(30), last: ago(0), busy: true, error: { text: "boom", line: 3, at } });
+    env.board([file("KEY1", "Dashboard", { agents: [failing(ago(0))] }), kit([])]);
+    await env.clock.advance(50);
+    check("a script of an agent's fails: two notes down", env.heard(), ["triangle 440", "triangle 330"]);
+    await env.clock.advance(5000);
+    env.board([file("KEY1", "Dashboard", { agents: [failing(ago(0))] }), kit([])]);
+    await env.clock.advance(50);
+    check("…another within 15 s: quiet", env.heard(), []);
+    await env.clock.advance(15000);
+    env.board([file("KEY1", "Dashboard", { agents: [failing(ago(0))] }), kit([])]);
+    await env.clock.advance(50);
+    check("…and after them, two notes down again", env.heard(), ["triangle 440", "triangle 330"]);
+    env.board([file("KEY1", "Dashboard", { agents: [failing(ago(20))], stuck: { agent: "icons", since: ago(40) } }), kit([])]);
+    await env.clock.advance(50);
+    check("Figma stops answering in this file: two low knocks", env.heard(), ["square 220", "square 220"]);
+    env.click("stop", "here", { agent: "icons" });
+    env.click("update");
+    env.click("layer", null, { id: "1:2" });
+    await env.clock.advance(50);
+    check("Stop clacks, Update pulses, a layer blips", env.heard(), ["noise", "sine 330", "sine 430"]);
+    await env.clock.advance(4000);
+    check("the sounds' AudioContext sleeps a moment after the last", env.tone() === "none" && env.cues(), "suspended");
+  }
+
   process.exit(failed ? 1 : 0);
 })().catch((e) => {
   console.error(e);
