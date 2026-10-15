@@ -9,6 +9,8 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-10-15
+
 ### Added
 
 - **The plugin's window plays short, quiet sounds** for what you press: a blip up when an island opens and the
