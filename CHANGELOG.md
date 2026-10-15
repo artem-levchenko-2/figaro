@@ -15,7 +15,7 @@ file; the release notes say when it has to be imported again.
   same blip down when it closes, a tick for a layer or a release link, three quick rising pulses for Update
   and Reload, a thud for Stop, a short whoosh for Skip. And two low knocks when Figma stops answering in the
   window's own file, heard once, not in every window. The blip and the tick are Beautiful UI's interaction
-  sounds; the others are made of the same parts.
+  sounds; the others are made of the same parts. `FIGARO_SOUNDS=off` for the bridge turns them all off.
 
 ### Changed
 

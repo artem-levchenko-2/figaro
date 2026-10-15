@@ -252,6 +252,9 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   (`pmset -g assertions` shows Figma "Playing audio"). The tone stops 3 minutes after the last script ends
   (a script whose answer never comes, after its `--timeout` and those 3 minutes) or ~2 s after the bridge
   goes away — that is why the bridge closes the plugins' connections on exit (`bridge_idle.close_plugins`).
+- **The window's sounds** (`CUES` in `ui.html`) play in an AudioContext of their own, apart from the tone's,
+  and it sleeps 3 s after the last one. `FIGARO_SOUNDS=off` reaches the window as the board's `sounds` and
+  silences them, never the tone.
 - **A script runs on Figma's main thread.** A loop that never yields freezes Figma, and nothing gets in while
   it runs: not the bridge's abort, not Stop in the window. So `compileScript` and `compileLib` put a guard in
   the head of every `while`, `do … while` and `for (;;)` loop (`guardLoops`, found on `codeMask`: strings,

@@ -147,6 +147,11 @@ def update_checks_on():
     return os.environ.get("FIGARO_NO_UPDATE_CHECK", "").strip().lower() in ("", "0", "false", "no", "off")
 
 
+def sounds_on():
+    """False with FIGARO_SOUNDS=off (or 0, false, no): the plugin's window plays no sounds."""
+    return os.environ.get("FIGARO_SOUNDS", "").strip().lower() not in ("off", "0", "false", "no")
+
+
 def parse_version(tag):
     """'v2.3.0' / '2.3.0' -> (2, 3, 0); anything else (pre-releases too) -> None."""
     m = _SEMVER.match(str(tag).strip())
@@ -1196,6 +1201,7 @@ async def status_handler(request: web.Request) -> web.Response:
         "update": UPDATE,
         "skipped": SKIPPED,
         "update_button": update_allowed(),
+        "sounds": sounds_on(),
         "files": files,
         "pending": len(PENDING),
         "abandoned": [

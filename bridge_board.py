@@ -190,7 +190,7 @@ def payload():
              "version": bridge.VERSION, "files": files, "lost": lost,
              "update": offer if button else None,
              "release": None if button else offer,
-             "skipped": bridge.SKIPPED,
+             "skipped": bridge.SKIPPED, "sounds": bridge.sounds_on(),
              "stale": _bridge_stale()}
     board.update(bridge_update.board())
     return board

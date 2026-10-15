@@ -585,6 +585,16 @@ def test_the_update_button_is_on_unless_turned_off(monkeypatch):
         assert board["update"]["latest"] == NEWER and board["release"] is None
 
 
+def test_the_window_plays_sounds_unless_turned_off(monkeypatch):
+    for value, on in ((None, True), ("", True), ("on", True), ("1", True),
+                      ("off", False), ("0", False), ("false", False), (" No ", False)):
+        if value is None:
+            monkeypatch.delenv("FIGARO_SOUNDS", raising=False)
+        else:
+            monkeypatch.setenv("FIGARO_SOUNDS", value)
+        assert bridge.sounds_on() is on and bridge_board.payload()["sounds"] is on, value
+
+
 def test_skip_hides_a_release_from_every_window_and_the_agents_until_a_newer_one():
     bridge.UPDATE = {"latest": NEWER, "current": bridge.VERSION, "url": bridge.release_url(NEWER)}
     kept = figaro_token.token_path(bridge.PORT).parent / "skipped-release"

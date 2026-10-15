@@ -417,7 +417,7 @@ let cueHush = null;
 
 function cue(name) {
   const layers = CUES[name];
-  if (!layers || typeof AudioContext !== "function") return;
+  if (!layers || (board && !board.sounds) || typeof AudioContext !== "function") return;
   try {
     if (!cueAudio) {
       cueAudio = new AudioContext();
@@ -548,6 +548,7 @@ function takeBoard(m) {
     version: m.version || "", update: m.update || null, release: m.release || null, stale: !!m.stale,
     updating: m.updating || null, failed: m.failed || null,
     skipped: typeof m.skipped === "string" ? m.skipped : null,
+    sounds: m.sounds !== false,  // FIGARO_SOUNDS=off; a bridge too old to say plays them
     files: (m.files || []).map(fileOf),
     lost: (Array.isArray(m.lost) ? m.lost : []).filter((f) => f && f.lost).map(fileOf),
   };

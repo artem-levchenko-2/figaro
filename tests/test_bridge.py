@@ -263,6 +263,17 @@ def test_with_the_update_button_off_agents_hear_it_is_updated_by_hand(monkeypatc
     run(go())
 
 
+def test_status_says_whether_the_window_plays_sounds(monkeypatch):
+    async def go():
+        c = await make_client()
+        monkeypatch.setenv("FIGARO_SOUNDS", "off")
+        assert (await (await c.get("/status")).json())["sounds"] is False
+        monkeypatch.delenv("FIGARO_SOUNDS")
+        assert (await (await c.get("/status")).json())["sounds"] is True
+        await c.close()
+    run(go())
+
+
 def test_new_release_is_offered_to_plugins():
     """When a newer vX.Y.Z is released, connected plugins get an `update`
     message (the window offers "Update to X.Y.Z"),

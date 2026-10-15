@@ -775,6 +775,20 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
           ["noise", "sine 340", "sine 330", "sine 415", "sine 523", "square 2100", "noise"]);
     await env.clock.advance(4000);
     check("the sounds' AudioContext sleeps a moment after the last", env.tone() === "none" && env.cues(), "suspended");
+
+    // FIGARO_SOUNDS=off: the board says so, and nothing plays, the alarm neither
+    env.board([file("KEY1", "Dashboard", { agents: [icons] }), kit([])], { sounds: false });
+    env.click("toggle", "here");
+    env.click("stop", "here", { agent: "icons" });
+    env.click("update");
+    env.board([file("KEY1", "Dashboard", { agents: [icons], stuck: { agent: "icons", since: ago(40) } }), kit([])],
+              { sounds: false });
+    await env.clock.advance(50);
+    check("with the sounds turned off, nothing plays", env.heard(), []);
+    env.board([file("KEY1", "Dashboard", { agents: [icons] }), kit([])], { sounds: true });
+    env.click("toggle", "here");
+    await env.clock.advance(50);
+    check("…and turned on again, they do", env.heard(), ["sine 640"]);
   }
 
   process.exit(failed ? 1 : 0);

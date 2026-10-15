@@ -443,7 +443,9 @@ turns red in every window, with what to do.
 Point at an agent at work for its **Stop** button. A click on a changed layer selects it
 in Figma. Under the islands, only when there is something to do:
 a new release with its **Update** button, **Reload** for a new build of the
-plugin, or why an update failed.
+plugin, or why an update failed. The window answers what you press with short,
+quiet sounds, and knocks twice when Figma stops answering in its own file;
+`FIGARO_SOUNDS=off` in the [settings](#settings) turns them off.
 
 <details>
 <summary>🔌 <b>Under the hood</b></summary>
@@ -481,6 +483,7 @@ agent is at work: `bash start-bridge.sh` in Figaro's folder, or
 | Variable | Default | What it does |
 | :-- | :-- | :-- |
 | `FIGARO_UPDATE_BUTTON` | `on` | `off` takes the Update button out of the plugin's window: it only says that a new release is out and links to it, and the bridge refuses to update. You update by hand |
+| `FIGARO_SOUNDS` | `on` | `off` silences the plugin's window: no sounds for what you press, and none when Figma stops answering. The tone you can't hear, which keeps a background Figma quick, still plays while scripts run |
 | `FIGARO_NO_UPDATE_CHECK` | — | `1` stops the bridge from checking GitHub for a new release |
 | `FIGARO_TOKEN_FILE` | `~/.figaro/token-8788` | Where the bridge saves [its token](#privacy) and the command reads it: give both the same file |
 | `FIGARO_IDLE_EXIT` | `3h` | How long the bridge waits with no plugin and no requests before it exits: seconds, `30m` or `3h`; `0` keeps it running |
