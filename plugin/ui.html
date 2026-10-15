@@ -388,23 +388,23 @@ function toSandbox(msg) {
 // ─── sounds ──────────────────────────────────────────────────────────────
 // Short, quiet cues: for what you press in the window, and when Figma stops
 // answering in this window's own file, so that is heard once, not once per
-// window. press, tick, page and pulse are Beautiful UI's interaction sounds
-// (MIT, Copyright (c) 2026 Shane Levine), played the way @web-kits/audio plays
-// them; the others are made of the same parts. A layer: its source (an oscillator's
-// type and Hz, or a sweep [from, to], or white noise), a filter [type, Hz or a
-// sweep, Q], when it starts (s), its envelope [attack, decay, release] (s) and
-// its gain.
+// window. `open` and `layer` are Beautiful UI's "page" and "tick" interaction
+// sounds (MIT, Copyright (c) 2026 Shane Levine), played the way
+// @web-kits/audio plays them; `close` is `open` backwards, and the others are
+// made of the same parts. A layer: its source (an oscillator's type and Hz, or
+// a sweep [from, to], or white noise), a filter [type, Hz or a sweep, Q], when
+// it starts (s), its envelope [attack, decay, release] (s) and its gain.
 const CUES = {
-  press: [{ src: "noise", filter: ["highpass", 2400], env: [0.0003, 0.009], gain: 0.13 },
-          { src: "sine", hz: 680, env: [0.0006, 0.022, 0.008], gain: 0.24 }],
-  tick: [{ src: "square", hz: 2100, filter: ["bandpass", 2600, 1.6], env: [0.0004, 0.028], gain: 0.24 }],
-  page: [{ src: "sine", hz: [430, 640], env: [0.002, 0.11, 0.03], gain: 0.4 }],
-  pulse: [{ src: "sine", hz: 330, filter: ["lowpass", 2200], env: [0.002, 0.13, 0.04], gain: 0.5 }],
-  stop: [{ src: "noise", filter: ["lowpass", 1400, 0.8], env: [0.0008, 0.035], gain: 0.3 },
+  open: [{ src: "sine", hz: [430, 640], env: [0.002, 0.11, 0.03], gain: 0.4 }],       // an island opens
+  close: [{ src: "sine", hz: [640, 430], env: [0.002, 0.11, 0.03], gain: 0.4 }],      // …and closes
+  layer: [{ src: "square", hz: 2100, filter: ["bandpass", 2600, 1.6], env: [0.0004, 0.028], gain: 0.24 }],  // a layer, a link
+  go: [{ src: "sine", hz: 330, env: [0.002, 0.045], gain: 0.36 },                     // Update, Reload: it starts
+       { src: "sine", hz: 415, at: 0.06, env: [0.002, 0.045], gain: 0.38 },
+       { src: "sine", hz: 523, at: 0.105, env: [0.002, 0.09, 0.02], gain: 0.42 }],
+  stop: [{ src: "noise", filter: ["lowpass", 1400, 0.8], env: [0.0008, 0.035], gain: 0.3 },  // Stop: a thud down
          { src: "sine", hz: [340, 140], env: [0.002, 0.12, 0.02], gain: 0.5 }],
-  skip: [{ src: "noise", filter: ["bandpass", [700, 5000], 1.2], env: [0.03, 0.2], gain: 0.7 },
-         { src: "sine", hz: [600, 1500], env: [0.01, 0.14, 0.03], gain: 0.12 }],
-  alarm: [{ src: "square", hz: 220, filter: ["lowpass", 900], env: [0.002, 0.12], gain: 0.3 },
+  skip: [{ src: "noise", filter: ["bandpass", [900, 4000], 1.2], env: [0.008, 0.1], gain: 0.8 }],  // Skip: off it flies
+  alarm: [{ src: "square", hz: 220, filter: ["lowpass", 900], env: [0.002, 0.12], gain: 0.3 },     // Figma isn't answering
           { src: "square", hz: 220, at: 0.14, filter: ["lowpass", 900], env: [0.002, 0.12], gain: 0.3 }],
 };
 const CUE_VOLUME = 0.32;   // Beautiful UI's
@@ -1055,7 +1055,7 @@ function reveal(id) {
 function act(name, fid, el) {
   const f = fid ? filesNow().find((x) => x.id === fid) : null;
   if (name === "toggle" && f) {
-    cue(open.has(f.id) ? "press" : "tick");
+    cue(open.has(f.id) ? "close" : "open");
     if (open.has(f.id)) {
       open.delete(f.id);
       if (!calm()) { closing.set(f.id, Date.now()); shutId = f.id; }
@@ -1072,10 +1072,10 @@ function act(name, fid, el) {
     send({ type: "stop", doc: f.doc, agent: el.dataset.agent });
     render();
   } else if (name === "update") {
-    cue("pulse");
+    cue("go");
     send({ type: "update-now" });
   } else if (name === "reload") {
-    cue("pulse");
+    cue("go");
     send({ type: "reload-all" });
   } else if (name === "skip" && el.dataset.version) {
     cue("skip");
@@ -1084,10 +1084,10 @@ function act(name, fid, el) {
     hint(false);
     render();
   } else if (name === "release") {
-    cue("page");
+    cue("layer");
     parent.postMessage({ pluginMessage: { type: "open-url", url: el.dataset.url } }, "*");
   } else if (name === "layer") {
-    cue("page");
+    cue("layer");
     parent.postMessage({ pluginMessage: { type: "select", id: el.dataset.id } }, "*");
   }
 }

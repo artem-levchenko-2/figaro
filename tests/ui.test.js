@@ -750,10 +750,10 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("no sound for what the first board finds", env.heard(), []);
     env.click("toggle", "here");
     await env.clock.advance(50);
-    check("opening an island: a tick", env.heard(), ["square 2100"]);
+    check("opening an island: a blip up", env.heard(), ["sine 430"]);
     env.click("toggle", "here");
     await env.clock.advance(50);
-    check("…closing it: a press", env.heard(), ["noise", "sine 680"]);
+    check("…closing it: the same blip down", env.heard(), ["sine 640"]);
     const failing = (at) => agent("icons", { since: ago(30), last: ago(0), busy: true, error: { text: "boom", line: 3, at } });
     env.board([file("KEY1", "Dashboard", { agents: [designer(), icons] }), kit([])]);
     env.board([file("KEY1", "Dashboard", { agents: [designer({ busy: false, done: { text: "Have a look", at: ago(0) } }), failing(ago(0))] }), kit([])]);
@@ -771,8 +771,8 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.click("layer", null, { id: "1:2" });
     env.click("skip", null, { version: "1.2.0" });
     await env.clock.advance(50);
-    check("Stop thuds down, Update pulses, a layer blips, Skip flies off", env.heard(),
-          ["noise", "sine 340", "sine 330", "sine 430", "noise", "sine 600"]);
+    check("Stop thuds down, Update starts up in three pulses, a layer ticks, Skip flies off", env.heard(),
+          ["noise", "sine 340", "sine 330", "sine 415", "sine 523", "square 2100", "noise"]);
     await env.clock.advance(4000);
     check("the sounds' AudioContext sleeps a moment after the last", env.tone() === "none" && env.cues(), "suspended");
   }

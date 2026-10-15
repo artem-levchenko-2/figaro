@@ -11,11 +11,11 @@ file; the release notes say when it has to be imported again.
 
 ### Added
 
-- **The plugin's window plays short, quiet sounds** for what you press: a tick when an island opens and a press
-  when it closes, a thud for Stop, a whoosh for Skip, a blip for a layer or a release link, a pulse for Update
-  and Reload. And two low knocks when Figma stops answering in the window's own file, heard once, not in every
-  window. The tick, the press, the blip and the pulse are Beautiful UI's interaction sounds; the others are
-  made of the same parts.
+- **The plugin's window plays short, quiet sounds** for what you press: a blip up when an island opens and the
+  same blip down when it closes, a tick for a layer or a release link, three quick rising pulses for Update
+  and Reload, a thud for Stop, a short whoosh for Skip. And two low knocks when Figma stops answering in the
+  window's own file, heard once, not in every window. The blip and the tick are Beautiful UI's interaction
+  sounds; the others are made of the same parts.
 
 ### Changed
 
