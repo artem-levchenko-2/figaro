@@ -4,9 +4,11 @@
 // runs, stops 3 min after the last one ends, and stops at once when the bridge
 // goes away: it never plays while the bridge is down. The islands show what the bridge's `board` says —
 // each agent at work, done, stopped or failed, and the error of its last script
-// until one succeeds — the line under them the Figaro version and a newer one
-// (the list's last item, or pinned at the bottom while it has a button),
-// and their buttons send the bridge and the sandbox what they should. An
+// until one succeeds — the line under them, always at the bottom, the Figaro
+// version, a newer one, and the tools: Settings and Minimize (a click: mini,
+// held: nano), and their buttons send the bridge and the sandbox what they
+// should. The settings change the bridge's; Show other files off leaves this
+// file's island alone. An
 // agent's Stop shows while the pointer is on its row; an island's panel folds
 // open and shut, at once for those who ask for less motion. The window asks the
 // sandbox for the height of all it shows, again every second. An island that
@@ -64,9 +66,12 @@ function makeClock() {
 // when there is one, 28 px at the bottom — in a window `window` px tall. `figma`: frames
 // (requestAnimationFrame every 16 ms) and a Figma that gives the window the
 // height it asks for `lag` frames later, half a frame before one is drawn, at
-// most `room` px (the sandbox's cap); `deaf`: it never does.
+// most `room` px (the sandbox's cap); `deaf`: it never does. The clipboard keeps
+// what it's given (`copied()`), or refuses it with `clip.deny`, as Figma's does.
 function load({ calm = false, layout = null, figma = null } = {}) {
   const clock = makeClock();
+  const clip = { texts: [], deny: false };
+  const navigator = { clipboard: { writeText: (t) => (clip.deny ? Promise.reject(new Error("denied")) : (clip.texts.push(t), Promise.resolve())) } };
   const sockets = [];
   const contexts = [];
   const posted = [];
@@ -103,6 +108,7 @@ function load({ calm = false, layout = null, figma = null } = {}) {
       textContent: "", innerHTML: "", querySelectorAll: () => [],
     }),
     visibilityState: "hidden",
+    body: { style: {} },
     addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
   };
   const window = { matchMedia: (q) => ({ matches: calm && /reduce/.test(q) }), innerHeight: layout ? layout.window : 0 };
@@ -115,13 +121,15 @@ function load({ calm = false, layout = null, figma = null } = {}) {
   } };
   const frame = figma ? (fn) => clock.setTimeout(() => fn(clock.now()), 16) : undefined;
   new Function("document", "window", "parent", "WebSocket", "AudioContext",
-               "setTimeout", "clearTimeout", "setInterval", "Date", "console", "requestAnimationFrame", "performance", script)(
+               "setTimeout", "clearTimeout", "setInterval", "Date", "console", "requestAnimationFrame", "performance", "navigator", script)(
     document, window, parent, WebSocket, AudioContext,
-    clock.setTimeout, clock.clearTimeout, clock.setInterval, { now: clock.now }, { log() {} }, frame, { now: clock.now });
+    clock.setTimeout, clock.clearTimeout, clock.setInterval, { now: clock.now }, { log() {} }, frame, { now: clock.now }, navigator);
   if (layout) lay(elements, layout);
   const env = {
-    clock, sockets, posted, scrolled: layout ? layout.scrolled : [],
+    clock, sockets, posted, clip, scrolled: layout ? layout.scrolled : [],
+    copied: () => clip.texts.splice(0),
     inner: () => window.innerHeight,
+    laid: () => document.body.style.width,  // the width the page lays itself out at
     // what the window's islands and last line take, as ui.html measures it; an island's fold height
     content: () => elements.scroll.getBoundingClientRect().top + elements.app.getBoundingClientRect().height
       + elements.end.getBoundingClientRect().height + elements.foot.getBoundingClientRect().height,
@@ -136,17 +144,36 @@ function load({ calm = false, layout = null, figma = null } = {}) {
     // The sandbox's answer to a request, on its way to the bridge.
     answer: (id) => window.onmessage({ data: { pluginMessage: { type: "result", id, value: 1 } } }),
     html: () => elements.app.innerHTML + elements.end.innerHTML + elements.foot.innerHTML,  // the islands, then the last line
+    app: () => elements.app.innerHTML,
+    foot: () => elements.foot.innerHTML,
     pinned: () => elements.foot.innerHTML !== "",  // the last line, at the bottom
     sent: (type) => env.ws().sent.filter((m) => m.type === type),
-    identity: (name, key) => window.onmessage({ data: { pluginMessage: {
-      type: "identity", name, fileKey: key, docSig: key, pluginVersion: "test", caps: [] } } }),
+    identity: (name, key, view) => window.onmessage({ data: { pluginMessage: {
+      type: "identity", name, fileKey: key, docSig: key, pluginVersion: "test", caps: [], view } } }),
     board: (files, extra) => env.ws().receive(Object.assign({ type: "board", now: 1000, version: "1.1.0", files }, extra)),
-    // A click on a button: what the page's click listener gets from it.
-    click(act, fid, data) {
+    // A click on a button: what the page's click listener gets from it; `detail`
+    // 0 (a key, as here by default) or the pointer's count of clicks.
+    click(act, fid, data, detail) {
       const slot = fid ? { dataset: { fid } } : null;
-      const el = { dataset: Object.assign({ act }, data), disabled: false,
+      const el = { dataset: Object.assign({ act }, data), disabled: false, classList: { toggle() {}, add() {}, remove() {} }, setAttribute() {},
                    closest: (sel) => (sel === "[data-fid]" ? slot : null) };
-      for (const fn of listeners.click || []) fn({ target: { closest: (sel) => (sel === "[data-act]" ? el : null) } });
+      for (const fn of listeners.click || []) fn({ detail, target: { closest: (sel) => (sel === "[data-act]" ? el : null) } });
+    },
+    // The pointer pressed on Minimize; let go on it, or off it.
+    press() {
+      const cls = new Set();
+      const el = { dataset: { act: "min" }, classList: { add: (c) => cls.add(c), remove: (c) => cls.delete(c) }, contains: (t) => t === el };
+      el.closest = (sel) => (sel === '[data-act="min"]' || sel === "[data-act]" ? el : null);
+      for (const fn of listeners.pointerdown || []) fn({ button: 0, target: el });
+      return {
+        holding: () => cls.has("hold"),
+        // the press's click goes to what is under the pointer by then: `under`, a button's act
+        up(on = true, under = "min") {
+          for (const fn of listeners.pointerup || []) fn({ target: on ? el : { closest: () => null } });
+          const at = { dataset: { act: under }, disabled: false, closest: (sel) => (sel === "[data-act]" ? at : null) };
+          for (const fn of listeners.click || []) fn({ detail: 1, target: at });
+        },
+      };
     },
     // The pointer on an agent's row, or with no agent anywhere else in the window.
     point(fid, name) {
@@ -187,7 +214,8 @@ function lay(elements, layout) {
       return slot;
     });
   };
-  const listHeight = () => slots().reduce((h, el) => h + el.getBoundingClientRect().height + GAP, -GAP);
+  const listHeight = () => (/^<div class="mini/.test(elements.app.innerHTML) ? ROW
+    : slots().reduce((h, el) => h + el.getBoundingClientRect().height + GAP, -GAP));
   layout.scrolled = [];
   Object.assign(elements.app, {
     getBoundingClientRect: () => box(TOP, listHeight()),
@@ -220,6 +248,7 @@ function check(label, actual, expected) {
 }
 
 const MIN = 60 * 1000;
+const L = 28;  // the last line under the islands, always there
 const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0";
 
 (async () => {
@@ -291,7 +320,9 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("no bridge: the window keeps knocking every 2 s", env.sockets.length, 6);
     check("…and never plays", env.tone(), "none");
     check("…and says there is no bridge yet", /no bridge yet/.test(env.html()), true);
-    check("…and has no last line: there is nothing to do about the version", env.pinned(), false);
+    check("…and its last line has the tools, and no version to name yet",
+          [env.pinned(), /<span class="ver">Figaro<\/span><span class="tools">/.test(env.foot()), /data-act="gear"/.test(env.foot()), /data-act="min"/.test(env.foot())],
+          [true, true, true, true]);
   }
 
   // ─── this file's island ─────────────────────────────────────────────────
@@ -310,7 +341,8 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     const closed = env.html();
     check("an agent at work: the file, the agent and its clock",
           [/Dashboard/.test(closed), /designer/.test(closed), /data-clock/.test(closed)], [true, true, true]);
-    check("nothing to do about the version: no last line under the islands", [/class="foot"/.test(closed), env.pinned()], [false, false]);
+    check("nothing to do about the version: the last line has it and the tools, at the bottom",
+          [/<span class="ver">Figaro 1\.1\.0<\/span><span class="tools">/.test(env.foot()), /class="foot"/.test(closed), env.pinned()], [true, true, true]);
     env.click("toggle", "here");
     const open = env.html();
     check("open: its panel grows from nothing", /class="island open opening"/.test(open), true);
@@ -379,17 +411,17 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     const asks = () => env.posted.filter((m) => m.type === "resize");
     const last = () => asks()[asks().length - 1];
-    check("the window asks the sandbox for the height of all it shows", last(), { type: "resize", height: 6 + 30 + 6 + 30 + 6 });
+    check("the window asks the sandbox for the height and the width of all it shows", last(), { type: "resize", height: 6 + 30 + 6 + 30 + 6 + L, width: 320 });
     const n = asks().length;
     await env.clock.advance(1000);
     check("…and asks again every second, so the sandbox sees a window that moved", asks().length > n, true);
     env.click("toggle", "here");
-    check("an island opens with no frames to drive it: the window asks for all it shows at once", last().height, 78 + 400);
+    check("an island opens with no frames to drive it: the window asks for all it shows at once", last().height, 78 + L + 400);
     await env.clock.advance(400);
     check("…and nothing is under the window's edge to bring into view: the list stays", env.scrolled, []);
     env.click("toggle", "here");
     await env.clock.advance(400);
-    check("it closes: the window asks for its height without the panel", last().height, 78);
+    check("it closes: the window asks for its height without the panel", last().height, 78 + L);
   }
   {
     const env = load({ layout: { panel: 300, window: 200 } });
@@ -410,7 +442,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     env.click("toggle", "here");
     env.click("toggle", "here");
-    check("less motion: the window asks for its height without the panel at once", env.asks().pop(), 6 + 30 + 6);
+    check("less motion: the window asks for its height without the panel at once", env.asks().pop(), 6 + 30 + 6 + L);
   }
   {
     const env = load({ layout: { panel: 400, window: 200 } });
@@ -418,11 +450,20 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.ws().open();
     env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")], { update: { latest: "1.2.0", url: RELEASE } });
     await env.clock.advance(400);
-    check("a line with a button is pinned at the bottom, and the window asks for it too",
-          [env.pinned(), env.asks().pop()], [true, 6 + 30 + 6 + 30 + 6 + 28]);
+    check("a new release on the last line: it is at the bottom, and the window asks for it too",
+          [env.pinned(), env.asks().pop()], [true, 6 + 30 + 6 + 30 + 6 + L]);
     env.board([file("KEY1", "Dashboard"), file("KEY2", "Sandbox 5$")]);
     await env.clock.advance(400);
-    check("…and with nothing left to do, it goes, and so does its height", [env.pinned(), env.asks().pop()], [false, 6 + 30 + 6 + 30 + 6]);
+    check("…and with nothing left to do, the line stays as tall", [env.pinned(), env.asks().pop()], [true, 6 + 30 + 6 + 30 + 6 + L]);
+    env.click("min");
+    await env.clock.advance(400);
+    check("minimized: the window asks for one row and 240 px, the corner kept by the sandbox",
+          [env.pinned(), env.posted.filter((m) => m.type === "resize").pop()], [false, { type: "resize", height: 6 + 30 + 6, width: 240 }]);
+    check("…and lays itself out at 240 px at once, before the sandbox narrows it", env.laid(), "240px");
+    env.click("restore");
+    await env.clock.advance(400);
+    check("…and restored, for all it showed, 320 px wide", env.posted.filter((m) => m.type === "resize").pop(), { type: "resize", height: 78 + L, width: 320 });
+    check("…measured at 320 px, not at the narrow window's width", env.laid(), "320px");
   }
 
   // ─── an island that opens or closes drives the window ───────────────────
@@ -481,7 +522,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("the canvas lets the window grow only so much: it asks for no more while it drives",
           Math.max(...driven.filter((f) => f.fold !== "300px").map((f) => f.ask)), 106 + 120);
     check("…and the fold opens whole, past the window's bottom: the islands scroll",
-          [frames[frames.length - 1].inner, driven[driven.length - 1].fold, env.content()], [106 + 120, "300px", 78 + 300]);
+          [frames[frames.length - 1].inner, driven[driven.length - 1].fold, env.content()], [106 + 120, "300px", 78 + L + 300]);
     check("…never short of the window on the way", frames.filter((f) => f.content < f.inner - 1).length, 0);
   }
   {
@@ -507,7 +548,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     const frames = await watch(env, 400);
     await watch(env, 400);
     check("Figma never gives the window that height: the fold waits for it…", frames[frames.length - 1].fold, "0px");
-    check("…and the island opens whole anyway soon after", env.content(), 78 + 300);
+    check("…and the island opens whole anyway soon after", env.content(), 78 + L + 300);
   }
   {
     const env = load({ calm: true, layout: { panel: 300, window: 106 }, figma: { lag: 2 } });
@@ -517,7 +558,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     const before = env.asks().length;
     env.click("toggle", "here");
-    check("less motion: no drive, the window asks for all it shows at once", env.asks().slice(before), [78 + 300]);
+    check("less motion: no drive, the window asks for all it shows at once", env.asks().slice(before), [78 + L + 300]);
   }
 
   // ─── less motion ────────────────────────────────────────────────────────
@@ -614,11 +655,12 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     const files = [file("KEY1", "Dashboard")];
     env.board(files, { update: { latest: "1.2.0", current: "1.1.0", url: RELEASE } });
     await env.clock.advance(400);
-    check("a new release: a last line, the version and Update with a download arrow, pinned at the bottom",
-          [/<span class="ver">Figaro 1\.1\.0<\/span><span class="what">.*<button[^>]*data-act="update"[^>]*><svg[^>]*><path d="M5 1\.2v5\.5[^"]*h6\.4"[^>]*><\/svg>Update to 1\.2\.0</.test(env.html()), env.pinned()],
-          [true, true]);
-    check("…and Skip before it, with its hint, until the next release",
-          /<button[^>]*class="skip" data-act="skip" data-version="1\.2\.0"[^>]*>Skip<\/button><span class="tip"[^>]*>Hide until the next release<\/span><\/span><button[^>]*data-act="update"/.test(env.html()), true);
+    check("a new release: the last line says the version, and the new one is a blue pill with ⤓ that updates",
+          [/<span class="ver"><span class="ver-b">Figaro 1\.1\.0 <svg[^>]*>.*?<\/svg> <span class="tw"><button[^>]*class="go upv" data-act="update"[^>]*><span>1\.2\.0<\/span><svg[^>]*><path d="M5 1\.2v5\.5[^"]*h6\.4"/.test(env.foot()),
+           /<span class="tip"[^>]*>Update to 1\.2\.0<\/span>/.test(env.foot()), env.pinned()],
+          [true, true, true]);
+    check("…and Skip after it, with its hint, until the next release",
+          /data-act="update".*?<\/span><span class="tw"><button[^>]*class="skip" data-act="skip" data-version="1\.2\.0"[^>]*>Skip<\/button><span class="tip"[^>]*>Hide until the next release<\/span>/.test(env.foot()), true);
     env.click("update");
     check("Update asks the bridge", env.sent("update-now").length, 1);
     env.board(files, { update: { latest: "1.2.0" }, updating: { step: "wait", what: "update", to: "1.2.0" } });
@@ -626,26 +668,64 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("…which waits for the scripts first, with Figaro's spinner, not an agent's grid",
           [/Updates once the scripts finish/.test(env.html()), /<div class="foot">.*class="spin"/.test(env.html()), /<div class="foot">.*class="px"/.test(env.html())],
           [true, true, false]);
-    env.board(files, { update: { latest: "1.2.0" }, failed: { what: "update", error: "local changes", url: RELEASE } });
+    const DETAIL = "git: error: Your local changes to the following files would be overwritten by merge: bridge.py";
+    env.board(files, { update: { latest: "1.2.0" }, failed: { what: "update", error: "local changes", detail: DETAIL, url: RELEASE } });
     await env.clock.advance(400);
-    check("a failed update: the release page on the last line, and why under it, as a field's error",
-          [/<div class="line">.*data-act="release"[^>]*>Open release<\/button><\/span><\/div><div class="why">.*Couldn't update to 1\.2\.0: local changes<\/span><\/div><\/div>$/.test(env.html()),
-           /data-act="skip"/.test(env.html())], [true, true]);
-    env.click("release", null, { url: RELEASE });
-    check("…in the browser", env.posted.filter((m) => m.type === "open-url").map((m) => m.url), [RELEASE]);
+    check("a failed update: a yellow ! where the download was, with a short hint, and Skip; nothing under the line",
+          [/<span class="ver"><span class="ver-b">Figaro 1\.1\.0 .*?<span class="nv">1\.2\.0<\/span><\/span><span class="tw"><button[^>]*class="tl warn" data-act="why"[^>]*><svg[^>]*>.*?<\/svg><\/button><span class="tip"[^>]*>Couldn't update<\/span><\/span><span class="tw"><button[^>]*data-act="skip"/.test(env.foot()),
+           /<\/div><\/div>$/.test(env.foot()), /local changes/.test(env.html())], [true, true, false]);
+    env.click("why");
+    await env.clock.advance(400);
+    check("…which opens the settings at a yellow alert: what failed with Update in its corner, why in plain words, and Copy after them",
+          [/<span class="ind"><span class="wn"><svg[^>]*>.*<div class="alert"><div class="al-h"><b>Couldn't update to 1\.2\.0<\/b><button[^>]*class="go" data-act="update"[^>]*>Update<\/button><\/div><p>The Figaro folder has changes of its own, so it can't move to the new release\. <span class="tw"><button[^>]*class="tl cp" data-act="copy"[^>]*>.*?<span class="tip"[^>]*>Copy the error for your agent<\/span><\/span><\/p><\/div>/.test(env.app()),
+           (env.app().match(/data-act="update"/g) || []).length], [true, 1]);
+    env.click("copy");
+    await env.clock.advance(50);
+    check("Copy gives an agent the error, git's words, the versions and where to look",
+          env.copied(), ["Figaro couldn't update to 1.2.0 in Figma: local changes.\n" + DETAIL + "\n"
+            + "Figaro 1.1.0 on localhost:8788, plugin build test.\nExplain what happened and fix it. `figaro doctor` shows Figaro's state."]);
+    check("…and its button says it did, for a moment",
+          [/class="tl cp done" data-act="copy"[^>]*>.*?<span class="tip"[^>]*>Copied<\/span>/.test(env.app()), await env.clock.advance(2000), /Copied/.test(env.app())],
+          [true, undefined, false]);
+    env.click("update");
+    check("Update in the alert asks the bridge again", env.sent("update-now").length, 2);
+    env.click("back");
+    await env.clock.advance(400);
+    env.board(files, { update: { latest: "1.2.0" }, failed: { what: "update", error: "local changes", to: "1.2.0", url: RELEASE } });
+    await env.clock.advance(400);
+    env.click("skip", null, { version: "1.2.0" });
+    check("Skip takes the ! with it, though the board still has the failure", [/data-act="why"/.test(env.foot()), /<span class="ver">Figaro 1\.1\.0<\/span>/.test(env.foot())], [false, true]);
+    env.board(files, { failed: { what: "update", error: "local changes", to: "1.2.0", url: RELEASE }, skipped: "1.2.0" });
+    await env.clock.advance(400);
+    env.click("gear");
+    check("…and from the settings: the version alone", [/class="alert"|class="wn"/.test(env.app()), /data-act="why"/.test(env.foot())], [false, false]);
+    env.click("gear");
+    env.board(files, { update: { latest: "1.2.1" }, failed: { what: "update", error: "local changes", to: "1.2.0", url: RELEASE }, skipped: "1.2.0" });
+    await env.clock.advance(400);
+    check("a newer release: Update again, not the old failure", [/data-act="update"/.test(env.foot()), /data-act="why"/.test(env.foot()), /Update to 1\.2\.1/.test(env.foot())], [true, false, true]);
 
     env.ws().receive({ type: "outdated", running: "2026-10-08.6", expected: "2026-10-08.7" });
     env.board(files);
     await env.clock.advance(400);
     check("newer plugin code on disk: Reload with a circling arrow, on the last line, pinned, and no Skip",
-          [/<div class="line">.*New build<\/span><button[^>]*data-act="reload"[^>]*><svg[^>]*><path d="M8\.6 5\.9A/.test(env.html()), env.pinned(), /data-act="skip"/.test(env.html())],
+          [/<div class="line">.*New build<\/span><span class="tw"><button[^>]*class="tl build" data-act="reload"[^>]*><svg[^>]*><path d="M8\.6 5\.9A/.test(env.html()), env.pinned(), /data-act="skip"/.test(env.html())],
           [true, true, false]);
     env.click("reload", "here");
     check("Reload asks the bridge", env.sent("reload-all").length, 1);
     env.board(files, { failed: { what: "reload", error: "files stayed busy" } });
     await env.clock.advance(400);
-    check("a failed reload: why under the line, and Reload again",
-          /<div class="line">.*data-act="reload".*<\/div><div class="why">.*Couldn't reload: files stayed busy/.test(env.html()), true);
+    check("a failed reload: the yellow ! in Reload's place, its hint, nothing under the line",
+          [/<span class="ver">Figaro 1\.1\.0<span class="tw"><button[^>]*class="tl warn" data-act="why"[^>]*>.*?<span class="tip"[^>]*>Couldn't reload<\/span><\/span><\/span>/.test(env.foot()),
+           /data-act="reload"|files stayed busy/.test(env.foot())], [true, false]);
+    env.click("why");
+    await env.clock.advance(400);
+    check("…and in the settings the alert says why and has Reload again",
+          /<b>Couldn't reload<\/b><button[^>]*class="go build" data-act="reload"[^>]*>Reload<\/button><\/div><p>Agents kept running scripts for 10 minutes\. Try again once they're done\. <span class="tw"><button[^>]*data-act="copy"/.test(env.app()), true);
+    env.clip.deny = true;
+    env.click("copy");
+    await env.clock.advance(50);
+    check("a clipboard Figma keeps shut: the copy button says so",
+          [env.copied(), /class="tl cp" data-act="copy"[^>]*>.*?<span class="tip"[^>]*>Couldn't copy: Figma didn't let it<\/span>/.test(env.app())], [[], true]);
   }
 
   // ─── Skip: a release goes away until the next one ───────────────────────
@@ -658,13 +738,14 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     env.click("skip", null, { version: "1.2.0" });
     check("Skip tells the bridge which release", env.sent("skip"), [{ type: "skip", version: "1.2.0" }]);
-    check("…and the line goes at once", env.pinned(), false);
+    const offered = () => /class="ver-b"|data-act="update"|data-act="release"/.test(env.foot());
+    check("…and it leaves the line at once: the version alone", [offered(), /<span class="ver">Figaro 1\.1\.0<\/span>/.test(env.foot())], [false, true]);
     env.board(files, { update: { latest: "1.2.0", current: "1.1.0", url: RELEASE } });
     await env.clock.advance(400);
-    check("…and stays away with a bridge that still offers it", env.pinned(), false);
+    check("…and stays away with a bridge that still offers it", offered(), false);
     env.board(files, { release: { latest: "1.2.0", url: RELEASE } });
     await env.clock.advance(400);
-    check("…as a link too", env.pinned(), false);
+    check("…as a link too", offered(), false);
     env.ws().receive({ type: "outdated", running: "2026-10-08.6", expected: "2026-10-08.7" });
     env.board(files, { update: { latest: "1.2.0", url: RELEASE } });
     await env.clock.advance(400);
@@ -689,7 +770,8 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.ws().receive({ type: "update", latest: "1.2.0", current: "1.1.0", url: RELEASE });
     env.board([file("KEY1", "Dashboard")], { skipped: "1.2.0" });
     await env.clock.advance(400);
-    check("a release skipped in another window has no line here, though the bridge said update at hello", env.pinned(), false);
+    check("a release skipped in another window isn't offered here, though the bridge said update at hello",
+          /class="ver-b"|data-act="update"/.test(env.foot()), false);
   }
 
   // ─── a bridge with the Update button off ────────────────────────────────
@@ -700,8 +782,8 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     const files = [file("KEY1", "Dashboard")];
     env.board(files, { release: { latest: "1.2.0", current: "1.1.0", url: RELEASE } });
     await env.clock.advance(400);
-    check("a new release: the last line links to it, with no Update, and Skip before it",
-          [/<span class="what"><span class="skip-w">.*<\/span><button[^>]*class="out"[^>]*data-act="release"[^>]*><span>1\.2\.0 is out<\/span>/.test(env.html()),
+    check("a new release: the last line names it, its number a link to it as in the settings, with no Update, and Skip after it",
+          [/<span class="ver-b">Figaro 1\.1\.0 <svg[^>]*>.*?<\/svg> <span class="tw"><button type="button" class="lnk vlnk" data-act="release" data-url="[^"]*v1\.2\.0"><span>1\.2\.0<\/span><svg[^>]*>.*?<\/svg><\/button><span class="tip"[^>]*>Open the release\. <kbd>Update is off here<\/kbd><\/span><\/span><\/span><span class="tw"><button[^>]*data-act="skip"/.test(env.foot()),
            /data-act="update"/.test(env.html())], [true, false]);
     env.click("release", null, { url: RELEASE });
     check("…which opens in the browser and asks nothing of the bridge",
@@ -709,7 +791,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.ws().receive({ type: "outdated", running: "2026-10-08.6", expected: "2026-10-08.7" });
     env.board(files, { release: { latest: "1.2.0", url: RELEASE } });
     await env.clock.advance(400);
-    check("newer plugin code on disk comes first: Reload", [/data-act="reload"/.test(env.html()), /is out/.test(env.html())], [true, false]);
+    check("newer plugin code on disk comes first: Reload", [/data-act="reload"/.test(env.html()), /class="lnk vlnk"/.test(env.html())], [true, false]);
   }
 
   // ─── an older bridge, without boards ────────────────────────────────────
@@ -762,6 +844,151 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(50);
     check("…nor shows while the bridge is away: the window says that instead",
           [ghosts(), /Looking for the bridge|Waiting for the bridge/.test(env.html())], [0, true]);
+  }
+
+  // ─── the settings ───────────────────────────────────────────────────────
+  {
+    const env = load();
+    const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    const files = [file("KEY1", "Dashboard"), file("KEY2", "Kit", { agents: [agent("icons", { since: ago(30), last: ago(0), busy: true })] })];
+    const settings = { sounds: true, others: true, versions: true };
+    const notes = { version: "1.1.0", items: ["Sounds for what you press", "A pixel grid"] };
+    env.board(files, { settings, notes, folder: "~/figaro", checked: 990 });
+    await env.clock.advance(400);
+    env.heard();
+    env.click("gear");
+    check("Settings: the switches, the version in an open island, no files, and Settings on in the last line",
+          [/^<div class="head"><button type="button" class="back" data-act="back"[^>]*><svg[^>]*>.*?<\/svg><span>Back<\/span><\/button><\/div>/.test(env.app()),
+           (env.app().match(/role="switch" aria-checked="true"/g) || []).length,
+           /<div class="island open"><div class="row"><div class="tg">.*Figaro 1\.1\.0.*up to date/.test(env.app()),
+           /data-fid/.test(env.app()), /class="tl on" data-act="gear"/.test(env.foot())], [true, 3, true, false, true]);
+    check("…what is new in this version, and where Figaro runs",
+          [/What's new in 1\.1\.0<\/div><ul class="notes"><li>Sounds for what you press<\/li>/.test(env.app()),
+           /<b>Folder<\/b><span>~\/figaro<\/span>/.test(env.app()), /<b>Plugin<\/b><span>build test<\/span>/.test(env.app())], [true, true, true]);
+    await env.clock.advance(50);
+    check("…and a click opens them", env.heard(), ["square 1700", "sine 520"]);
+    env.click("set", null, { name: "others" });
+    check("a switch tells the bridge, with a tick", [env.sent("set"), env.heard()], [[{ type: "set", name: "others", on: false }], ["square 2100"]]);
+    env.click("set", null, { name: "sounds" });
+    env.click("check");
+    check("Sounds off: that switch and all after it are silent", env.heard(), []);
+    check("↻ asks the bridge to look for a release, and turns meanwhile", [env.sent("check-update").length, /checking…/.test(env.app())], [1, true]);
+    env.board(files, { settings: { sounds: false, others: false, versions: true }, checked: 1000 + env.clock.now() / 1000, sounds: false });
+    await env.clock.advance(400);
+    check("…until the board says it looked: up to date, just now", /up to date · <span[^>]*>just now/.test(env.app()), true);
+    env.click("set", null, { name: "sounds" });
+    check("Sounds on again: its switch ticks", env.heard(), ["square 2100"]);
+    env.click("back");
+    await env.clock.advance(400);
+    check("back: the files, and with Show other files off, this one's island alone",
+          [/data-fid="here"/.test(env.app()), /data-fid="doc:KEY2"/.test(env.app()), env.heard()], [true, false, ["square 1700", "sine 780"]]);
+    env.board(files, { settings, update: { latest: "1.2.0", url: RELEASE }, skipped: "1.2.0" });
+    env.click("gear");
+    check("a skipped release still shows in the settings: the new version, with Update",
+          [/class="dl".*Figaro 1\.1\.0 .*<span class="nv">1\.2\.0<\/span>.*data-act="update"[^>]*>Update<\/button>/.test(env.app()),
+           /Skip this release/.test(env.app()), /Report a problem/.test(env.app())], [true, false, true]);
+    env.board(files, { settings, release: { latest: "1.2.0", url: RELEASE } });
+    await env.clock.advance(400);
+    check("…and with the Update button off, the release and how to update by hand",
+          [/data-act="release" data-url="[^"]*v1\.2\.0">Release/.test(env.app()), /FIGARO_UPDATE_BUTTON=off/.test(env.app()),
+           /data-act="skip" data-version="1\.2\.0"><span>Skip this release/.test(env.app())], [true, true, true]);
+    env.board(files, { settings, skipped: "1.2.0", newest: { latest: "1.2.0", url: RELEASE, button: true } });
+    await env.clock.advance(400);
+    check("a bridge that names the newest release: a skipped one shows here, and only here",
+          [/<span class="nv">1\.2\.0<\/span>.*data-act="update"/.test(env.app()), /Skip this release/.test(env.app()), /class="ver-b"/.test(env.foot())], [true, false, false]);
+    env.board(files, { settings, folder: "~/figaro", update: { latest: "1.2.0", url: RELEASE },
+                       failed: { what: "update", error: "offline", detail: "git: fatal: unable to access the repository" } });
+    await env.clock.advance(400);
+    env.click("copy");
+    await env.clock.advance(50);
+    check("the copied error names the folder when the bridge says it",
+          env.copied(), ["Figaro couldn't update to 1.2.0 in Figma: offline.\ngit: fatal: unable to access the repository\n"
+            + "Figaro 1.1.0 on localhost:8788, plugin build test, folder ~/figaro.\nExplain what happened and fix it. `figaro doctor` shows Figaro's state."]);
+    env.click("gear");
+    check("Settings again: back to the files", /data-fid="here"/.test(env.app()), true);
+  }
+  {
+    const env = load();
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard")]);
+    await env.clock.advance(400);
+    env.click("gear");
+    check("a bridge too old for settings: they show, but can't change",
+          [(env.app().match(/role="switch"[^>]*disabled/g) || []).length, /Restart the bridge to change them/.test(env.app())], [3, true]);
+    env.click("set", null, { name: "sounds" });
+    check("…and say nothing to it", env.sent("set"), []);
+  }
+
+  // ─── minimized ──────────────────────────────────────────────────────────
+  {
+    const env = load();
+    const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    const busy = (n) => agent(n, { since: ago(30), last: ago(0), busy: true });
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Kit", { agents: [busy("icons")] }), file("KEY3", "Sandbox", { agents: [busy("tokens")] })]);
+    await env.clock.advance(400);
+    env.heard();
+    env.click("min");
+    await env.clock.advance(50);
+    check("Minimize, by a key: mini — this file's card, the other files at work, restore, and no last line",
+          [/<div class="mini enter">/.test(env.app()), /<b>Dashboard<\/b>/.test(env.app()), /<span class="mc"[^>]*>\+2<\/span>/.test(env.app()),
+           /data-act="restore"/.test(env.app()), env.foot()], [true, true, true, true, ""]);
+    check("…the sandbox keeps it, and it swooshes down", [env.posted.filter((m) => m.type === "view").pop(), env.heard()],
+          [{ type: "view", view: "mini" }, ["noise", "sine 560"]]);
+    await env.clock.advance(400);
+    check("…springing in once", /<div class="mini">/.test(env.app()), true);
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Kit", { agents: [busy("icons")], stuck: { agent: "icons", since: ago(40) } })]);
+    await env.clock.advance(400);
+    check("another file stops answering: its card, in red", [/class="island alarm"/.test(env.app()), /<b>Kit<\/b>/.test(env.app())], [true, true]);
+    env.click("restore");
+    await env.clock.advance(50);
+    check("restore: the files, and the swoosh up", [/data-fid="here"/.test(env.app()), env.heard()], [true, ["noise", "sine 280"]]);
+    await env.clock.advance(400);
+
+    const hold = env.press();
+    await env.clock.advance(200);
+    check("held on Minimize: a ring runs round it, a sound rises", [hold.holding(), env.heard()], [true, ["sine 180", "triangle 360"]]);
+    await env.clock.advance(300);
+    check("…and half a second on: nano, with the alarm first",
+          [/<div class="mini nano enter">/.test(env.app()), /class="island alarm"/.test(env.app()), /<b>/.test(env.app()), hold.holding(), env.heard()],
+          [true, true, false, false, ["sine 1100", "noise", "sine 1320"]]);
+    hold.up(true, "restore");
+    check("…and the click as it's let go doesn't restore it, though restore is under the pointer by then", /mini nano/.test(env.app()), true);
+    await env.clock.advance(400);
+    env.click("restore");
+    await env.clock.advance(400);
+
+    const quick = env.press();
+    await env.clock.advance(100);
+    quick.up(true, "restore");
+    check("a quick click on Minimize: mini", [/<div class="mini enter">/.test(env.app()), env.heard().slice(-2)], [true, ["noise", "sine 560"]]);
+    env.click("restore");
+    check("…and a second click right after, now on restore, leaves it so", /class="mini/.test(env.app()), true);
+    await env.clock.advance(400);
+    env.click("restore");
+    await env.clock.advance(400);
+    const off = env.press();
+    await env.clock.advance(100);
+    off.up(false);
+    await env.clock.advance(600);
+    check("pressed, then let go off the button: nothing", [/data-fid="here"/.test(env.app()), off.holding()], [true, false]);
+    env.click("min", null, null, 1);
+    check("a pointer's click on Minimize is the press's to handle, not the click's", /data-fid="here"/.test(env.app()), true);
+  }
+  {
+    const env = load();
+    env.identity("Dashboard", "KEY1", "nano");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard")]);
+    await env.clock.advance(400);
+    check("minimized in this file before: the window opens so, without springing in", /<div class="mini nano">/.test(env.app()), true);
+    env.identity("Dashboard", "KEY1", "files");
+    await env.clock.advance(400);
+    check("…and a later identity leaves it", /mini nano/.test(env.app()), true);
   }
 
   // ─── sounds ─────────────────────────────────────────────────────────────

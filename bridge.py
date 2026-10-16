@@ -41,6 +41,7 @@ if __name__ == "__main__":
 import bridge_board  # noqa: E402
 import bridge_exec  # noqa: E402
 import bridge_idle  # noqa: E402
+import bridge_settings  # noqa: E402
 import bridge_update  # noqa: E402
 import figaro_token  # noqa: E402
 
@@ -86,8 +87,8 @@ def _file_digest(path: Path):
 
 # The bridge runs its helper modules too — a changed bridge_exec.py is old code just the same.
 _BRIDGE_CODE = [Path(__file__).resolve()] + [
-    HERE / n for n in ("bridge_board.py", "bridge_exec.py", "bridge_idle.py", "bridge_update.py",
-                       "figma_links.py", "figaro_token.py")]
+    HERE / n for n in ("bridge_board.py", "bridge_exec.py", "bridge_idle.py", "bridge_settings.py",
+                       "bridge_update.py", "figma_links.py", "figaro_token.py")]
 BRIDGE_DIGEST = [_file_digest(p) for p in _BRIDGE_CODE]
 
 
@@ -134,6 +135,7 @@ REPO = "artem-levchenko-2/figaro"
 UPDATE_EVERY = 6 * 60 * 60   # seconds between checks
 UPDATE: dict | None = None   # {"latest", "current", "url"} once a newer release exists
 SKIPPED: str | None = None   # the release the user skipped with the window's Skip (skip_release)
+CHECKED = 0.0                # when GitHub last answered the check (the window's settings show it)
 _SEMVER = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 
 
@@ -148,7 +150,7 @@ def update_checks_on():
 
 
 def sounds_on():
-    """False with FIGARO_SOUNDS=off (or 0, false, no): the plugin's window plays no sounds."""
+    """False with FIGARO_SOUNDS=off (or 0, false, no): the window's Sounds start off (bridge_settings)."""
     return os.environ.get("FIGARO_SOUNDS", "").strip().lower() not in ("off", "0", "false", "no")
 
 
@@ -249,12 +251,35 @@ def offered():
     return UPDATE if UPDATE and UPDATE["latest"] != SKIPPED else None
 
 
+async def look_for_release():
+    """Ask GitHub for the newest release: record it, its notes, and when it answered."""
+    global CHECKED
+    latest = await check_for_update()
+    if latest is None:
+        return
+    CHECKED = time.time()
+    await set_update(latest)
+    if UPDATE:
+        await bridge_settings.fetch_notes(UPDATE["latest"])
+    bridge_board.changed()
+
+
+_look = None
+
+
+def look_now():
+    """↻ in a window's settings: one look at a time, and none with the check off."""
+    global _look
+    if not update_checks_on() or (_look is not None and not _look.done()):
+        return False
+    _look = asyncio.get_running_loop().create_task(look_for_release())
+    return True
+
+
 async def _update_loop(app):
     await asyncio.sleep(5)  # let the plugins reconnect first
     while True:
-        latest = await check_for_update()
-        if latest is not None:
-            await set_update(latest)
+        await look_for_release()
         await asyncio.sleep(UPDATE_EVERY)
 
 
@@ -1201,7 +1226,8 @@ async def status_handler(request: web.Request) -> web.Response:
         "update": UPDATE,
         "skipped": SKIPPED,
         "update_button": update_allowed(),
-        "sounds": sounds_on(),
+        "sounds": bridge_settings.on("sounds"),
+        "settings": bridge_settings.current(),
         "files": files,
         "pending": len(PENDING),
         "abandoned": [
@@ -1263,6 +1289,7 @@ async def root_handler(request: web.Request) -> web.Response:
 
 def build_app() -> web.Application:
     load_skipped()
+    bridge_settings.load()
     app = web.Application(client_max_size=64 * 1024 * 1024,  # 16 → 64 MB, like the WebSocket
                           middlewares=[guard])
     app.router.add_get("/", root_handler)

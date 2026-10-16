@@ -29,11 +29,13 @@ from typing import NamedTuple
 from aiohttp import web
 
 import bridge
+import bridge_settings
 import figma_links
 
 # A checkpoint — a named version in the file's history — before the first
 # writing script in a file, then at most once an hour. Everyone with access to
-# the file sees its title in File → Version history.
+# the file sees its title in File → Version history. "Save versions as agents
+# work" off in the window's settings stops these; a label still saves one.
 CHECKPOINT_EVERY = 60 * 60
 STATE_DIR = Path(os.environ.get("FIGARO_STATE_DIR") or Path.home() / ".cache" / "figaro")
 CHECKPOINTS_FILE = STATE_DIR / "checkpoints.json"
@@ -154,7 +156,7 @@ def _checkpoint_title(conn_id, agent, read_only, requested):
     if isinstance(requested, str):
         _remember(doc, time.time())
         return f"Figaro · {requested}"
-    if read_only:
+    if read_only or not bridge_settings.on("versions"):
         return None
     last = _checkpoints().get(doc)
     if last is not None and time.time() - last < CHECKPOINT_EVERY:

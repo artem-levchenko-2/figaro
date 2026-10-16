@@ -9,6 +9,30 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+### Added
+
+- **Settings in the plugin's window:** ⚙ on its last line shows them in place of the islands, and Back
+  returns. Three switches, which the bridge keeps for every window and across restarts
+  (`~/.figaro/settings.json`): **Sounds**; **Show other files**, off for this file's island alone; and **Save
+  versions as agents work**, off for no version before an agent's first change and none hourly
+  (`--checkpoint "label"` still saves one). Under them the version: Update, what is new in the release, Skip,
+  ↻ to look for a release now and when the bridge last did, and the bridge, the plugin's build and the folder.
+  A release you skipped is still there, with its Update.
+- **The window minimizes** to one card, 240 px wide, with ⤡ on its last line: the file that matters most,
+  and how many others have agents at work. Hold ⤡ and it goes down to 70 px, only that file's state. A click
+  brings it back. It changes size about its bottom right corner, so the button stays under the pointer, and
+  a file opens minimized next time if you left it so (kept on this computer, not in the file).
+
+### Changed
+
+- **The window's last line is always there:** the version, ⚙ and ⤡. A new release is a blue button with its
+  number, which installs it, and Skip; with `FIGARO_UPDATE_BUTTON=off` the number links to the release.
+  Its buttons say what they do when you point at them.
+- **A failed update or reload is a yellow "!" by the version**, not a line under it. It opens the settings,
+  which say in plain words what happened, with the button to try again and a copy of the error, the
+  versions and the folder for your agent. Skip takes it away with the release.
+- `FIGARO_SOUNDS` now says where the Sounds switch starts; once it is switched in a window, the switch counts.
+
 ## [1.4.0] — 2026-10-15
 
 ### Added

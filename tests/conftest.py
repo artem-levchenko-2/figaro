@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import bridge  # noqa: E402
 import bridge_board  # noqa: E402
 import bridge_exec  # noqa: E402
+import bridge_settings  # noqa: E402
 import bridge_update  # noqa: E402
 
 
@@ -51,8 +52,10 @@ def clean_state(tmp_path, tmp_path_factory, monkeypatch):
     def reset():
         for registry in (bridge.PENDING, bridge.PLUGINS, bridge.LOCKS, bridge.ABANDONED,
                          bridge.QUEUE, bridge_exec.CHECKPOINTS, bridge_board.FILES,
-                         bridge_board.LOST, bridge_update.FAILED):
+                         bridge_board.LOST, bridge_update.FAILED, bridge_settings.SETTINGS,
+                         bridge_settings.NOTES):
             registry.clear()
+        bridge.CHECKED = 0.0
         bridge.ALLOWED_HOSTS = set()
         bridge.UPDATE = None
         bridge.SKIPPED = None

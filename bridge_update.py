@@ -39,7 +39,7 @@ RELOAD_WAIT = 5.0     # for the reloaded windows to leave before the bridge rest
 RESTART_GRACE = 30.0  # for start-bridge.ps1 to replace this process
 
 STATE = {"step": None, "what": None, "to": None}  # step: wait | pull | restart
-FAILED: dict = {}                                   # {"what", "error", "detail", "url", "at"}
+FAILED: dict = {}                                   # {"what", "error", "detail", "to", "url", "at"}
 RESTART = {"argv": None, "port": 8788}              # bridge.main() fills it in
 _task = None
 
@@ -50,7 +50,7 @@ def board():
     if STATE["step"]:
         out["updating"] = dict(STATE)
     if FAILED and time.time() - FAILED["at"] < FAILED_FOR:
-        out["failed"] = {k: FAILED.get(k) for k in ("what", "error", "detail", "url")}
+        out["failed"] = {k: FAILED.get(k) for k in ("what", "error", "detail", "to", "url")}
     return out
 
 
@@ -92,10 +92,10 @@ def _set(step, what=None, to=None):
 
 def _fail(what, error, to=None, detail=None):
     """`error` fits the window's row ("Couldn't update: local changes");
-    `detail` says more, in its tooltip and in the bridge's log."""
+    `detail` says more, in the window's settings and in the bridge's log."""
     print(f"[update] {what} failed: {error}" + (f" — {detail}" if detail else ""), flush=True)
     FAILED.clear()
-    FAILED.update(what=what, error=error, detail=detail, at=time.time(),
+    FAILED.update(what=what, error=error, detail=detail, at=time.time(), to=to,
                   url=bridge.release_url(to) if to else None)
     _set(None)
     # A board once the line is old, or the windows keep it until something
@@ -104,6 +104,13 @@ def _fail(what, error, to=None, detail=None):
         asyncio.get_running_loop().call_later(FAILED_FOR + 1, bridge_board.changed)
     except RuntimeError:
         pass
+
+
+def forget_failed(what):
+    """Skip on a release whose update failed: the windows stop showing it."""
+    if FAILED.get("what") == what:
+        FAILED.clear()
+        bridge_board.changed()
 
 
 def _busy():

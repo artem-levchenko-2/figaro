@@ -13,14 +13,17 @@ something changes:
   STUCK_AFTER seconds after the bridge gave up on it (`stuck`), or its window
   closed while a script ran in it (`lost`: the file stays on the board for
   LOST_KEEP, unless its window comes back within LOST_GRACE);
-- the update in progress, or why it failed (bridge_update).
+- the update in progress, or why it failed (bridge_update);
+- the settings, and what they show about the version (bridge_settings).
 
     POST /done  {target?, agent?, text?}  -> the agent is done in the file, for now
 
 A window's buttons come back over its WebSocket: `stop` (one agent in a file:
 its running script ends and its agent gets a 409; pressed between its
 scripts, its next script there is refused with a 409 and runs nothing),
-`update-now` and `reload-all` (bridge_update).
+`update-now` and `reload-all` (bridge_update), `skip` (a release, and why its
+update failed), `set` (a switch in the settings, bridge_settings) and
+`check-update` (↻ there: ask GitHub now).
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ from aiohttp import web
 
 import bridge
 import bridge_exec
+import bridge_settings
 import bridge_update
 
 RECENT_MAX = 5     # changes listed per file
@@ -190,9 +194,9 @@ def payload():
              "version": bridge.VERSION, "files": files, "lost": lost,
              "update": offer if button else None,
              "release": None if button else offer,
-             "skipped": bridge.SKIPPED, "sounds": bridge.sounds_on(),
-             "stale": _bridge_stale()}
+             "skipped": bridge.SKIPPED, "stale": _bridge_stale()}
     board.update(bridge_update.board())
+    board.update(bridge_settings.board())
     return board
 
 
@@ -421,7 +425,12 @@ async def handle(conn_id, m):
     elif mtype == "reload-all":
         bridge_update.start(pull=False)
     elif mtype == "skip":
-        bridge.skip_release(m.get("version"))
+        if bridge.skip_release(m.get("version")):
+            bridge_update.forget_failed("update")
+    elif mtype == "set":
+        bridge_settings.switch(m.get("name"), m.get("on"))
+    elif mtype == "check-update":
+        bridge.look_now()
     else:
         return False
     return True

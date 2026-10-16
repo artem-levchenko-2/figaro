@@ -5,7 +5,9 @@
 <style>
 /* The plugin's window: one island per file where Figaro runs — this file
    first, then the others in the order they connected — and under them a line
-   with the Figaro version. Figma draws the header above (the plugin's icon
+   with the Figaro version and the window's tools: Settings, which shows the
+   settings and the version's details in place of the islands, and Minimize,
+   which leaves one card (hold it, and only the state). Figma draws the header above (the plugin's icon
    and name, the close button): 40 px, the last of them a line; the islands
    keep 6 px from that line, or it reads as their border. They line up with the
    header: indicators and avatars on the icon's centre (x 24), names on the
@@ -15,8 +17,8 @@
    islands sit 6 px in, so theirs are 13 − 6 = 7 px, and they are 6 px apart.
    The window is as tall as its islands and stays on Figma's canvas
    (code.js): with no room under it, it moves up. Only a window taller than
-   the canvas scrolls them, as one list, the line with the version last; that
-   line stays at the window's bottom only while it has a button or a notice.
+   the canvas scrolls them, as one list; the line with the version stays at
+   the window's bottom.
    The scrollbar runs in the 6 px right of the islands, thin, and shows only
    while the pointer is on the list or it scrolls. An open island's row stays
    at the top while its panel scrolls under it. */
@@ -42,6 +44,8 @@
   --is-err: #ff8b74;
   --is-comp: #b58cff;
   --is-ink: #fff;                /* what a callout's code mixes its colour with */
+  --is-warn: #ffb224;            /* the yellow "!" of a failed update: darker in the light theme */
+  --is-warn-on: #2a1c00;         /* its "!" */
   --ok: #14ae5c;
   --run: #0d99ff;
   --run-hover: #0b88e3;
@@ -73,6 +77,8 @@ html.figma-light {
   --is-err: #d23a1d;
   --is-comp: #8a55f5;
   --is-ink: #000;
+  --is-warn: #c27400;
+  --is-warn-on: #fff;
 }
 html, body { height: 100%; margin: 0; background: var(--win-bg); overflow: hidden; }
 body { display: flex; flex-direction: column; font-family: var(--sys); -webkit-font-smoothing: antialiased; }
@@ -233,51 +239,198 @@ button.layer:hover { background: color-mix(in srgb, var(--run) var(--is-tint), t
 .layer.comp svg { color: var(--is-comp); }
 .more { align-self: center; padding: 0 2px; color: var(--is-faint); font-size: 11px; }
 
-/* The window's last line, under the islands, is there only when there is
-   something to do about the Figaro version: a newer release to update to (or,
-   where the bridge has no Update button, a link to it), the update under way,
-   or newer plugin code to reload. It stays at the window's bottom. Why an
-   update or a reload failed goes under it, as a field's error goes under the
-   field. With the pointer in the window, a newer release offers Skip too,
-   which puts the line away until the next release.
-   Its text keeps the islands' inner edges, x 15 to 305;
-   a button runs out to their outer edge, x 314, so it is 6 px from the
-   window's edge, as from the island above it and the window's bottom. */
+/* The window's last line, under the islands: the Figaro version on the left,
+   and on the right its tools, Settings and Minimize. A newer release shows by
+   the version, with its button right after it: Update, or, where the bridge
+   has no Update button, a link to the release; and Skip after that while the
+   pointer is in the window, which puts the release away until the next one.
+   While Figaro updates or reloads, a spinner and what it does take the
+   version's place. When an update or a reload failed, a yellow "!" by the
+   version opens the settings, which say why.
+   Its text keeps the islands' inner edge, x 15; the minimize button's centre
+   is at x 300, under Figma's close button. */
 .foot { color: var(--win-faint); font-size: 11px; font-weight: 500; }
 .foot .line { height: 22px; display: flex; align-items: center; gap: 8px; padding: 0 9px; white-space: nowrap; }
-.foot .ver { flex: none; }
-.foot .what { margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--win-dim); }
-.foot .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.foot .ver { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 5px; }
+.foot .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--win-dim); }
+.foot .nb { color: var(--win-dim); }
 .foot .spin { flex: none; width: 10px; height: 10px; border-width: 1.5px; }
-.foot .why { display: flex; gap: 6px; padding: 4px 9px 2px; color: var(--win-dim); line-height: 16px; overflow-wrap: anywhere; }
-.foot .warn { flex: none; height: 16px; display: grid; place-items: center; color: var(--wait); }
-.foot .warn svg { width: 12px; height: 12px; }
+.ver-b { display: inline-flex; align-items: center; gap: 5px; }
+.ver-b svg { width: 10px; height: 10px; color: var(--is-dim); }
+.foot .ver-b svg { width: 9px; height: 9px; color: var(--win-faint); }
+.foot .ver-b .nv { color: var(--win-dim); }
 .go { flex: none; height: 22px; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; border: 0; border-radius: 11px; background: var(--run); color: #fff; font: 600 11px/1 var(--sys); cursor: pointer; }
 .go:hover { background: var(--run-hover); }
 .go svg { width: 10px; height: 10px; margin-left: -1px; }
 .go.build { background: var(--build); }
 .go.build:hover { background: color-mix(in srgb, var(--build) 85%, #000); }
-.foot .go { margin-right: -9px; }
-.foot .out { flex: none; display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: none; color: var(--win-dim); font: inherit; cursor: pointer; }
-.foot .out span { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 2px; }
-.foot .out:hover span { text-decoration-color: currentColor; }
-.foot .out svg { width: 9px; height: 9px; }
-/* Skip: a button without a fill until the pointer is on it, unlike the
-   blue and purple ones; it shows only while the pointer is in the window
-   (#foot.inside) or it has the focus, and its hint comes after a moment. */
-.foot .skip-w { position: relative; flex: none; display: flex; }
-.foot .skip { height: 22px; padding: 0 8px; border: 0; border-radius: 11px; background: none; color: var(--win-faint); font: inherit; cursor: pointer;
+.go2 { flex: none; height: 22px; display: inline-flex; align-items: center; gap: 4px; padding: 0 10px; border: 0; border-radius: 11px; background: var(--is-fill-2); color: var(--is-text); font: 600 11px/1 var(--sys); cursor: pointer; }
+.go2:hover { background: color-mix(in srgb, var(--is-text) 18%, transparent); }
+.go2 svg { width: 9px; height: 9px; }
+/* The window's small round buttons: the tools, a release's, Reload's, and
+   restore in a minimized window. Settings is on while its view shows. */
+.tools { flex: none; margin-left: auto; margin-right: -6px; display: flex; gap: 2px; }
+.tl { position: relative; flex: none; width: 22px; height: 22px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 11px; background: none; color: var(--win-faint); cursor: pointer;
+  transition: background-color .12s, color .12s; -webkit-user-select: none; user-select: none; touch-action: none; }
+.tl:hover { background: var(--is-fill); color: var(--win-dim); }
+.tl.on { color: var(--is-text); }  /* no fill: the next button stays 14 px from it */
+.tl:focus-visible, .sw:focus-visible, .lnk:focus-visible, .go2:focus-visible, .row .chk-up:focus-visible { outline: 2px solid var(--run); outline-offset: -2px; }
+.tl svg { width: 12px; height: 12px; }
+/* What there is to do about the version: the new one's number with ⤓ in a
+   blue pill, which updates; Reload's drawing in its colour, the yellow "!" a
+   circle, and under the pointer a tint of that colour, as big as the tools'
+   grey one. */
+.foot .go.upv { gap: 4px; padding: 0 8px 0 9px; }
+.foot .go.upv svg { width: 10px; height: 10px; margin: 0 -1px 0 0; color: inherit; }
+.tl.build { color: var(--build); }
+.tl.warn { color: var(--is-warn); }
+.tl.build:hover { background: color-mix(in srgb, var(--build) 20%, transparent); color: var(--build); }
+.tl.warn:hover { background: color-mix(in srgb, var(--wait) 20%, transparent); color: var(--is-warn); }
+/* Hold Minimize to nanomize: a ring runs round the button, and the icon
+   squeezes, as long as HOLD_MS. */
+.tl .ic { transition: transform .12s ease; }
+.tl .ring { position: absolute; inset: 0; width: 22px; height: 22px; transform: rotate(-90deg); pointer-events: none; }
+.tl .ring circle { fill: none; stroke: var(--run); stroke-width: 1.7; stroke-linecap: round; stroke-dasharray: 60.3; stroke-dashoffset: 60.3; opacity: 0; transition: stroke-dashoffset .14s ease, opacity .14s ease; }
+.tl.hold { background: color-mix(in srgb, var(--run) 18%, transparent); color: var(--run); }
+.tl.hold .ring circle { stroke-dashoffset: 0; opacity: 1; transition: stroke-dashoffset 500ms linear, opacity .08s ease; }
+.tl.hold .ic { transform: scale(.66); transition: transform 500ms cubic-bezier(.5, 0, .75, 0); }
+/* Skip: a button without a fill until the pointer is on it; it shows only
+   while the pointer is in the window (#foot.inside) or it has the focus. */
+.foot .skip { height: 22px; padding: 0 6px; border: 0; border-radius: 11px; background: none; color: var(--win-faint); font: inherit; cursor: pointer;
   opacity: 0; pointer-events: none; transition: opacity .15s, background-color .12s, color .12s; }
 #foot.inside .skip, .foot .skip:focus-visible { opacity: 1; pointer-events: auto; }
 .foot .skip:hover, .foot .skip:focus-visible { background: var(--is-fill); color: var(--win-dim); }
-.foot .tip { position: absolute; left: 50%; bottom: calc(100% + 6px); z-index: 2; padding: 5px 8px; border-radius: 5px; background: #1e1e1e; color: #fff;
+/* What a button takes a press on, the circle its tint fills (Skip's pill),
+   stays 2 px from the next one and from the words it belongs to, so none
+   touches another. A new release the window can't install is a link, as in
+   the settings: Skip 14 px from its arrow. */
+.foot .ver > .tw:has(> .tl.build, > .tl.warn) { margin-left: -3px; }
+.foot .ver > .tw:has(> .tl.build, > .tl.warn) + .tw:has(> .skip) { margin-left: -3px; }
+.foot .ver > .ver-b:has(.upv) + .tw:has(> .skip) { margin-left: -3px; }
+.foot .ver > .ver-b + .tw:has(> .skip) { margin-left: 3px; }
+.foot .vlnk { color: var(--win-dim); font: inherit; line-height: 22px; }
+.foot .vlnk:hover { color: var(--is-text); }
+/* A button's hint comes after a moment, centred over it with a tail that
+   points at it; by the window's edge it slides in to stay 6 px inside, the
+   tail still on the button (placeTips). */
+.tw { position: relative; flex: none; display: flex; }
+.tip { --cx: 50%; position: absolute; left: 0; bottom: calc(100% + 7px); z-index: 4; padding: 5px 8px; border-radius: 5px; background: #1e1e1e; color: #fff;
   font: 500 11px/14px var(--sys); white-space: nowrap; box-shadow: 0 2px 10px rgba(0, 0, 0, .3); pointer-events: none;
-  opacity: 0; transform: translate(-50%, 2px); transition: opacity .12s, transform .12s; }
-#foot.tip .tip, .foot:has(.skip:focus-visible) .tip { opacity: 1; transform: translate(-50%, 0); }
+  opacity: 0; transform: translateY(2px); transition: opacity .12s, transform .12s; }
+.tip::after { content: ""; position: absolute; top: 100%; left: var(--cx); margin-left: -5px; border: 5px solid transparent; border-top-color: #1e1e1e; border-bottom: 0; }
+.tip kbd { font: inherit; color: rgba(255, 255, 255, .62); }
+.tw:hover .tip, .tw:has(:focus-visible) .tip { opacity: 1; transform: none; transition-delay: .45s; }
+.tw:has(.hold) .tip, .tw:active .tip { opacity: 0; transform: translateY(2px); transition: none; }
+
+/* The settings: a row with the way back, the switches in one island, and the
+   version in an open one: what to do about it, what is new, and where
+   Figaro runs. */
+.head { height: 30px; display: flex; align-items: center; }
+/* Back: words with no fill, brighter under the pointer, a press on any of the row's left part */
+.back { height: 30px; display: inline-flex; align-items: center; gap: 4.5px; padding: 0 14px 0 10px; border: 0; border-radius: 7px; background: none;
+  color: var(--win-dim); font: 600 12px/1 var(--sys); cursor: pointer; transition: color .12s; }
+.back:hover { color: var(--is-text); }
+.back:focus-visible { outline: 2px solid var(--run); outline-offset: -2px; }
+.back svg { width: 10px; height: 10px; }
+div.tg { cursor: default; }  /* the version's row: nothing to open */
+.set { display: flex; align-items: center; gap: 12px; padding: 9px var(--pad); }
+.set + .set { box-shadow: inset 0 1px 0 var(--is-line); }
+.set .t { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.set .t b { font-weight: 500; line-height: 16px; }
+.set .t span { color: var(--is-dim); font-size: 11px; line-height: 14px; }
+.sets-off { margin: 0; padding: 0 var(--pad) 9px; color: var(--is-dim); font-size: 11px; line-height: 14px; }
+.sw { position: relative; flex: none; width: 26px; height: 16px; padding: 0; border: 0; border-radius: 8px; background: var(--is-fill-2); cursor: pointer; transition: background-color .15s; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); transition: transform .15s; }
+.sw.on { background: var(--run); }
+.sw.on::after { transform: translateX(10px); }
+.sw:disabled { opacity: .45; cursor: default; }
+.row .go, .row .go2 { height: 20px; padding: 0 9px; margin-right: 1px; }
+.row .chk-up { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--is-faint); cursor: pointer; }
+.row .chk-up:hover { background: var(--is-fill); color: var(--is-text); }
+.row .chk-up svg { width: 10px; height: 10px; }
+.row .chk-up .spin, .ind .spin.sm { width: 10px; height: 10px; border-width: 1.5px; }
+.ind .dl { width: 18px; height: 18px; display: grid; place-items: center; color: var(--run); }
+.ind .dl svg { width: 14px; height: 14px; }
+.off-note { margin: 0; padding: 10px var(--pad) 0; color: var(--is-dim); font-size: 11px; line-height: 16px; overflow-wrap: anywhere; }
+.off-note code { font: 10.5px/1 var(--sys-mono); color: var(--is-text); }
+.ind .wn { width: 18px; height: 18px; display: grid; place-items: center; color: var(--is-warn); }
+.ind .wn svg { width: 14px; height: 14px; }
+/* An update or a reload that failed: what and why in plain words, a copy of
+   the error for an agent, and the button to try again. */
+.alert { margin: 10px 8px 0; padding: 8px 8px 11px 12px; border-radius: 9px; background: color-mix(in srgb, var(--wait) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wait) 28%, transparent); color: var(--is-dim); font-size: 11px; line-height: 16px; }
+.alert .al-h { display: flex; align-items: center; gap: 8px; min-height: 20px; margin-bottom: 2px; color: var(--is-text); }
+.alert .al-h b { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; }
+.alert .go { height: 20px; padding: 0 9px; }
+.alert p { margin: 0 4px 0 0; overflow-wrap: anywhere; }
+/* Copy, at the end of the words: its circle mustn't make the line taller */
+.alert p .tw { display: inline-flex; vertical-align: middle; margin: -3px 0 -3px 1px; }
+.alert .tl { color: var(--is-dim); }
+.alert .tl:hover { background: var(--is-fill); color: var(--is-text); }
+.alert .tl.done { color: var(--ok); }
+.notes { margin: 0; padding: 0 var(--pad) 2px; list-style: none; display: grid; gap: 5px; }
+.notes li { position: relative; padding-left: 13px; }
+.notes li::before { content: ""; position: absolute; left: 2px; top: 6px; width: 4px; height: 4px; border-radius: 50%; background: var(--is-faint); }
+.lnks { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 8px var(--pad) 2px; }
+.lnk { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: none; color: var(--is-dim); font: 500 11px/16px var(--sys); cursor: pointer; }
+.lnk span { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 2px; }
+.lnk:hover span { text-decoration-color: currentColor; }
+.lnk svg { width: 9px; height: 9px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; padding: 8px var(--pad); font-size: 11px; line-height: 15px; }
+.kv b { color: var(--is-faint); font-weight: 500; }
+.kv span { min-width: 0; color: var(--is-dim); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+/* Minimized: the file that matters most as one card, and on the window's
+   ground next to it how many other files have agents at work, and restore
+   under Figma's close button (mini, 240 px); or only that file's state and
+   restore (nano, 70 px, the narrowest window Figma allows). */
+.mini { display: flex; align-items: center; gap: 3px; }
+.mini.enter { animation: pop .34s cubic-bezier(.2, .8, .2, 1) backwards; }
+.mini .island { flex: 1; }
+.mini .row { padding-right: var(--pad); }
+.mini .tl { margin: 0 3px 0 4.5px; }  /* its drawing 14 px from the card */
+.mini .mc { flex: none; height: 30px; min-width: 30px; display: grid; place-items: center; padding: 0 7px; border-radius: 7px; background: var(--is-bg); box-shadow: inset 0 0 0 1px var(--is-edge);
+  color: var(--is-text); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.mini.nano.enter { animation: nano .34s cubic-bezier(.3, 1.35, .55, 1) backwards; }
+.mini.nano .row { padding: 0; }
+.mini.nano .tg { padding: 0; justify-content: center; }
+@keyframes nano { from { transform: scale(.7); opacity: 0; } }
+.island.alarm { background: color-mix(in srgb, var(--err) 16%, var(--is-bg)); }
+.island.alarm .row { background: transparent; }
+
+/* A view comes in (glide()). The settings slide in from the right over the
+   islands, which go a little to the left and fade, and slide back out to the
+   right; the last line stays. Minimized or restored, the window changes its
+   size about its bottom right corner, where the sandbox keeps it: the view sits
+   in that corner as the window's other edges close in or open out, and what
+   the window showed fades out there. The window's size follows frame by frame. */
+#scroll { position: relative; }
+.ghost { pointer-events: none; }
+#scroll > .ghost { position: absolute; left: 0; right: 0; }
+body.slide #scroll { flex: 1 1 auto; overflow: hidden; }
+body.slide-fwd #app { animation: in-right .32s cubic-bezier(.3, .7, .2, 1) both; }
+body.slide-fwd #scroll > .ghost { animation: out-left .32s cubic-bezier(.3, .7, .2, 1) both; }
+body.slide-back #app { animation: in-left .32s cubic-bezier(.3, .7, .2, 1) both; }
+body.slide-back #scroll > .ghost { animation: out-right .32s cubic-bezier(.3, .7, .2, 1) both; }
+@keyframes in-right { from { transform: translateX(100%); } }
+@keyframes out-left { to { transform: translateX(-30%); opacity: 0; } }
+@keyframes in-left { from { transform: translateX(-30%); opacity: 0; } }
+@keyframes out-right { to { transform: translateX(100%); } }
+body.morph { position: fixed; top: 0; right: 0; bottom: 0; justify-content: flex-end; }
+body.morph #scroll { flex: none; overflow: hidden; }
+body.morph > :is(#scroll, #foot) { animation: appear .2s ease .06s backwards; }
+body > .ghost { position: fixed; right: 0; bottom: 0; z-index: 5; display: flex; flex-direction: column; background: var(--win-bg); animation: gone .18s ease forwards; }
+.ghost .g-scroll { flex: 0 1 auto; min-height: 0; margin: 6px 0 0 6px; overflow: hidden; scrollbar-gutter: stable; }
+.ghost .g-scroll::-webkit-scrollbar { width: 6px; }
+.ghost .g-end { height: 6px; }
+.ghost .g-foot { flex: none; padding: 0 6px 6px; }
+.ghost .g-foot:empty { display: none; }
+@keyframes gone { to { opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
   .slot.enter, .slot.enter > .island, .slot.leave, .island.opening :is(.fold, .panel, .chev) { animation: none; }
-  .agent[data-agent], .act, .act .ib, .foot .skip, .foot .tip { transition: none; }
+  .agent[data-agent], .act, .act .ib, .foot .skip, .tip, .tl, .tl .ic, .tl .ring circle, .sw, .sw::after { transition: none; }
+  .mini.enter { animation: none; }
   .spin { animation-duration: 2.4s; }
   .px i { animation: none; opacity: .6; }
   .shim { animation: none; background: none; color: inherit; }
@@ -415,7 +568,19 @@ const CUES = {
   skip: [{ src: "noise", filter: ["bandpass", [900, 4000], 1.2], env: [0.008, 0.1], gain: 0.8 }],  // Skip: off it flies
   alarm: [{ src: "square", hz: 220, filter: ["lowpass", 900], env: [0.002, 0.12], gain: 0.3 },     // Figma isn't answering
           { src: "square", hz: 220, at: 0.14, filter: ["lowpass", 900], env: [0.002, 0.12], gain: 0.3 }],
+  gear: [{ src: "square", hz: 1700, filter: ["bandpass", 2200, 1.5], env: [0.0004, 0.025], gain: 0.2 },   // the settings open
+         { src: "sine", hz: [520, 780], at: 0.025, env: [0.002, 0.08, 0.02], gain: 0.32 }],
+  back: [{ src: "square", hz: 1700, filter: ["bandpass", 2200, 1.5], env: [0.0004, 0.025], gain: 0.2 },   // …and close
+         { src: "sine", hz: [780, 520], at: 0.025, env: [0.002, 0.08, 0.02], gain: 0.32 }],
+  min: [{ src: "noise", filter: ["bandpass", [2800, 700], 1.2], env: [0.01, 0.12], gain: 0.55 },          // minimize: a swoosh down
+        { src: "sine", hz: [560, 280], env: [0.003, 0.14, 0.03], gain: 0.34 }],
+  max: [{ src: "noise", filter: ["bandpass", [700, 2800], 1.2], env: [0.01, 0.12], gain: 0.55 },          // restore: the same up
+        { src: "sine", hz: [280, 560], env: [0.003, 0.14, 0.03], gain: 0.34 }],
+  nano: [{ src: "sine", hz: [1100, 110], env: [0.001, 0.1, 0.02], gain: 0.55 },                         // nanomize: a pop in
+         { src: "noise", filter: ["highpass", 2500, 0.7], env: [0.0005, 0.018], gain: 0.3 },
+         { src: "sine", hz: 1320, at: 0.11, env: [0.001, 0.04], gain: 0.2 }],
 };
+const HOLD_MS = 500;       // how long Minimize is held to nanomize (the ring's CSS takes as long)
 const CUE_VOLUME = 0.32;   // Beautiful UI's
 const CUE_LATE_MS = 300;   // a cue that couldn't play by then is dropped, not played late
 const CUE_HUSH_MS = 3000;  // the cues' own AudioContext, apart from the tone's, sleeps after that
@@ -472,6 +637,47 @@ function cue(name) {
     else ctx.resume().then(play, () => {});
   } catch (e) {
     log("[sound] " + e.message);
+  }
+}
+
+// While Minimize is held: a tone that rises until HOLD_MS, when nanomize's own
+// cue takes over. The function it gives stops it where it got to.
+function charge() {
+  if ((board && !board.sounds) || typeof AudioContext !== "function") return () => {};
+  try {
+    const ctx = cueContext();
+    if (ctx.state !== "running") ctx.resume().then(null, () => {});
+    const t = ctx.currentTime + 0.005, end = t + HOLD_MS / 1000;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.22, end);
+    g.connect(cueOut);
+    const oscs = [["sine", 180, 720, 1], ["triangle", 360, 1440, 0.22]].map(([type, from, to, level]) => {
+      const o = ctx.createOscillator(), l = ctx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(from, t);
+      o.frequency.exponentialRampToValueAtTime(to, end);
+      l.gain.value = level;
+      o.connect(l);
+      l.connect(g);
+      o.start(t);
+      return o;
+    });
+    clearTimeout(cueHush);
+    return () => {
+      try {
+        const now = ctx.currentTime;
+        if (g.gain.cancelScheduledValues) g.gain.cancelScheduledValues(now);
+        g.gain.setTargetAtTime(0.0001, now, 0.02);
+        for (const o of oscs) o.stop(now + 0.15);
+        cueHush = setTimeout(() => ctx.suspend(), 150 + CUE_HUSH_MS);
+      } catch (e) {
+        log("[sound] " + e.message);
+      }
+    };
+  } catch (e) {
+    log("[sound] " + e.message);
+    return () => {};
   }
 }
 
@@ -579,6 +785,16 @@ function takeBoard(m) {
     updating: m.updating || null, failed: m.failed || null,
     skipped: typeof m.skipped === "string" ? m.skipped : null,
     sounds: m.sounds !== false,  // FIGARO_SOUNDS=off; a bridge too old to say plays them
+    // The settings the window can change, and what it shows about the version:
+    // what is new in it, where Figaro runs, when the bridge last looked for a
+    // release (`checks` false: it never does). A bridge too old to send them
+    // has its settings shown, but not to change.
+    settings: m.settings && typeof m.settings === "object" ? Object.assign({}, m.settings) : null,
+    notes: m.notes && Array.isArray(m.notes.items) ? m.notes : null,
+    folder: typeof m.folder === "string" ? m.folder : "",
+    newest: m.newest && m.newest.latest ? m.newest : null,  // skipped or not: {latest, url, button}
+    checks: m.checks !== false,
+    checked: typeof m.checked === "number" ? t(m.checked) : 0,
     files: (m.files || []).map(fileOf),
     lost: (Array.isArray(m.lost) ? m.lost : []).filter((f) => f && f.lost).map(fileOf),
   };
@@ -588,7 +804,9 @@ function takeBoard(m) {
 // its window closed while one ran.
 const alarm = (f) => (f.stuck || f.lost ? 1 : 0);
 
-// This file first, under the id "here", then the others as the bridge lists them.
+// This file first, under the id "here", then the others as the bridge lists them,
+// unless the settings say to show this file alone.
+const othersShown = () => !(board && board.settings && board.settings.others === false);
 function filesNow() {
   const here = { id: "here", doc: null, name: identity.name || "This file", here: true, agents: [], recent: [] };
   if (conn !== "ok" || !board) {
@@ -608,6 +826,7 @@ function filesNow() {
     } else others.push(f);
   }
   for (const f of board.lost) if (!(identity.docSig && f.sig === identity.docSig)) others.push(f);
+  if (!othersShown()) return [mine || here];
   // A file that stopped answering comes first after this one.
   others.sort((a, b) => alarm(b) - alarm(a));
   return [mine || here].concat(others);
@@ -649,8 +868,18 @@ const LOADER = '<span class="px" aria-hidden="true"><i></i><i></i><i></i><i></i>
 const ICON = {
   check: '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="M3.5 6.2 5.2 7.9 8.5 4.4" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   chev: '<svg viewBox="0 0 10 10"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  down: '<svg viewBox="0 0 10 10"><path d="M5 1.2v5.5M2.5 4.3 5 6.8l2.5-2.5M1.8 9h6.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   again: '<svg viewBox="0 0 10 10"><path d="M8.6 5.9A3.75 3.75 0 1 1 7.8 2.3M8.6.9v2.1H6.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  arrow: '<svg viewBox="0 0 10 10"><path d="M1.5 5h6.6M5.6 2.3 8.3 5 5.6 7.7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  left: '<svg viewBox="0 0 10 10"><path d="M8.5 5H1.9M4.4 2.3 1.7 5l2.7 2.7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  upc: '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="M6 2.7v4.5M4.2 5.5 6 7.3l1.8-1.8M4 9.2h4" fill="none" stroke="#fff" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  down: '<svg viewBox="0 0 10 10"><path d="M5 1.2v5.5M2.5 4.3 5 6.8l2.5-2.5M1.8 9h6.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  caution: '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/><path d="M6 3v3.4" fill="none" style="stroke: var(--is-warn-on)" stroke-width="1.4" stroke-linecap="round"/><circle cx="6" cy="8.75" r=".85" style="fill: var(--is-warn-on)"/></svg>',
+  copy: '<svg viewBox="0 0 12 12"><rect x="4.1" y="4.1" width="6.4" height="6.4" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M7.9 2.3a1 1 0 0 0-.9-.8H2.8c-.7 0-1.3.6-1.3 1.3V7c0 .4.3.8.8.9" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  done: '<svg viewBox="0 0 12 12"><path d="M2.4 6.4 4.9 8.8 9.6 3.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  gear: '<svg viewBox="0 0 12 12"><path fill="currentColor" fill-rule="evenodd" d="M10 4.43l1.32.16v2.82L10 7.57l-.06.15.82 1.04-2 2-1.04-.82-.15.06-.16 1.32H4.59L4.43 10l-.15-.06-1.04.82-2-2 .82-1.04L2 7.57.68 7.41V4.59L2 4.43l.06-.15-.82-1.04 2-2 1.04.82.15-.06.16-1.32h2.82L7.57 2l.15.06 1.04-.82 2 2-.82 1.04zM7.8 6a1.8 1.8 0 1 0-3.6 0 1.8 1.8 0 1 0 3.6 0z"/></svg>',
+  shrink: '<svg class="ic" viewBox="0 0 12 12"><path d="M10.5 1.5 7 5M7 2.2V5h2.8M1.5 10.5 5 7M5 9.8V7H2.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  grow: '<svg viewBox="0 0 12 12"><path d="M7 5l3.5-3.5M7.7 1.5h2.8v2.8M5 7l-3.5 3.5M4.3 10.5H1.5V7.7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  ring: '<svg class="ring" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="9.6"/></svg>',
   out: '<svg viewBox="0 0 10 10"><path d="M2.4 7.6 7.4 2.6M3.6 2.6h3.8v3.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   warn: '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M8 4.5v4.2" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.3" r=".95" fill="#fff"/></svg>',
   FRAME: '<svg viewBox="0 0 12 12"><path d="M4 1.5v9M8 1.5v9M1.5 4h9M1.5 8h9" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>',
@@ -804,51 +1033,380 @@ function island(f, cls, anim) {
     + (isOpen || shut ? `<div class="fold"><div>${panel(f)}</div></div>` : "") + "</div></div>";
 }
 
-// The window's last line, when there is something to do about the Figaro
-// version: update to a newer release, or reload newer plugin code from disk.
-// Why an update or a reload failed goes on a line under it. A release the user
-// skipped has no line, until a newer one comes out: the bridge keeps the skip for
-// every window and names it on the board (`board.skipped`), and this window keeps
-// its own (`skipped`) for a bridge too old to know Skip.
+// ─── the window's views ──────────────────────────────────────────────────
+// The files (the islands), the settings, and two minimized views: mini, 240 px,
+// the file that matters most, and nano, 70 px, only its state. A minimized
+// window keeps its corner under Figma's close button (code.js), and its view
+// when the plugin runs in that file again: the sandbox keeps it and says it in
+// `identity`.
+const WIDTHS = { files: 320, settings: 320, mini: 240, nano: 70 };
+const REPO = "https://github.com/artem-levchenko-2/figaro";
+let view = "files";
+let viewSince = 0;
+let viewTaken = false;         // the sandbox's view, taken once
+let checkAsked = 0;            // when ↻ was pressed: it turns until the board says the bridge looked
+// The page takes the view's width at once. Measured at the old one (nano's 70 px,
+// before the sandbox has widened the window), the islands would wrap and ask for
+// far more height than they take, and the window would jump up to make room.
+function layWidth() {
+  if (document.body && document.body.style) document.body.style.width = WIDTHS[view] + "px";
+}
+function setView(next) {
+  if (next === view || !WIDTHS[next]) return;
+  endGlide(false);
+  const was = view, w0 = window.innerWidth || WIDTHS[was], h0 = window.innerHeight;
+  const ghost = ghostOf(was, next);
+  view = next;
+  layWidth();
+  viewSince = Date.now();
+  parent.postMessage({ pluginMessage: { type: "view", view: next === "mini" || next === "nano" ? next : "files" } }, "*");
+  if (ghost) glide = { ghost, t0: 0 };  // the window asks for its size once the view is drawn
+  finishDrive();
+  closing.clear();
+  animId = shutId = null;
+  onScreen.clear();            // the islands come back as they were, without coming in
+  ready = false;
+  lastHtml = lastFoot = null;
+  render();
+  if (ghost) startGlide(was, next, w0, h0);
+}
+
+// A view comes in (the CSS above): what the window showed stays on as a ghost
+// while the window glides to its new size, a frame at a time as an island's
+// drive does. Minimized or restored, the sandbox keeps the window's bottom
+// right corner all along (`corner`). Not with reduced motion.
+const GLIDE = { ms: 320, ease: bezier(.3, .7, .2, 1) };  // body.slide's
+let glide = null;
+function ghostOf(was, next) {
+  if (calm() || typeof requestAnimationFrame !== "function" || typeof document.createElement !== "function"
+      || !app.getBoundingClientRect || !(window.innerHeight > 0)) return null;
+  const g = document.createElement("div");
+  g.className = "ghost";
+  g.setAttribute("aria-hidden", "true");
+  if (WIDTHS[was] === WIDTHS[next]) {  // settings and back: what the list showed, in it
+    g.innerHTML = app.innerHTML;
+    g.style.top = -scroller.scrollTop + "px";
+    scroller.insertBefore(g, app);
+  } else {  // minimized or restored: the whole window as it was
+    g.innerHTML = `<div class="g-scroll">${app.innerHTML}<div class="g-end"></div></div><div class="g-foot">${foot.innerHTML}</div>`;
+    g.style.width = (window.innerWidth || WIDTHS[was]) + "px";
+    g.style.height = window.innerHeight + "px";
+    document.body.appendChild(g);
+    g.firstChild.scrollTop = scroller.scrollTop;
+  }
+  for (const el of g.querySelectorAll(".leave")) el.remove();
+  for (const el of g.querySelectorAll(".enter")) el.classList.remove("enter");
+  return g;
+}
+function startGlide(was, next, w0, h0) {
+  const g = glide;
+  if (!g) return;
+  scroller.scrollTop = 0;
+  const corner = WIDTHS[was] !== WIDTHS[next];
+  // as tall as the view is at its own width (layWidth), before it is put in the corner
+  const h1 = Math.max(1, Math.min(Math.ceil(contentHeight()), roomHeight, HEIGHT_MAX));
+  Object.assign(g, { corner, w0, h0, w1: WIDTHS[next], h1, t0: performance.now(), sent: "", done: 0 });
+  document.body.classList.add(corner ? "morph" : "slide");
+  if (!corner) document.body.classList.add(next === "settings" ? "slide-fwd" : "slide-back");
+  stepGlide(g.t0);
+  const tick = (now) => { if (glide === g) { stepGlide(now); requestAnimationFrame(tick); } };
+  requestAnimationFrame(tick);
+  setTimeout(() => { if (glide === g) endGlide(true); }, 2 * GLIDE.ms + LATE_MS);  // a page that stopped drawing
+}
+function stepGlide(now) {
+  const g = glide;
+  // by the frame: a frame that came late (the page was busy, say making its sounds) moves it by one frame's time
+  g.done += Math.min(Math.max(0, now - (g.last || now)), 34);
+  g.last = now;
+  const t = Math.min(1, g.done / GLIDE.ms), e = GLIDE.ease(t);
+  const height = Math.round(g.h0 + (g.h1 - g.h0) * e), width = Math.round(g.w0 + (g.w1 - g.w0) * e);
+  if (width + "x" + height !== g.sent) {
+    g.sent = width + "x" + height;
+    sentHeight = height;
+    sentWidth = width;
+    parent.postMessage({ pluginMessage: { type: "resize", height, width, corner: g.corner } }, "*");
+  }
+  if (t >= 1) endGlide(true);
+}
+function endGlide(fitAfter) {
+  if (!glide) return;
+  const g = glide;
+  glide = null;
+  g.ghost.remove();
+  document.body.classList.remove("slide", "slide-fwd", "slide-back", "morph");
+  placeTips();  // the window's width came after the view's: from nano, Minimize's hint would hang off its edge
+  if (fitAfter) fit(true);
+}
+
+// What there is to do about the Figaro version, for the last line and the settings.
+// A release the user skipped stays off the last line until a newer one comes out:
+// the bridge keeps the skip for every window and names it on the board
+// (`board.skipped`), and this window keeps its own (`skipped`) for a bridge too
+// old to know Skip.
 let skipped = null;
-function footer() {
+function versionNow() {
   const on = conn === "ok";
-  const latest = on && ((board && board.update && board.update.latest) || (update && update.latest));
-  const release = on && !latest && board && board.release;  // newer, and the bridge has no Update button
-  const doing = on && board && board.updating;
-  const failed = on && !doing && board && board.failed;
+  const latest = (on && ((board && board.update && board.update.latest) || (update && update.latest))) || "";
+  const release = (on && !latest && board && board.release) || null;  // newer, and the bridge has no Update button
+  const doing = (on && board && board.updating) || null;
+  let failed = (on && !doing && board && board.failed) || null;
   const newer = latest || (release && release.latest) || "";
-  const away = !!newer && (newer === skipped || newer === (board && board.skipped));
-  const reload = '<button type="button" class="go build" data-act="reload" title="Reload the plugin with the code on disk, once the scripts finish">'
-    + ICON.again + "Reload</button>";
-  let why = "", right = "", skip = false;
+  const gone = skipped || (board && board.skipped) || "";
+  const away = !!newer && newer === gone;
+  // An update that failed is about its release: skipped, or a newer one out,
+  // it is nothing to show any more (a bridge before 1.5.0 doesn't name it).
+  if (failed && failed.what === "update" && (away || (failed.to ? failed.to !== newer : !!gone && !newer))) failed = null;
+  let doingText = "";
   if (doing) {
     const reloading = doing.what === "reload";
-    const text = doing.step === "wait" ? (reloading ? "Reloads once the scripts finish" : "Updates once the scripts finish")
+    doingText = doing.step === "wait" ? (reloading ? "Reloads once the scripts finish" : "Updates once the scripts finish")
       : doing.step === "pull" ? `Updating to ${esc(doing.to || latest || "the new version")}…`
       : reloading ? "Reloading Figaro…" : "Restarting Figaro…";
-    right = `<span class="spin"></span><span class="txt">${text}</span>`;
-  } else if (failed && failed.what === "reload") {
-    why = `<div class="why"><span class="warn">${ICON.warn}</span><span title="${esc(failed.detail || failed.error)}">Couldn't reload: ${esc(failed.error)}</span></div>`;
-    if (stale()) right = reload;  // try again
-  } else if (failed && !away) {
-    why = `<div class="why"><span class="warn">${ICON.warn}</span><span title="${esc(failed.detail || failed.error)}">Couldn't update${latest ? " to " + esc(latest) : ""}: ${esc(failed.error)}</span></div>`;
-    if (failed.url) right = `<button type="button" class="go" data-act="release" data-url="${esc(failed.url)}">Open release</button>`;
-    skip = !!newer;
-  } else if (latest && !away) {
-    right = `<button type="button" class="go" data-act="update" title="Download it, restart the bridge and reload the plugin, once the scripts finish">${ICON.down}Update to ${esc(latest)}</button>`;
-    skip = true;
-  } else if (on && stale()) {
-    right = '<span class="txt">New build</span>' + reload;
-  } else if (release && release.latest && !away) {
-    right = `<button type="button" class="out" data-act="release" data-url="${esc(release.url || "")}" title="The Update button is off on this computer. To update: git pull in the Figaro folder, restart the bridge, then press Reload here"><span>${esc(release.latest)} is out</span>${ICON.out}</button>`;
-    skip = true;
   }
-  if (!why && !right) return "";
-  const skipper = skip ? `<span class="skip-w"><button type="button" class="skip" data-act="skip" data-version="${esc(newer)}" aria-describedby="skip-tip">Skip</button>`
-    + '<span class="tip" id="skip-tip" role="tooltip">Hide until the next release</span></span>' : "";
-  return `<div class="foot"><div class="line"><span class="ver">Figaro${version ? " " + esc(version) : ""}</span>`
-    + `<span class="what">${skipper}${right}</span></div>${why}</div>`;
+  return { on, latest, release, doing, doingText, failed, newer, away };
+}
+// The newest release the bridge knows, skipped or not, for the settings:
+// {latest, url, button}. A bridge that doesn't name it (`newest`) has it only
+// while it offers it.
+function newestNow(v) {
+  const n = v.on && board && board.newest;
+  if (n && n.latest) return { latest: n.latest, url: n.url || "", button: n.button !== false };
+  if (v.latest) return { latest: v.latest, url: "", button: true };
+  if (v.release && v.release.latest) return { latest: v.release.latest, url: v.release.url || "", button: false };
+  return null;
+}
+const named = () => "Figaro" + (version ? " " + esc(version) : "");
+const newerName = (to) => `<span class="ver-b">${named()} ${ICON.arrow} <span class="nv">${esc(to)}</span></span>`;
+
+// A button with its hint over it (placeTips).
+const tw = (button, tip) => `<span class="tw">${button}<span class="tip" role="tooltip">${tip}</span></span>`;
+function tools() {
+  const on = view === "settings";
+  return '<span class="tools">'
+    + tw(`<button type="button" class="tl${on ? " on" : ""}" data-act="gear" aria-label="${on ? "Close settings" : "Settings"}">${ICON.gear}</button>`,
+      on ? "Close settings" : "Settings")
+    + tw(`<button type="button" class="tl" data-act="min" aria-label="Minimize. Hold to nanomize">${ICON.shrink}${ICON.ring}</button>`,
+      "Minimize. <kbd>Hold to nanomize</kbd>")
+    + "</span>";
+}
+
+// The window's last line: the version, what there is to do about it, and the
+// tools. A yellow ! says an update or a reload failed; why is in the settings.
+function footer() {
+  if (view === "mini" || view === "nano") return "";
+  const v = versionNow();
+  const reload = tw(`<button type="button" class="tl build" data-act="reload" aria-label="Reload">${ICON.again}</button>`,
+    "Reload with the new build, once the scripts finish");
+  // the new version's number is the button that installs it
+  const upBtn = (to) => `<span class="ver-b">${named()} ${ICON.arrow} `
+    + tw(`<button type="button" class="go upv" data-act="update" aria-label="Update to ${esc(to)}"><span>${esc(to)}</span>${ICON.down}</button>`,
+      `Update to ${esc(to)}`) + "</span>";
+  // a release the window can't install: its number links to its page, as in the settings
+  const relLink = (to, url) => `<span class="ver-b">${named()} ${ICON.arrow} `
+    + tw(`<button type="button" class="lnk vlnk" data-act="release" data-url="${esc(url || "")}"><span>${esc(to)}</span>${ICON.out}</button>`,
+      "Open the release. <kbd>Update is off here</kbd>") + "</span>";
+  // what failed, by the version: its why is in the settings
+  const warnBtn = (tip) => tw(`<button type="button" class="tl warn" data-act="why" aria-label="${tip}. See why in the settings">${ICON.caution}</button>`, tip);
+  const skipBtn = () => tw(`<button type="button" class="skip" data-act="skip" data-version="${esc(v.newer)}">Skip</button>`,
+    "Hide until the next release");
+  let left = named();
+  if (v.doing) {
+    left = `<span class="spin"></span><span class="txt">${v.doingText}</span>`;
+  } else if (v.failed && v.failed.what === "reload") {
+    left += warnBtn("Couldn't reload");
+  } else if (v.failed && !v.away) {
+    left = (v.newer ? newerName(v.newer) : named()) + warnBtn("Couldn't update") + (v.newer ? skipBtn() : "");
+  } else if (v.latest && !v.away) {
+    left = upBtn(v.latest) + skipBtn();
+  } else if (v.on && stale()) {
+    left += '<span class="nb">New build</span>' + reload;
+  } else if (v.release && v.release.latest && !v.away) {
+    left = relLink(v.release.latest, v.release.url) + skipBtn();
+  }
+  return `<div class="foot"><div class="line"><span class="ver">${left}</span>${tools()}</div></div>`;
+}
+
+// ─── the settings ────────────────────────────────────────────────────────
+// What the window can change: the bridge keeps it for every window
+// (~/.figaro/settings.json), over the FIGARO_* variables it started with.
+const SETS = [
+  ["sounds", "Sounds", "Buttons, minimize, Stop; a knock when Figma stops answering"],
+  ["others", "Show other files", "Islands of your other Figma files where agents work"],
+  ["versions", "Save versions as agents work", "Before an agent first changes a file, then hourly. Everyone with access sees them in its version history"],
+];
+function settingsView() {
+  const can = conn === "ok" && !!(board && board.settings);
+  const value = (k) => (board && board.settings ? board.settings[k] !== false : k === "sounds" ? !(board && !board.sounds) : true);
+  const sets = SETS.map(([k, title, sub]) => {
+    const on = value(k);
+    return `<div class="set"><span class="t"><b>${title}</b><span>${sub}</span></span>`
+      + `<button type="button" class="sw${on ? " on" : ""}" role="switch" aria-checked="${on}" aria-label="${title}" data-act="set" data-name="${k}"${can ? "" : " disabled"}></button></div>`;
+  }).join("");
+  const off = can ? "" : `<p class="sets-off">${conn !== "ok" ? "They can change once the bridge is up." : "Restart the bridge to change them: it runs an older Figaro."}</p>`;
+  return `<div class="head"><button type="button" class="back" data-act="back" aria-label="Back to the files">${ICON.left}<span>Back</span></button></div>`
+    + `<div class="slot"><div class="island">${sets}${off}</div></div>`
+    + versionCard();
+}
+
+// The version: what to do about it, what is new, and where Figaro runs. A
+// release the user skipped shows here all the same.
+function versionCard() {
+  const v = versionNow(), n = newestNow(v);
+  const dot = (c) => `<span class="dot"${c ? ` style="--c: ${c}"` : ""}></span>`;
+  let ind = dot(), name = named(), sub = "", right = "", note = "";
+  if (!v.on) {
+    ind = conn === "connecting" ? '<span class="spin sm" style="--c: var(--idle)"></span>' : dot("var(--idle)");
+    sub = conn === "connecting" ? "connecting…" : "no bridge yet";
+  } else if (v.doing) {
+    ind = '<span class="spin sm"></span>';
+    sub = v.doingText;
+  } else if (n && n.button) {
+    ind = `<span class="dl">${ICON.upc}</span>`;
+    name = newerName(n.latest);
+    right = `<button type="button" class="go" data-act="update" title="Download it, restart the bridge and reload the plugin, once the scripts finish">Update</button>`;
+  } else if (n) {
+    ind = `<span class="dl">${ICON.upc}</span>`;
+    name = newerName(n.latest);
+    right = `<button type="button" class="go2" data-act="release" data-url="${esc(n.url)}">Release${ICON.out}</button>`;
+    note = '<p class="off-note">The Update button is off on this computer (<code>FIGARO_UPDATE_BUTTON=off</code>). '
+      + "To update: <code>git pull</code> in the Figaro folder, restart the bridge, then press Reload.</p>";
+  } else if (stale()) {
+    ind = dot("var(--build)");
+    sub = "new build";
+    right = `<button type="button" class="go build" data-act="reload" title="Reload the plugin with the code on disk, once the scripts finish">Reload</button>`;
+  } else if (board && !board.checks) {
+    sub = "release check off";
+  } else {
+    const asking = checkAsked && !(board && board.checked >= checkAsked) && Date.now() - checkAsked < 15000;
+    sub = asking ? "checking…" : board && board.checked ? "up to date · " + agoSpan(board.checked) : "up to date";
+    right = asking ? '<span class="chk-up" aria-label="Checking"><span class="spin"></span></span>'
+      : `<button type="button" class="chk-up" data-act="check" title="Check for a new release" aria-label="Check for a new release">${ICON.again}</button>`;
+  }
+  if (v.failed) {  // the alert has the button to try again
+    ind = `<span class="wn">${ICON.caution}</span>`;
+    right = "";
+    note = alertOf(v) + note;
+  }
+  const row = `<div class="row"><div class="tg"><span class="ind">${ind}</span><span class="lbl"><b>${name}</b>`
+    + (sub ? `<span class="sub">${sub}</span>` : "") + "</span></div>" + (right ? `<div class="right">${right}</div>` : "") + "</div>";
+  const notes = board && board.notes && board.notes.items.length
+    ? `<div class="sect">What's new in ${esc(board.notes.version || version)}</div><ul class="notes">`
+      + board.notes.items.map((t) => `<li>${esc(t)}</li>`).join("") + "</ul>" : "";
+  const lnk = (act, text, extra, out) => `<button type="button" class="lnk" data-act="${act}"${extra}><span>${text}</span>${out ? ICON.out : ""}</button>`;
+  const links = '<div class="lnks">' + lnk("release", "All release notes", ` data-url="${REPO}/releases"`, true)
+    + (n && v.newer && !v.away ? lnk("skip", "Skip this release", ` data-version="${esc(v.newer)}"`, false)
+      : lnk("release", "Report a problem", ` data-url="${REPO}/issues/new"`, true)) + "</div>";
+  const kv = [];
+  if (v.on && version) kv.push(["Bridge", `${esc(version)}, on localhost:8788`]);
+  if (identity.pluginVersion) kv.push(["Plugin", "build " + esc(identity.pluginVersion)]);
+  if (v.on && board && board.folder) kv.push(["Folder", esc(board.folder)]);
+  const facts = kv.length ? '<div class="kv">' + kv.map(([k, x]) => `<b>${k}</b><span>${x}</span>`).join("") + "</div>" : "";
+  return `<div class="slot"><div class="island open">${row}<div class="panel">${note}${notes}${links}${facts}</div></div></div>`;
+}
+
+// What failed, in plain words, with the button to try again in its corner;
+// after the words, a copy of it for an agent, with what the agent needs to
+// look into it.
+const WHY = {
+  "local changes": "The Figaro folder has changes of its own, so it can't move to the new release.",
+  "local commits": "The Figaro folder has commits of its own that the release doesn't have.",
+  "no remote": "The Figaro folder doesn't know where to get releases from.",
+  "offline": "GitHub didn't answer. Check the connection and try again.",
+  "git failed": "Git stopped with an error.",
+  "not a git clone": "The Figaro folder isn't a git clone, so it can't update itself.",
+  "no such release": "GitHub doesn't have this release.",
+  "pip failed": "The new Python packages didn't install.",
+  "files stayed busy": "Agents kept running scripts for 10 minutes. Try again once they're done.",
+  "nothing new": "The Figaro folder already has this release.",
+  "restart by hand": "The bridge didn't restart: run start-bridge.sh in the Figaro folder.",
+  "unexpected error": "Something went wrong in the bridge.",
+};
+let copied = 0;                // when the error was copied for an agent (less than 0: it couldn't be)
+const COPIED_MS = 1600;
+function alertOf(v) {
+  const f = v.failed, reload = f.what === "reload";
+  const title = reload ? "Couldn't reload" : `Couldn't update${v.latest ? " to " + esc(v.latest) : ""}`;
+  const shown = Date.now() - Math.abs(copied) < COPIED_MS ? (copied > 0 ? "done" : "no") : "";
+  const copy = tw(`<button type="button" class="tl cp${shown === "done" ? " done" : ""}" data-act="copy" aria-label="Copy the error for your agent">`
+    + `${shown === "done" ? ICON.done : ICON.copy}</button>`, shown === "done" ? "Copied" : shown === "no" ? "Couldn't copy: Figma didn't let it" : "Copy the error for your agent");
+  const again = reload ? (stale() ? '<button type="button" class="go build" data-act="reload">Reload</button>' : "")
+    : v.latest ? '<button type="button" class="go" data-act="update">Update</button>' : "";
+  return `<div class="alert"><div class="al-h"><b>${title}</b>${again}</div>`
+    + `<p>${esc(WHY[f.error] || f.detail || f.error)} ${copy}</p></div>`;
+}
+function errorText(v) {
+  const f = v.failed;
+  const what = f.what === "reload" ? "couldn't reload its plugin" : `couldn't update${v.latest ? " to " + v.latest : ""}`;
+  return [`Figaro ${what} in Figma: ${f.error}.`, f.detail || null,
+    `Figaro ${version || "(version unknown)"} on localhost:8788, plugin build ${identity.pluginVersion || "(unknown)"}`
+      + (board && board.folder ? `, folder ${board.folder}` : "") + ".",
+    "Explain what happened and fix it. `figaro doctor` shows Figaro's state."].filter(Boolean).join("\n");
+}
+// Figma doesn't let a plugin's window at navigator.clipboard, so first the old
+// way, a selected text area, while the click still counts; the new one if that fails.
+function copyText(text) {
+  let ok = false;
+  try {
+    const t = document.createElement("textarea"), was = document.activeElement;
+    t.value = text;
+    t.setAttribute("readonly", "");
+    t.style.position = "fixed";
+    t.style.opacity = "0";
+    document.body.appendChild(t);
+    t.select();
+    ok = document.execCommand("copy");
+    t.remove();
+    if (was && was.focus) was.focus();
+  } catch (e) { ok = false; }
+  if (ok) return Promise.resolve(true);
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text).then(() => true, () => false);
+  } catch (e) { /* no way left */ }
+  return Promise.resolve(false);
+}
+// ⚠ by the version opens the settings, at the alert.
+function showAlert() {
+  const el = app.querySelector && app.querySelector(".alert");
+  if (!el || !scroller.getBoundingClientRect) return;
+  const box = scroller.getBoundingClientRect(), r = el.getBoundingClientRect();
+  const by = Math.min(r.bottom + 8 - box.bottom, r.top - box.top);
+  if (by > 0) scroller.scrollBy({ top: by, behavior: calm() ? "auto" : "smooth" });
+}
+
+// ─── minimized ───────────────────────────────────────────────────────────
+// Mini: the file that matters most — one where Figma stopped answering, or this
+// one — with the count of the other files where agents are at work. Nano: an
+// alarm anywhere, agents at work anywhere, or this file's state.
+function miniView(nano, enter) {
+  const files = filesNow().filter(shown);
+  const top = files.find((f) => alarm(f)) || files[0];
+  const h = headline(top);
+  const restore = `<button type="button" class="tl" data-act="restore" title="Restore" aria-label="Restore">${ICON.grow}</button>`;
+  const cls = "mini" + (nano ? " nano" : "") + (enter ? " enter" : "");
+  if (nano) {
+    const ind = h.alarm ? h.ind : files.some((f) => headline(f).kind === "working") ? LOADER : h.ind;
+    return `<div class="${cls}"><div class="island${h.alarm ? " alarm" : ""}"><div class="row"><button type="button" class="tg" data-act="restore" title="Restore" aria-label="Restore">`
+      + `<span class="ind">${ind}</span></button></div></div>${restore}</div>`;
+  }
+  const more = files.filter((f) => f !== top && headline(f).kind === "working").length;
+  return `<div class="${cls}"><div class="island${h.alarm ? " alarm" : ""}"><div class="row"><button type="button" class="tg" data-act="restore" title="Restore">`
+    + `<span class="ind">${h.ind}</span><span class="lbl"><b>${esc(top.name)}</b></span></button></div></div>`
+    + (more ? `<span class="mc" title="${more} more file${more > 1 ? "s" : ""} with agents at work">+${more}</span>` : "")
+    + restore + "</div>";
+}
+
+// A hint is centred over its button; by the window's edge it slides in to stay
+// 6 px inside, its tail still on the button.
+function placeTips() {
+  if (typeof document.querySelectorAll !== "function" || !document.documentElement) return;
+  const width = document.documentElement.clientWidth;
+  for (const t of document.querySelectorAll(".tw > .tip")) {
+    const r = t.previousElementSibling.getBoundingClientRect(), box = t.parentElement.getBoundingClientRect();
+    const cx = r.left + r.width / 2, w = t.offsetWidth;
+    const left = Math.max(6, Math.min(width - 6 - w, cx - w / 2));
+    t.style.left = left - box.left + "px";
+    t.style.setProperty("--cx", cx - left + "px");
+  }
 }
 
 // ─── rendering ───────────────────────────────────────────────────────────
@@ -876,7 +1434,7 @@ const ANIM_MS = 400;           // the longest animation: an island coming, going
 
 function schedule() {
   if (pressed) { dirty = true; return; }
-  const wait = drive ? 32 : animUntil - Date.now();  // an island being driven is drawn anew once it is done
+  const wait = drive || glide ? 32 : animUntil - Date.now();  // an island being driven, or a view coming in, is drawn anew once it is done
   if (wait > 0) {
     clearTimeout(later);
     later = setTimeout(schedule, wait);
@@ -887,6 +1445,7 @@ function schedule() {
 
 function render() {
   dirty = false;
+  if (view !== "files") { renderView(); return; }
   const now = Date.now();
   for (const [key, at] of stopping) if (now - at > 3000) stopping.delete(key);  // the board says by then
   for (const [id, at] of closing) {
@@ -930,6 +1489,7 @@ function render() {
   if (tail !== lastFoot) {
     foot.innerHTML = tail;
     lastFoot = tail;
+    placeTips();
   }
   inStep();
   if (moving) {
@@ -939,6 +1499,30 @@ function render() {
   }
   if (opening !== null) startDrive(opening, true);
   else if (shutting !== null) startDrive(shutting, false);
+  fit();
+}
+
+// The settings and the minimized views have no islands that come and go: they
+// are drawn as they are. A minimized view springs in once.
+function renderView() {
+  const enter = Date.now() - viewSince < ANIM_MS;
+  const html = view === "settings" ? settingsView() : miniView(view === "nano", enter && !calm());
+  const tail = footer();
+  if (html !== lastHtml) {
+    app.innerHTML = html;
+    lastHtml = html;
+  }
+  if (tail !== lastFoot) {
+    foot.innerHTML = tail;
+    lastFoot = tail;
+  }
+  placeTips();
+  inStep();
+  if (enter) {
+    animUntil = viewSince + ANIM_MS;
+    clearTimeout(later);
+    later = setTimeout(schedule, animUntil - Date.now());  // then without the class
+  }
   fit();
 }
 
@@ -961,23 +1545,27 @@ document.addEventListener("animationstart", (e) => { if (e.animationName === "px
 // its islands.
 const HEIGHT_MAX = 2000;       // code.js's
 let sentHeight = 0;
+let sentWidth = 0;
 let roomHeight = Infinity;
 const tall = (el) => el.getBoundingClientRect().height;
 const contentHeight = () => scroller.getBoundingClientRect().top + tall(app) + tall(end) + tall(foot);
 function ask(height) {
   sentHeight = height;
-  parent.postMessage({ pluginMessage: { type: "resize", height } }, "*");
+  sentWidth = WIDTHS[view];
+  parent.postMessage({ pluginMessage: { type: "resize", height, width: sentWidth } }, "*");
 }
 function fit(again) {
-  if (!app.getBoundingClientRect || drive) return;  // a drive asks for itself
+  if (!app.getBoundingClientRect || drive || glide) return;  // a drive or a glide asks for itself
   const want = Math.ceil(contentHeight());
   edges();
-  if (want > 0 && (again || want !== sentHeight)) ask(want);
+  if (want > 0 && (again || want !== sentHeight || WIDTHS[view] !== sentWidth)) ask(want);
 }
 if (typeof ResizeObserver === "function") {
-  const watch = new ResizeObserver(() => fit());
+  const watch = new ResizeObserver(() => { fit(); placeTips(); });
   for (const el of [app, end, foot, scroller]) watch.observe(el);
 }
+// Figma sizes the window after the page has laid itself out: its hints go by the window's edges then.
+if (typeof window.addEventListener === "function") window.addEventListener("resize", placeTips);
 
 // An island that opens or closes doesn't animate by the clock alone: Figma
 // moves the window's edges a frame or two after it asks. So every frame the
@@ -1117,7 +1705,6 @@ function act(name, fid, el) {
     cue("skip");
     skipped = el.dataset.version;
     send({ type: "skip", version: skipped });
-    hint(false);
     render();
   } else if (name === "release") {
     cue("layer");
@@ -1125,6 +1712,46 @@ function act(name, fid, el) {
   } else if (name === "layer") {
     cue("layer");
     parent.postMessage({ pluginMessage: { type: "select", id: el.dataset.id } }, "*");
+  } else if (name === "gear") {
+    cue(view === "settings" ? "back" : "gear");
+    setView(view === "settings" ? "files" : "settings");
+  } else if (name === "back") {
+    cue("back");
+    setView("files");
+  } else if (name === "why") {
+    cue("gear");
+    setView("settings");
+    setTimeout(showAlert, GLIDE.ms + 60);
+  } else if (name === "copy" && versionNow().failed) {
+    cue("layer");
+    copyText(errorText(versionNow())).then((ok) => {
+      copied = ok ? Date.now() : -Date.now();
+      lastHtml = null;
+      render();
+      setTimeout(() => { lastHtml = null; schedule(); }, COPIED_MS + 20);
+    });
+  } else if (name === "min") {
+    cue("min");
+    setView("mini");
+  } else if (name === "restore") {
+    if (Date.now() - viewSince < 350) return;  // the second click of a double one on Minimize
+    cue("max");
+    setView("files");
+  } else if (name === "set" && el.dataset.name && board && board.settings) {
+    const key = el.dataset.name, on = board.settings[key] === false;
+    board.settings[key] = on;  // at once; the bridge's board says it again
+    if (key === "sounds") board.sounds = on;
+    send({ type: "set", name: key, on });
+    cue("layer");  // heard only once sounds are on
+    el.classList.toggle("on", on);  // the switch slides, and the redraw that follows changes nothing
+    el.setAttribute("aria-checked", String(on));
+    lastHtml = settingsView();
+  } else if (name === "check") {
+    cue("layer");
+    checkAsked = Date.now();
+    send({ type: "check-update" });
+    setTimeout(schedule, 15000);  // a bridge that never answers: ↻ comes back
+    render();
   }
 }
 
@@ -1139,31 +1766,26 @@ function point(key) {
     el.classList.toggle("hot", !!slot && slot.dataset.fid + "\n" + el.dataset.agent === key);
   }
 }
-// The pointer in the window: the last line shows Skip; on Skip, its hint comes after a moment.
-let hintTimer = null;
-let onSkip = false;
+// The pointer in the window: the last line shows Skip.
 function inside(on) { if (foot.classList) foot.classList.toggle("inside", on); }
-function hint(on) {
-  onSkip = on;
-  clearTimeout(hintTimer);
-  if (!foot.classList) return;
-  if (on) hintTimer = setTimeout(() => foot.classList.add("tip"), 400);
-  else foot.classList.remove("tip");
-}
 document.addEventListener("pointerover", (e) => {
+  if (e.target && e.target.closest && e.target.closest(".tw")) placeTips();  // where it is now, before it shows
   const row = e.target && e.target.closest ? e.target.closest(".agent[data-agent]") : null;
   const slot = row && row.closest("[data-fid]");
   point(slot ? slot.dataset.fid + "\n" + row.dataset.agent : "");
   inside(true);
-  const skip = !!(e.target && e.target.closest && e.target.closest(".skip"));
-  if (skip !== onSkip) hint(skip);
 });
-document.addEventListener("pointerout", (e) => { if (!e.relatedTarget) { point(""); inside(false); hint(false); } });  // it left the window
+document.addEventListener("pointerout", (e) => {
+  if (hold && hold.el.contains(e.target) && !hold.el.contains(e.relatedTarget)) holdEnd(false);  // off Minimize: no minimize
+  if (!e.relatedTarget) { point(""); inside(false); }  // it left the window
+});
 const calm = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
 document.addEventListener("click", (e) => {
+  if (eatClick) { eatClick = false; return; }  // the press that ended a hold
   const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
   if (!el || el.disabled) return;
+  if (el.dataset.act === "min" && e.detail > 0) return;  // the pointer's: the hold decides
   const slot = el.closest("[data-fid]");
   act(el.dataset.act, slot ? slot.dataset.fid : null, el);
 });
@@ -1181,6 +1803,44 @@ document.addEventListener("pointerdown", () => {
 });
 document.addEventListener("pointerup", release);
 document.addEventListener("pointercancel", release);
+
+// Minimize: let go at once and the window minimizes; held for HOLD_MS (a ring
+// runs round the button meanwhile, and a sound rises), it nanomizes. Moved off
+// the button, the press does nothing. A key minimizes (the click above).
+let hold = null;               // {el, timer, stop}
+let held = false;              // a hold nanomized: the press is over once it is let go
+let eatClick = false;          // the click that ends a press on Minimize
+function holdEnd(minimize) {
+  if (!hold) return;
+  const h = hold;
+  hold = null;
+  clearTimeout(h.timer);
+  h.el.classList.remove("hold");
+  h.stop();
+  if (minimize) { cue("min"); setView("mini"); }
+}
+document.addEventListener("pointerdown", (e) => {
+  const el = e.target && e.target.closest ? e.target.closest('[data-act="min"]') : null;
+  if (!el || e.button !== 0) return;
+  holdEnd(false);
+  el.classList.add("hold");
+  hold = { el, stop: charge(), timer: setTimeout(() => {
+    holdEnd(false);
+    held = true;
+    cue("nano");
+    setView("nano");
+  }, HOLD_MS) };
+});
+// Let go, the press's click comes next, on whatever is under the pointer by
+// then (nano's restore, or mini's card): it is eaten.
+document.addEventListener("pointerup", (e) => {
+  if (!hold && !held) return;
+  if (hold) holdEnd(hold.el.contains(e.target));
+  held = false;
+  eatClick = true;
+  setTimeout(() => { eatClick = false; }, 0);
+});
+document.addEventListener("pointercancel", () => holdEnd(false));
 
 // Live clocks and "2m ago", and what changes with time alone: an agent quiet
 // for activeFor is no longer at work, and one quiet for SHOW_FOR leaves its
@@ -1294,6 +1954,10 @@ window.onmessage = (e) => {
                  pluginVersion: m.pluginVersion || null, caps: m.caps || [] };
     log(`[id] file=${identity.name}`);
     sendHello();  // (re-)register this connection under the file name
+    if (!viewTaken) {
+      viewTaken = true;
+      if ((m.view === "mini" || m.view === "nano") && view === "files") { view = m.view; layWidth(); viewSince = 0; lastHtml = lastFoot = null; }
+    }
     schedule();
     return;
   }

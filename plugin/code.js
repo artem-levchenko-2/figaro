@@ -1,6 +1,7 @@
 // The window: one island per file (ui.html). It grows and shrinks with them —
 // the UI measures itself and asks for its height (`resize`, fitWindow below) —
-// and stays on the canvas: with no room under it, it moves up.
+// and stays on the canvas: with no room under it, it moves up. Minimized, it
+// is narrower (it asks for its width too).
 const UI_WIDTH = 320;
 figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", themeColors: true });
 
@@ -8,12 +9,14 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-15.8";
+const PLUGIN_VERSION = "2026-10-17.1";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
 const CAPS = ["changes", "readOnly", "undo", "reload", "checkpoint",
                  "quick", "libs", "links", "inspect", "shot", "gate", "board"];
+
+let keptView = null;  // the window's view (below)
 
 // Tell the UI which file we're in, so it can register this connection with the
 // bridge by name (figma.root.name). The bridge routes --target by that name.
@@ -25,6 +28,7 @@ function postIdentity() {
     docSig: docSignature(),
     pluginVersion: PLUGIN_VERSION,
     caps: CAPS,
+    view: keptView,  // null until it is read
   });
 }
 
@@ -44,6 +48,26 @@ function docSignature() {
   return fileKey() || RUN_ID;
 }
 postIdentity();
+
+// The window's view: minimized in a file, it opens minimized there the next
+// time. Kept on this computer (clientStorage), never in the file (keptView, above).
+const viewKey = () => "view:" + fileKey();
+const viewRead = (async () => {
+  try {
+    const v = fileKey() && figma.clientStorage ? await figma.clientStorage.getAsync(viewKey()) : null;
+    keptView = v === "mini" || v === "nano" ? v : "files";
+  } catch (e) {
+    keptView = "files";
+  }
+  postIdentity();
+})();
+async function keepView(view) {
+  if (view !== "files" && view !== "mini" && view !== "nano") return;
+  keptView = view;
+  try {
+    if (fileKey() && figma.clientStorage) await figma.clientStorage.setAsync(viewKey(), view);
+  } catch (e) {}
+}
 
 function safeStringify(value) {
   if (value === undefined) return null;
@@ -435,7 +459,8 @@ const FIGMA_HEADER = 40;  // Figma's header (the plugin's name, the close button
 const CANVAS_GAP = 8;     // the window keeps this far from the canvas's top and bottom edges
 const HEIGHT_MAX = 2000;
 const HEIGHT_MIN = 30;    // on a canvas too short for more: an island's row
-const placed = { height: 0, spot: null, hidden: 0, pos: null, room: 0 };
+const WIDTH_MIN = 70;     // Figma's narrowest plugin window
+const placed = { height: 0, width: UI_WIDTH, spot: null, hidden: 0, pos: null, room: 0 };
 
 // The canvas's top and bottom edges in window space, less the gap, and where
 // the window is. null when Figma can't tell.
@@ -458,34 +483,45 @@ const near = (a, b) => Math.abs(a.x - b.x) <= 2 && Math.abs(a.y - b.y) <= 2;
 function fitWindow(ask) {
   const want = Math.min(Math.round(Number(ask.height)), HEIGHT_MAX);
   if (!(want > 0)) return;
+  const width = Math.max(WIDTH_MIN, Math.min(UI_WIDTH, Math.round(Number(ask.width)) || UI_WIDTH));
   const edges = canvasEdges();
   let height = want;
-  if (edges && typeof figma.ui.reposition === "function") height = placeWindow(edges, want);
+  if (edges && typeof figma.ui.reposition === "function") height = placeWindow(edges, want, width, !!ask.corner);
   else if (edges) {  // a Figma that can't move it: the window ends at the canvas's bottom
     height = Math.max(HEIGHT_MIN, Math.min(want, Math.floor(edges.bottom - edges.at.windowSpace.y - FIGMA_HEADER)));
   }
-  if (height !== placed.height) {
+  if (height !== placed.height || width !== placed.width) {
     placed.height = height;
-    figma.ui.resize(UI_WIDTH, height);
+    placed.width = width;
+    figma.ui.resize(width, height);
   }
 }
 
 // Puts the window where `want` px of islands fit, and gives the height they get there.
-function placeWindow(edges, want) {
+// `corner`: the window glides from one size to another about its bottom right corner.
+function placeWindow(edges, want, width, corner) {
   const here = edges.at.windowSpace;
   if (!placed.pos || !near(here, placed.pos)) {  // the user moved it, or this is the first ask
     placed.spot = { x: here.x, y: here.y };
     placed.hidden = Math.max(0, Math.round(here.y + FIGMA_HEADER + (placed.height || want) - edges.bottom));
   }
+  if (width !== placed.width || corner) {
+    // Minimized or restored: the window keeps its bottom right corner, so the
+    // button that did it stays under the pointer — on the canvas, though.
+    const bottom = Math.min(here.y + FIGMA_HEADER + (placed.height || want), edges.bottom);
+    placed.spot = { x: here.x + placed.width - width, y: Math.max(Math.min(here.y, edges.top), bottom - FIGMA_HEADER - want) };
+    placed.hidden = 0;
+  }
   const spot = placed.spot;
   const floor = edges.bottom + placed.hidden;  // where the window may end
   const top = Math.min(spot.y, edges.top);     // and how high it may go
   const y = Math.max(top, Math.min(spot.y, Math.floor(floor - FIGMA_HEADER - want)));
-  if (Math.abs(y - here.y) >= 1) {
+  const x = spot.x;
+  if (Math.abs(y - here.y) >= 1 || Math.abs(x - here.x) >= 1) {
     const p = edges.at;  // reposition takes the canvas's coordinates
-    figma.ui.reposition(p.canvasSpace.x, p.canvasSpace.y + (y - here.y) / edges.zoom);
+    figma.ui.reposition(p.canvasSpace.x + (x - here.x) / edges.zoom, p.canvasSpace.y + (y - here.y) / edges.zoom);
   }
-  placed.pos = { x: here.x, y };
+  placed.pos = { x, y };
   const room = Math.max(HEIGHT_MIN, Math.floor(floor - top - FIGMA_HEADER));
   if (room !== placed.room) {
     placed.room = room;
@@ -504,6 +540,7 @@ figma.ui.onmessage = async (msg) => {
     return;
   }
   if (msg.type === "resize") { fitWindow(msg); return; }
+  if (msg.type === "view") { await keepView(msg.view); return; }
   if (msg.type === "select") { await selectLayer(msg.id); return; }
   if (msg.type === "abort") {
     if (msg.id) markAborted(msg.id);

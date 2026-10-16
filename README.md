@@ -154,14 +154,13 @@ overwrites a file it didn't make.
 Run `git pull` in Figaro's folder, or ask your agent to update Figaro. Then
 `figaro doctor` says what to restart. If `plugin/manifest.json` changed, run
 the plugin again from Figma's menu in each file; the release notes say when it
-has to be imported again (step 2). When a new release is out, a line at the
-bottom of the plugin's window says so: **Update** installs exactly that
-release, restarts the bridge and reloads the plugin as soon as no script is
-running. With `FIGARO_UPDATE_BUTTON=off` there is only a link to the release
-([Settings](#settings)). **Skip**, there while the pointer is on the window,
-hides that release in every window until a newer one, and agents stop
-mentioning it. To bring it back, delete `.figaro/skipped-release` in your home
-folder and restart the bridge, as in [Settings](#settings).
+has to be imported again (step 2). When a new release is out, the plugin's
+window shows its number as a blue button on its last line: it installs exactly
+that release, restarts the bridge and reloads the plugin as soon as no script
+is running. With `FIGARO_UPDATE_BUTTON=off` the number only links to the
+release ([Settings](#settings)). **Skip**, next to it while the pointer is on
+the window, hides that release in every window until a newer one, and agents
+stop mentioning it. The window's settings (⚙) still show it, with its Update.
 
 To remove Figaro, run the installer with `--uninstall` (`-Uninstall` on
 Windows), remove the plugin under **Plugins → Development → Manage plugins in
@@ -383,7 +382,8 @@ it keeps four promises:
 
 - **A version before the first change.** Before a script first changes a file,
   and then every hour, Figaro saves a version in **File → Version history**,
-  named *Figaro · before changes by …*
+  named *Figaro · before changes by …*, unless you turn **Save versions as
+  agents work** off in the plugin's [settings](#settings).
 - **A report after every script.** What was created, deleted and changed, with
   links to the new layers.
 - **Read-only when you ask.** If a script run with `-R` changes anything, the
@@ -441,11 +441,12 @@ until a script of its succeeds. A file where Figma stops answering, with a
 script still running long after its time or a window that closed while one ran,
 turns red in every window, with what to do.
 Point at an agent at work for its **Stop** button. A click on a changed layer selects it
-in Figma. Under the islands, only when there is something to do:
-a new release with its **Update** button, **Reload** for a new build of the
-plugin, or why an update failed. The window answers what you press with short,
-quiet sounds, and knocks twice when Figma stops answering in its own file;
-`FIGARO_SOUNDS=off` in the [settings](#settings) turns them off.
+in Figma. Under the islands, a line with Figaro's version: a new release with
+its **Update** button, **Reload** for a new build of the plugin, or a yellow
+**!** when an update failed: click it to see why. On its right, ⚙ opens the
+[settings](#settings), and ⤡ minimizes the window to one card; hold it for an
+even smaller one. The window answers what you press with short, quiet sounds,
+and knocks twice when Figma stops answering in its own file.
 
 <details>
 <summary>🔌 <b>Under the hood</b></summary>
@@ -471,7 +472,22 @@ quiet sounds, and knocks twice when Figma stops answering in its own file;
 
 ## Settings
 
-Everything works without settings. They are environment variables: put them in
+Everything works without settings.
+
+**In the plugin's window**, ⚙ on its last line shows three switches. They hold
+in every window and across restarts: the bridge keeps them in
+`~/.figaro/settings.json`.
+
+| Switch | Default | What it does |
+| :-- | :-- | :-- |
+| Sounds | on | The window's sounds for what you press, and its knock when Figma stops answering. The tone you can't hear, which keeps a background Figma quick, plays either way |
+| Show other files | on | Off: each window shows its own file's island only |
+| Save versions as agents work | on | Off: no version before an agent's first change in a file, and none hourly. An agent's `--checkpoint "label"` still saves one |
+
+Under them is the version: what is new in it, ↻ to look for a new release now,
+and where Figaro runs.
+
+**Everything else** is environment variables: put them in
 your shell's profile, such as `export FIGARO_UPDATE_BUTTON=off` in `~/.zshrc`
 or `~/.bashrc`, or on Windows run `setx FIGARO_UPDATE_BUTTON off`. Then every
 terminal you open, and every agent in it, sees them.
@@ -483,7 +499,7 @@ agent is at work: `bash start-bridge.sh` in Figaro's folder, or
 | Variable | Default | What it does |
 | :-- | :-- | :-- |
 | `FIGARO_UPDATE_BUTTON` | `on` | `off` takes the Update button out of the plugin's window: it only says that a new release is out and links to it, and the bridge refuses to update. You update by hand |
-| `FIGARO_SOUNDS` | `on` | `off` silences the plugin's window: no sounds for what you press, and none when Figma stops answering. The tone you can't hear, which keeps a background Figma quick, still plays while scripts run |
+| `FIGARO_SOUNDS` | `on` | Where the window's **Sounds** switch starts, until you switch it there: `off` for no sounds |
 | `FIGARO_NO_UPDATE_CHECK` | — | `1` stops the bridge from checking GitHub for a new release |
 | `FIGARO_TOKEN_FILE` | `~/.figaro/token-8788` | Where the bridge saves [its token](#privacy) and the command reads it: give both the same file |
 | `FIGARO_IDLE_EXIT` | `3h` | How long the bridge waits with no plugin and no requests before it exits: seconds, `30m` or `3h`; `0` keeps it running |
@@ -555,9 +571,10 @@ scripts and the pictures it takes stay on your computer and in Figma.
   `/tmp/figaro/shots` (on Windows, `%TEMP%\figaro\shots`).
 - Versions saved before changes go into the file's version history, where
   everyone with access to the file can see them.
-- Figaro makes one request on its own: every six hours the bridge reads this
-  repository's release tags on GitHub, so the plugin's window can tell you about a
-  new version. It sends nothing about you or your files, and
+- On its own, Figaro talks only to GitHub: every six hours, or when you press
+  ↻ in the plugin's settings, the bridge reads this repository's release
+  tags, and the notes of a new release, so the plugin's window can tell you
+  about it. It sends nothing about you or your files, and
   `FIGARO_NO_UPDATE_CHECK=1` turns it off. Figaro never updates itself: its
   code changes when you press **Update** or pull it yourself, and
   `FIGARO_UPDATE_BUTTON=off` takes that button away.

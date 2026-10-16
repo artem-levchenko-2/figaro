@@ -4,7 +4,8 @@
 // just enough and at most to the canvas's top, and as it gets shorter it comes
 // back down, never past where the user put it. What the user left below the
 // canvas's bottom edge stays out of sight there. Only a window taller than the
-// canvas stops short of its height, and its islands scroll.
+// canvas stops short of its height, and its islands scroll. Minimized, it is
+// narrower, and keeps its bottom right corner, on the canvas.
 //
 //     node tests/window.test.js
 const fs = require("fs");
@@ -23,12 +24,13 @@ function makeFigma({ at = { x: 1600, y: 300 }, canvasTop = 0, canvasLeft = 332, 
   const view = { x: -1000, y: -686 };  // the canvas point at the canvas's top left corner
   const win = { x: at.x, y: at.y };
   const sizes = [];
+  const widths = [];
   const moves = [];
   const told = [];
   const ui = {
     onmessage: null,
     postMessage(m) { told.push(m); },
-    resize(w, h) { sizes.push(h); },
+    resize(w, h) { sizes.push(h); widths.push(w); },
   };
   if (!noPosition) {
     ui.getPosition = () => ({
@@ -43,7 +45,7 @@ function makeFigma({ at = { x: 1600, y: 300 }, canvasTop = 0, canvasLeft = 332, 
       moves.push(Math.round(win.y));
     };
   }
-  const env = { win, sizes, moves, told, zoom, canvasHeight };
+  const env = { win, sizes, widths, moves, told, zoom, canvasHeight };
   const figma = {
     root: { name: "Draft", children: [] },
     fileKey: "KEY",
@@ -55,7 +57,9 @@ function makeFigma({ at = { x: 1600, y: 300 }, canvasTop = 0, canvasLeft = 332, 
     on() {},
   };
   new Function("figma", "__html__", src)(figma, "");
-  env.ask = (height) => figma.ui.onmessage({ type: "resize", height });
+  env.figma = figma;
+  env.ask = (height, width) => figma.ui.onmessage({ type: "resize", height, width });
+  env.width = () => widths[widths.length - 1];
   env.height = () => sizes[sizes.length - 1];
   env.bottom = () => Math.round(win.y) + HEADER + env.height();       // the window's bottom edge
   env.floor = () => canvasTop + env.canvasHeight - GAP;                // where it may end
@@ -160,6 +164,51 @@ function check(label, actual, expected) {
     await env.ask(184);
     check("anything new rises it by its height, so no more of the window goes out of sight",
           Math.round(env.win.y), parked - 42);
+  }
+
+  // ─── minimized ──────────────────────────────────────────────────────────
+  {
+    const env = makeFigma({ at: { x: 1600, y: 300 } });
+    await env.ask(300, 320);
+    await env.ask(42, 240);
+    check("minimized: 240 px wide, its bottom right corner where it was, so Minimize's spot is restore's",
+          [env.width(), env.height(), Math.round(env.win.x), Math.round(env.win.y)], [240, 42, 1600 + 80, 300 + 300 - 42]);
+    await env.ask(42, 70);
+    check("…nano: 70 px, the same corner", [env.width(), Math.round(env.win.x), Math.round(env.win.y)], [70, 1600 + 250, 300 + 300 - 42]);
+    await env.ask(300, 320);
+    check("…and restored, it comes back where it was", [env.width(), env.height(), Math.round(env.win.x), Math.round(env.win.y)], [320, 300, 1600, 300]);
+    await env.ask(500, 320);
+    check("…and grows down from there as before", [Math.round(env.win.y), env.height()], [300, 500]);
+    await env.ask(42, 10);
+    check("never narrower than Figma allows", env.width(), 70);
+  }
+  {
+    // the window glides from one size to the other a frame at a time: every step keeps the corner,
+    // a step that changes only the height too
+    const env = makeFigma({ at: { x: 1600, y: 300 } });
+    await env.ask(300, 320);
+    const corner = () => [Math.round(env.win.x) + env.width(), Math.round(env.win.y) + env.height()];
+    const at = corner(), seen = [];
+    for (const [h, w] of [[250, 300], [200, 280], [150, 260], [100, 245], [60, 240], [42, 240]]) {
+      await env.figma.ui.onmessage({ type: "resize", height: h, width: w, corner: true });
+      seen.push(corner());
+    }
+    check("gliding to mini: every step keeps the bottom right corner, a step of height alone too",
+          seen.every((c) => c[0] === at[0] && c[1] === at[1]), true);
+    await env.ask(42, 240);
+    check("…and the ask after the glide changes nothing", corner(), at);
+  }
+  {
+    const parked = 1000 - GAP - HEADER - 42;
+    const env = makeFigma({ at: { x: 1600, y: parked } });
+    await env.ask(142);
+    await env.ask(42, 240);
+    check("minimized while partly below the canvas: it ends at the canvas's bottom, in sight", env.bottom(), env.floor());
+  }
+  {
+    const env = makeFigma({ at: { x: 1600, y: 300 } });
+    await env.ask(300);
+    check("a window that doesn't say its width is 320 px wide", env.width(), 320);
   }
 
   // ─── the canvas ─────────────────────────────────────────────────────────

@@ -127,7 +127,8 @@ JS
 
 - **A checkpoint is saved by itself**: before the first script that writes to the file, then once an hour —
   a version "Figaro · before changes by …" in File → Version history, which everyone with access to the file
-  sees. Before a risky bulk edit add `--checkpoint "before <what>"`.
+  sees. The user can turn this off in the plugin's settings: then the answer has no `checkpoint:` line. Before
+  a risky bulk edit add `--checkpoint "before <what>"`, which saves one either way.
 - **`figaro undo -T …`** undoes the last script in the file that changed something: one that changed nothing
   is skipped, so check whose script and how long ago in the answer. It refuses when the file changed after
   that script, or when the script was another agent's (a script without `-A` counts as anyone's) — then tell

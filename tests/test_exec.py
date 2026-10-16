@@ -10,6 +10,7 @@ import asyncio
 import json
 import re
 import time
+from pathlib import Path
 
 import aiohttp
 import pytest
@@ -421,6 +422,12 @@ def test_a_changed_helper_module_makes_the_bridge_outdated(monkeypatch, tmp_path
     assert bridge.bridge_outdated() is False
     (tmp_path / "bridge_exec.py").write_text("changed")
     assert bridge.bridge_outdated() is True
+
+
+def test_every_helper_module_of_the_bridge_counts_as_its_code():
+    here = Path(bridge.__file__).resolve().parent
+    counted = {p.name for p in bridge._BRIDGE_CODE}
+    assert {p.name for p in here.glob("bridge_*.py")} <= counted
 
 
 # ─── the reply ────────────────────────────────────────────────────────────

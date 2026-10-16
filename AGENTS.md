@@ -112,7 +112,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - `bridge_board.py` — what every plugin window shows (the `board`: each file's agents — at work from their
   first script until five quiet minutes or `figaro done`, its note, a failed last script, the user's Stop —
   and recent changes; a read leaves a done or a Stop on show, and `figaro doctor`'s checks (`probe`) stay
-  off it), its buttons (Stop for one agent, Update, Reload) and `POST /done`. A file turns red when Figma
+  off it), its buttons (Stop for one agent, Update, Reload, Skip, a switch in the settings, ↻ there) and
+  `POST /done`. A file turns red when Figma
   stops answering there: a script runs on `STUCK_AFTER` past its time (`stuck`), or its window closed
   mid-script (`lost`, kept `LOST_KEEP`; a window back within `LOST_GRACE` was a Hot reload).
 - `bridge_update.py` — the window's Update and Reload: waits until no file runs a script, moves the folder
@@ -120,6 +121,11 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   that run older code, restarts the bridge (`os.execv`; on Windows `start-bridge.ps1 -Restart`). Scripts sent
   during the pull or the restart get a 503 and run nothing; while it waits, they run, and it waits on. It
   refuses an update with the button off or no newer release known.
+- `bridge_settings.py` — the window's settings, the bridge's for every window and kept in `settings.json` next
+  to the token: Sounds (until switched, `FIGARO_SOUNDS`), Show other files, Save versions as agents work (off:
+  no automatic checkpoint, a label still saves one). And what the settings show about the version: what is
+  new (the newest release's notes from GitHub, else this version's from `CHANGELOG.md`, each item's first
+  clause), the folder, when GitHub last answered (`bridge.CHECKED`; ↻ is `bridge.look_now`).
 - `bridge_exec.py` — the bridge's side of exec: the fields it sends (`readOnly`, `checkpoint`, `quick`,
   `libs` — a library's code goes once, then its hash), when checkpoints are due, links as targets,
   `POST /undo`, `POST /reload`.
@@ -128,10 +134,12 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - `figma_links.py` — Figma links: the file key and node id in a link, links to layers for reports.
 - `plugin/` — `manifest.json`, `code.js` (the `HELPERS` object behind `h.*`, running scripts with a deadline,
   a guard in every loop's head that ends it there (`guardLoops`), change tracking and whose change it was
-  (`codeMayWrite`), undo, selecting a layer from the window, the window's height and place (`fitWindow`)),
+  (`codeMayWrite`), undo, selecting a layer from the window, the window's size and place (`fitWindow`), and
+  its view, which a file keeps on this computer (`keepView`, `clientStorage`)),
   `ui.html` (the window: one island per file where Figaro runs, in a list that scrolls, and under them a line
-  with the version, Update and Reload: the list's last item, or pinned at the window's bottom while it has a
-  button or a notice).
+  that is always there: the version, with Update, Reload or a failure's "!" by it, and ⚙ Settings and ⤡
+  Minimize. The settings take the islands' place (`settingsView`, `versionCard`); minimized, the window is
+  one card, 240 px wide, or 70 px held (`miniView`). `glide` moves from one view to another).
 - `skill/figaro/` — `SKILL.md` (the loop, the commands, safety, house rules) and `references/`:
   `helpers.md`, `craft.md`, `pitfalls.md`. The recipes in them were checked against real Figma.
 - `tools/install.sh` — the command and the skill's links (`~/.claude/skills`, `~/.agents/skills`); never
@@ -170,7 +178,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - **A window and a bridge of different releases meet during an update by hand** (`git pull`, then a re-run of
   the plugin or a restart of the bridge). Builds from before 1.0.0 need nothing, but the 1.0.0 window and
   bridge have no `board`: keep the bridge's `update`, `outdated` and `peers` messages, the window's view
-  without a board, and `figaro done`'s answer to a 404.
+  without a board, and `figaro done`'s answer to a 404. A window before 1.5.0 reads the board's `sounds`, not
+  `settings`; a 1.5.0 window with an older bridge has no `settings` and can't switch them.
 - **`plugin/ui.html` passes the exec fields to the sandbox by name.** A new field in
   `bridge_exec.exec_fields` must be added there too, or it never arrives; `tests/test_exec.py` catches it.
 - **The plugin never writes to the document.** The document id is `figma.fileKey`, which a development
@@ -225,7 +234,8 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
 - **Hot reload.** With Figma's *Plugins → Development → Hot reload plugin* on, any write to `plugin/code.js`
   or `ui.html` (even `touch`) restarts the plugin in every file within a second. A running script is cut off
   ("plugin disconnected mid-request") and `undo` forgets everything. Don't touch `plugin/` while agents work.
-- **The window is 320 px wide and as tall as its islands and its last line**, and it stays on Figma's canvas:
+- **The window is 320 px wide (minimized 240, or 70, the narrowest Figma allows) and as tall as its islands
+  and its last line**, and it stays on Figma's canvas:
   `ui.html` measures itself, and `code.js` (`fitWindow`) finds the canvas's edges from `figma.ui.getPosition()`
   and `figma.viewport`, calls `figma.ui.resize` and, when there is no room under the window, moves it up with
   `figma.ui.reposition`, given canvas coordinates; it comes back down as the window gets shorter, never past
@@ -239,7 +249,8 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   (`drive` in `ui.html`): every frame it asks for the next height along the island's curve, and the fold takes
   the height Figma has given the window by then, as Figma moves and sizes the window a frame or two after it
   is asked. An open island's row sticks to the top only because `.island` has `overflow: clip`: `hidden` would
-  make it a scroll container.
+  make it a scroll container. Minimized or restored, the window keeps its bottom right corner (`corner`), so
+  Minimize and Restore stay under the pointer.
   The header above the window (icon, title, close button) is Figma's: a plugin can put nothing there but the
   title, "Figaro Relay", which `figma.showUI` sets and only a new `showUI` changes, restarting the window. The
   menu shows the manifest's name, "Figaro".
@@ -253,8 +264,8 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   (a script whose answer never comes, after its `--timeout` and those 3 minutes) or ~2 s after the bridge
   goes away — that is why the bridge closes the plugins' connections on exit (`bridge_idle.close_plugins`).
 - **The window's sounds** (`CUES` in `ui.html`) play in an AudioContext of their own, apart from the tone's,
-  and it sleeps 3 s after the last one. `FIGARO_SOUNDS=off` reaches the window as the board's `sounds` and
-  silences them, never the tone.
+  and it sleeps 3 s after the last one. The Sounds switch (`FIGARO_SOUNDS` until it is switched) reaches the
+  window as the board's `settings.sounds` and silences them, never the tone.
 - **A script runs on Figma's main thread.** A loop that never yields freezes Figma, and nothing gets in while
   it runs: not the bridge's abort, not Stop in the window. So `compileScript` and `compileLib` put a guard in
   the head of every `while`, `do … while` and `for (;;)` loop (`guardLoops`, found on `codeMask`: strings,

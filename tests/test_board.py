@@ -669,8 +669,12 @@ def test_a_pull_that_fails_says_why_and_offers_the_release(monkeypatch):
             board = boards(p)[-1]
             assert board["updating"] is None
             assert board["failed"] == {
-                "what": "update", "error": "local changes", "url": bridge.release_url(NEWER),
+                "what": "update", "error": "local changes", "to": NEWER, "url": bridge.release_url(NEWER),
                 "detail": "git: error: Your local changes would be overwritten by merge"}
+            await p.ws.send_str(json.dumps({"type": "skip", "version": NEWER}))
+            await settle()
+            board = boards(p)[-1]
+            assert (board["failed"], board["update"], board["skipped"]) == (None, None, NEWER)  # Skip takes the failure with it
         await c.close()
     run(go())
 
