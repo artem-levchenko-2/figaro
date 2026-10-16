@@ -9,7 +9,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-17.1";
+const PLUGIN_VERSION = "2026-10-17.2";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -462,8 +462,8 @@ const HEIGHT_MIN = 30;    // on a canvas too short for more: an island's row
 const WIDTH_MIN = 70;     // Figma's narrowest plugin window
 const placed = { height: 0, width: UI_WIDTH, spot: null, hidden: 0, pos: null, room: 0 };
 
-// The canvas's top and bottom edges in window space, less the gap, and where
-// the window is. null when Figma can't tell.
+// The canvas's top, bottom and left edges in window space, less the gap, and
+// where the window is. null when Figma can't tell.
 function canvasEdges() {
   try {
     const p = figma.ui.getPosition();
@@ -472,7 +472,8 @@ function canvasEdges() {
     if (!p || !p.windowSpace || !p.canvasSpace || !b || !(zoom > 0)) return null;
     // windowSpace and canvasSpace are one point, the window's corner: from it, where the canvas starts
     const top = p.windowSpace.y - (p.canvasSpace.y - b.y) * zoom;
-    return { at: p, zoom, top: top + CANVAS_GAP, bottom: top + b.height * zoom - CANVAS_GAP };
+    const left = p.windowSpace.x - (p.canvasSpace.x - b.x) * zoom;
+    return { at: p, zoom, top: top + CANVAS_GAP, bottom: top + b.height * zoom - CANVAS_GAP, left: left + CANVAS_GAP };
   } catch (e) {
     return null;
   }
@@ -507,9 +508,12 @@ function placeWindow(edges, want, width, corner) {
   }
   if (width !== placed.width || corner) {
     // Minimized or restored: the window keeps its bottom right corner, so the
-    // button that did it stays under the pointer — on the canvas, though.
+    // button that did it stays under the pointer — on the canvas, though: a
+    // window restored by the canvas's left edge grows to the right, never over
+    // the layers.
     const bottom = Math.min(here.y + FIGMA_HEADER + (placed.height || want), edges.bottom);
-    placed.spot = { x: here.x + placed.width - width, y: Math.max(Math.min(here.y, edges.top), bottom - FIGMA_HEADER - want) };
+    placed.spot = { x: Math.max(Math.min(here.x, edges.left), here.x + placed.width - width),
+                    y: Math.max(Math.min(here.y, edges.top), bottom - FIGMA_HEADER - want) };
     placed.hidden = 0;
   }
   const spot = placed.spot;

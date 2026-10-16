@@ -990,6 +990,17 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     check("…and a later identity leaves it", /mini nano/.test(env.app()), true);
   }
+  {
+    const env = load();
+    env.identity("Dashboard", "KEY1", null);  // the sandbox says who it is before it has read the view
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard")]);
+    await env.clock.advance(400);
+    check("no view read yet: the files", /data-fid="here"/.test(env.app()), true);
+    env.identity("Dashboard", "KEY1", "mini");
+    await env.clock.advance(400);
+    check("…then the view it read: minimized", [/<div class="mini[ "]/.test(env.app()), /nano/.test(env.app())], [true, false]);
+  }
 
   // ─── sounds ─────────────────────────────────────────────────────────────
   {

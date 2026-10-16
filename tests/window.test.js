@@ -183,6 +183,21 @@ function check(label, actual, expected) {
     check("never narrower than Figma allows", env.width(), 70);
   }
   {
+    const env = makeFigma({ at: { x: 1600, y: 300 } });
+    await env.ask(300, 320);
+    await env.ask(42, 70);
+    env.win.x = 332 + 20;  // the user puts the nano window by the canvas's left edge
+    await env.ask(42, 70);
+    await env.ask(300, 320);
+    check("restored by the canvas's left edge: it grows to the right, not over the layers",
+          [env.width(), Math.round(env.win.x)], [320, 332 + GAP]);
+    await env.ask(42, 70);
+    env.win.x = 100;  // over the layers on purpose
+    await env.ask(42, 70);
+    await env.ask(300, 320);
+    check("…and from where the user put it beyond that edge, it doesn't move further left", Math.round(env.win.x), 100);
+  }
+  {
     // the window glides from one size to the other a frame at a time: every step keeps the corner,
     // a step that changes only the height too
     const env = makeFigma({ at: { x: 1600, y: 300 } });

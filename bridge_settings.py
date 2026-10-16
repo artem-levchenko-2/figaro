@@ -67,7 +67,9 @@ def switch(name, value):
     path = _file()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(SETTINGS, indent=2) + "\n", encoding="utf-8")
+        part = path.with_name(path.name + ".part")  # a write cut short leaves the old file whole
+        part.write_text(json.dumps(SETTINGS, indent=2) + "\n", encoding="utf-8")
+        os.replace(part, path)
     except OSError as e:
         print(f"[settings] can't keep them in {path} ({e}): until the bridge restarts")
     print(f"[settings] {name} turned {'on' if value else 'off'} in the plugin's window")

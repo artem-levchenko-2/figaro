@@ -1043,7 +1043,7 @@ const WIDTHS = { files: 320, settings: 320, mini: 240, nano: 70 };
 const REPO = "https://github.com/artem-levchenko-2/figaro";
 let view = "files";
 let viewSince = 0;
-let viewTaken = false;         // the sandbox's view, taken once
+let viewTaken = false;         // the sandbox's view, taken once it has read it
 let checkAsked = 0;            // when ↻ was pressed: it turns until the board says the bridge looked
 // The page takes the view's width at once. Measured at the old one (nano's 70 px,
 // before the sandbox has widened the window), the islands would wrap and ask for
@@ -1954,7 +1954,7 @@ window.onmessage = (e) => {
                  pluginVersion: m.pluginVersion || null, caps: m.caps || [] };
     log(`[id] file=${identity.name}`);
     sendHello();  // (re-)register this connection under the file name
-    if (!viewTaken) {
+    if (!viewTaken && m.view) {  // null: the sandbox hasn't read it yet, and says it again once it has
       viewTaken = true;
       if ((m.view === "mini" || m.view === "nano") && view === "files") { view = m.view; layWidth(); viewSince = 0; lastHtml = lastFoot = null; }
     }

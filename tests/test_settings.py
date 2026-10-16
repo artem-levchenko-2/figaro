@@ -37,6 +37,7 @@ def test_a_switch_in_one_window_switches_it_in_all_and_holds_across_restarts():
             for p in (a, b):
                 assert boards(p)[-1]["settings"] == {"sounds": True, "others": False, "versions": True}
             assert json.loads(kept().read_text(encoding="utf-8")) == {"others": False}
+            assert [f.name for f in kept().parent.glob("settings.json*")] == ["settings.json"]  # no .part left
             status = await (await c.get("/status")).json()
             assert status["settings"]["others"] is False
         await c.close()
