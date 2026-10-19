@@ -379,10 +379,11 @@ div.tg { cursor: default; }  /* the version's row: nothing to open */
 .kv b { color: var(--is-faint); font-weight: 500; }
 .kv span { min-width: 0; color: var(--is-dim); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
-/* Minimized: the file that matters most as one card, and on the window's
-   ground next to it how many other files have agents at work, and restore
-   under Figma's close button (mini, 240 px); or only that file's state and
-   restore (nano, 70 px, the narrowest window Figma allows). */
+/* Minimized: this file as one card, and on the window's ground next to it
+   how many other files have agents at work, or a red ! when Figma stopped
+   answering in one, and restore under Figma's close button (mini, 240 px); or
+   only this file's state and restore (nano, 70 px, the narrowest window Figma
+   allows). */
 .mini { display: flex; align-items: center; gap: 3px; }
 .mini.enter { animation: pop .34s cubic-bezier(.2, .8, .2, 1) backwards; }
 .mini .island { flex: 1; }
@@ -390,6 +391,7 @@ div.tg { cursor: default; }  /* the version's row: nothing to open */
 .mini .tl { margin: 0 3px 0 4.5px; }  /* its drawing 14 px from the card */
 .mini .mc { flex: none; height: 30px; min-width: 30px; display: grid; place-items: center; padding: 0 7px; border-radius: 7px; background: var(--is-bg); box-shadow: inset 0 0 0 1px var(--is-edge);
   color: var(--is-text); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.mini .mc.alarm { padding: 0; background: color-mix(in srgb, var(--err) 16%, var(--is-bg)); }
 .mini.nano.enter { animation: nano .34s cubic-bezier(.3, 1.35, .55, 1) backwards; }
 .mini.nano .row { padding: 0; }
 .mini.nano .tg { padding: 0; justify-content: center; }
@@ -1376,9 +1378,13 @@ function showAlert() {
 // Mini: the file that matters most — one where Figma stopped answering, or this
 // one — with the count of the other files where agents are at work. Nano: an
 // alarm anywhere, agents at work anywhere, or this file's state.
+// Minimized, the window is this file's card, whatever the others do. Next to
+// it (mini), how many other files have agents at work, or a red ! when Figma
+// stopped answering in one of them; nano shows this file's state alone, and
+// the grid while an agent works anywhere.
 function miniView(nano, enter) {
   const files = filesNow().filter(shown);
-  const top = files.find((f) => alarm(f)) || files[0];
+  const top = files.find((f) => f.id === "here") || files[0];
   const h = headline(top);
   const restore = `<button type="button" class="tl" data-act="restore" title="Restore" aria-label="Restore">${ICON.grow}</button>`;
   const cls = "mini" + (nano ? " nano" : "") + (enter ? " enter" : "");
@@ -1387,11 +1393,14 @@ function miniView(nano, enter) {
     return `<div class="${cls}"><div class="island${h.alarm ? " alarm" : ""}"><div class="row"><button type="button" class="tg" data-act="restore" title="Restore" aria-label="Restore">`
       + `<span class="ind">${ind}</span></button></div></div>${restore}</div>`;
   }
-  const more = files.filter((f) => f !== top && headline(f).kind === "working").length;
+  const others = files.filter((f) => f !== top), red = others.filter(alarm);
+  const more = others.filter((f) => headline(f).kind === "working").length;
+  const side = red.length
+    ? `<span class="mc alarm" title="Figma isn't answering in ${red.length > 1 ? red.length + " other files" : esc(red[0].name)}"><span class="ind">${headline(red[0]).ind}</span></span>`
+    : more ? `<span class="mc" title="${more} more file${more > 1 ? "s" : ""} with agents at work">+${more}</span>` : "";
   return `<div class="${cls}"><div class="island${h.alarm ? " alarm" : ""}"><div class="row"><button type="button" class="tg" data-act="restore" title="Restore">`
     + `<span class="ind">${h.ind}</span><span class="lbl"><b>${esc(top.name)}</b></span></button></div></div>`
-    + (more ? `<span class="mc" title="${more} more file${more > 1 ? "s" : ""} with agents at work">+${more}</span>` : "")
-    + restore + "</div>";
+    + side + restore + "</div>";
 }
 
 // A hint is centred over its button; by the window's edge it slides in to stay

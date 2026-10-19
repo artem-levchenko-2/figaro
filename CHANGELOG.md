@@ -18,10 +18,11 @@ file; the release notes say when it has to be imported again.
   change and none hourly (`--checkpoint "label"` still saves one). Under them the version: Update, what is new in the release, Skip,
   ↻ to look for a release now and when the bridge last did, and the bridge, the plugin's build and the folder.
   A release you skipped is still there, with its Update.
-- **The window minimizes** to one card, 240 px wide, with ⤡ on its last line: the file that matters most,
-  and how many others have agents at work. Hold ⤡ and it goes down to 70 px, only that file's state. A click
-  brings it back. It changes size about its bottom right corner, so the button stays under the pointer, and
-  a file opens minimized next time if you left it so (kept on this computer, not in the file).
+- **The window minimizes** to one card, 240 px wide, with ⤡ on its last line: this file, and how many others
+  have agents at work, or a red ! when Figma isn't answering in one. Hold ⤡ and it goes down to 70 px, only
+  this file's state. A click brings it back. It changes size about its bottom right corner, so the button
+  stays under the pointer, and a file opens minimized next time if you left it so (kept on this computer, not
+  in the file).
 
 ### Changed
 

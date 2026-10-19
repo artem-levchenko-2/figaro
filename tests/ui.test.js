@@ -948,7 +948,10 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("…springing in once", /<div class="mini">/.test(env.app()), true);
     env.board([file("KEY1", "Dashboard"), file("KEY2", "Kit", { agents: [busy("icons")], stuck: { agent: "icons", since: ago(40) } })]);
     await env.clock.advance(400);
-    check("another file stops answering: its card, in red", [/class="island alarm"/.test(env.app()), /<b>Kit<\/b>/.test(env.app())], [true, true]);
+    check("another file stops answering: this file's card stays, and a red ! by it takes the count's place",
+          [/<b>Dashboard<\/b>/.test(env.app()), /class="island alarm"/.test(env.app()),
+           /<span class="mc alarm" title="Figma isn't answering in Kit"><span class="ind"><span class="warn">/.test(env.app()), /\+\d/.test(env.app())],
+          [true, false, true, false]);
     env.click("restore");
     await env.clock.advance(50);
     check("restore: the files, and the swoosh up", [/data-fid="here"/.test(env.app()), env.heard()], [true, ["noise", "sine 280"]]);
@@ -958,9 +961,9 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(200);
     check("held on Minimize: a ring runs round it, a sound rises", [hold.holding(), env.heard()], [true, ["sine 180", "triangle 360"]]);
     await env.clock.advance(300);
-    check("…and half a second on: nano, with the alarm first",
-          [/<div class="mini nano enter">/.test(env.app()), /class="island alarm"/.test(env.app()), /<b>/.test(env.app()), hold.holding(), env.heard()],
-          [true, true, false, false, ["sine 1100", "noise", "sine 1320"]]);
+    check("…and half a second on: nano, this file's state, not the alarm in another one",
+          [/<div class="mini nano enter">/.test(env.app()), /alarm|class="warn"/.test(env.app()), /<b>/.test(env.app()), hold.holding(), env.heard()],
+          [true, false, false, false, ["sine 1100", "noise", "sine 1320"]]);
     hold.up(true, "restore");
     check("…and the click as it's let go doesn't restore it, though restore is under the pointer by then", /mini nano/.test(env.app()), true);
     await env.clock.advance(400);
@@ -983,6 +986,18 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("pressed, then let go off the button: nothing", [/data-fid="here"/.test(env.app()), off.holding()], [true, false]);
     env.click("min", null, null, 1);
     check("a pointer's click on Minimize is the press's to handle, not the click's", /data-fid="here"/.test(env.app()), true);
+    env.board([file("KEY1", "Dashboard", { agents: [busy("icons")], stuck: { agent: "icons", since: ago(40) } }), file("KEY2", "Kit")]);
+    await env.clock.advance(400);
+    env.click("min");
+    await env.clock.advance(400);
+    check("Figma stops answering in this file: mini, its card in red", [/class="island alarm"/.test(env.app()), /<b>Dashboard<\/b>/.test(env.app())], [true, true]);
+    env.click("restore");
+    await env.clock.advance(400);
+    const held = env.press();
+    await env.clock.advance(600);
+    held.up(true, "restore");
+    await env.clock.advance(400);
+    check("…and nano, the alarm", [/mini nano/.test(env.app()), /class="island alarm"/.test(env.app())], [true, true]);
   }
   {
     const env = load();
