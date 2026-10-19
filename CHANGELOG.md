@@ -9,6 +9,8 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-10-19
+
 ### Added
 
 - **Settings in the plugin's window:** ⚙ on its last line shows them in place of the islands, and Back
