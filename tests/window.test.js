@@ -5,7 +5,8 @@
 // back down, never past where the user put it. What the user left below the
 // canvas's bottom edge stays out of sight there. Only a window taller than the
 // canvas stops short of its height, and its islands scroll. Minimized, it is
-// narrower, and keeps its bottom right corner, on the canvas.
+// narrower, and it keeps its bottom right corner, as it does restored, within
+// Figma's window.
 //
 //     node tests/window.test.js
 const fs = require("fs");
@@ -189,13 +190,14 @@ function check(label, actual, expected) {
     env.win.x = 332 + 20;  // the user puts the nano window by the canvas's left edge
     await env.ask(42, 70);
     await env.ask(300, 320);
-    check("restored by the canvas's left edge: it grows to the right, not over the layers",
-          [env.width(), Math.round(env.win.x)], [320, 332 + GAP]);
+    check("restored by the canvas's left edge: its corner stays, so restore stays under the pointer, over the layers",
+          [env.width(), Math.round(env.win.x)], [320, 332 + 20 - 250]);
     await env.ask(42, 70);
-    env.win.x = 100;  // over the layers on purpose
+    check("…and minimized again, it is back where it was", Math.round(env.win.x), 332 + 20);
+    env.win.x = 100;  // over the layers
     await env.ask(42, 70);
     await env.ask(300, 320);
-    check("…and from where the user put it beyond that edge, it doesn't move further left", Math.round(env.win.x), 100);
+    check("…but Figma's window stops it: restored over the layers, it goes no further left than its edge", Math.round(env.win.x), 0);
   }
   {
     // the window glides from one size to the other a frame at a time: every step keeps the corner,

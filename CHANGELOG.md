@@ -13,6 +13,9 @@ file; the release notes say when it has to be imported again.
 
 - **The 70 px window lines up with Figma's header:** the file's state sits under the plugin's icon, as in the
   full window, and restore under Figma's close button. It sat 5 px to the left of the icon.
+- **Restore stays under the pointer over the layers too:** a minimized window that sits over Figma's left
+  panel or by the canvas's left edge grows to the left from its bottom right corner, as it does elsewhere, and
+  stops only at the edge of Figma's window. It used to grow to the right there, away from the pointer.
 
 ## [1.5.0] — 2026-10-19
 
