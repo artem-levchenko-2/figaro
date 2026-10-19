@@ -33,6 +33,11 @@ file; the release notes say when it has to be imported again.
   versions and the folder for your agent. Skip takes it away with the release.
 - `FIGARO_SOUNDS` now says where the Sounds switch starts; once it is switched in a window, the switch counts.
 
+### Fixed
+
+- In the plugin's window, `figaro doctor` in "Waiting for the bridge" no longer stands a wide gap away from the
+  word before it.
+
 ## [1.4.0] — 2026-10-15
 
 ### Added
