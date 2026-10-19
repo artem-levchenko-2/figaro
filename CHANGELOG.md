@@ -9,6 +9,8 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+## [1.5.1] — 2026-10-19
+
 ### Fixed
 
 - **The 70 px window lines up with Figma's header:** the file's state sits under the plugin's icon, as in the
