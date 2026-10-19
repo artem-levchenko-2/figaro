@@ -383,7 +383,9 @@ div.tg { cursor: default; }  /* the version's row: nothing to open */
    how many other files have agents at work, or a red ! when Figma stopped
    answering in one, and restore under Figma's close button (mini, 240 px); or
    only this file's state and restore (nano, 70 px, the narrowest window Figma
-   allows). */
+   allows). Figma's header keeps its icon's centre 24 px from the window's left
+   edge, and its close button's 20 px from the right, at any width: the state
+   stays under the icon, as in the full window, and restore under the button. */
 .mini { display: flex; align-items: center; gap: 3px; }
 .mini.enter { animation: pop .34s cubic-bezier(.2, .8, .2, 1) backwards; }
 .mini .island { flex: 1; }
@@ -393,6 +395,9 @@ div.tg { cursor: default; }  /* the version's row: nothing to open */
   color: var(--is-text); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .mini .mc.alarm { padding: 0; background: color-mix(in srgb, var(--err) 16%, var(--is-bg)); }
 .mini.nano.enter { animation: nano .34s cubic-bezier(.3, 1.35, .55, 1) backwards; }
+.mini.nano .island { flex: none; width: 26px; margin-left: 5px; }  /* its centre 24 px from the window's edge */
+.mini.nano { gap: 0; }
+.mini.nano .tl { margin-left: auto; }
 .mini.nano .row { padding: 0; }
 .mini.nano .tg { padding: 0; justify-content: center; }
 @keyframes nano { from { transform: scale(.7); opacity: 0; } }

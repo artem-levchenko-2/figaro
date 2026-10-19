@@ -9,6 +9,11 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The 70 px window lines up with Figma's header:** the file's state sits under the plugin's icon, as in the
+  full window, and restore under Figma's close button. It sat 5 px to the left of the icon.
+
 ## [1.5.0] — 2026-10-19
 
 ### Added
