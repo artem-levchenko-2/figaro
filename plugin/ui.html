@@ -803,8 +803,9 @@ function takeBoard(m) {
 // its window closed while one ran.
 const alarm = (f) => (f.stuck || f.lost ? 1 : 0);
 
-// This file first, under the id "here", then the others as the bridge lists them,
-// unless the settings say to show this file alone.
+// This file first, under the id "here", then the others as the bridge lists them.
+// With the other files off in the settings, only those where Figma stopped
+// answering: they need the user's hand all the same.
 const othersShown = () => !(board && board.settings && board.settings.others === false);
 function filesNow() {
   const here = { id: "here", doc: null, name: identity.name || "This file", here: true, agents: [], recent: [] };
@@ -825,10 +826,9 @@ function filesNow() {
     } else others.push(f);
   }
   for (const f of board.lost) if (!(identity.docSig && f.sig === identity.docSig)) others.push(f);
-  if (!othersShown()) return [mine || here];
   // A file that stopped answering comes first after this one.
   others.sort((a, b) => alarm(b) - alarm(a));
-  return [mine || here].concat(others);
+  return [mine || here].concat(othersShown() ? others : others.filter(alarm));
 }
 
 const stale = () => outdated || !!(board && board.stale);
@@ -1230,7 +1230,7 @@ function footer() {
 // (~/.figaro/settings.json), over the FIGARO_* variables it started with.
 const SETS = [
   ["sounds", "Sounds", "Buttons, minimize, Stop; a knock when Figma stops answering"],
-  ["others", "Show other files", "Islands of your other Figma files where agents work"],
+  ["others", "Show other files", "Islands of your other Figma files where agents work. A file where Figma isn't answering shows anyway"],
   ["versions", "Save versions as agents work", "Before an agent first changes a file, then hourly. Everyone with access sees them in its version history"],
 ];
 function settingsView() {

@@ -6,7 +6,8 @@ changes them in all of them. They are kept next to the API token
 it follows the variable the bridge started with (FIGARO_SOUNDS=off).
 
     sounds    the window's sounds (never the keep-awake tone)
-    others    the islands of other files where agents work; off: this file alone
+    others    the islands of other files where agents work; off: this file, and
+              those where Figma stopped answering
     versions  a checkpoint before an agent first changes a file, then hourly
               (bridge_exec); an agent's --checkpoint "label" still saves one
 

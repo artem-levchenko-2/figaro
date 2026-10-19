@@ -13,9 +13,9 @@ file; the release notes say when it has to be imported again.
 
 - **Settings in the plugin's window:** ⚙ on its last line shows them in place of the islands, and Back
   returns. Three switches, which the bridge keeps for every window and across restarts
-  (`~/.figaro/settings.json`): **Sounds**; **Show other files**, off for this file's island alone; and **Save
-  versions as agents work**, off for no version before an agent's first change and none hourly
-  (`--checkpoint "label"` still saves one). Under them the version: Update, what is new in the release, Skip,
+  (`~/.figaro/settings.json`): **Sounds**; **Show other files**, off for this file's island and those where
+  Figma isn't answering; and **Save versions as agents work**, off for no version before an agent's first
+  change and none hourly (`--checkpoint "label"` still saves one). Under them the version: Update, what is new in the release, Skip,
   ↻ to look for a release now and when the bridge last did, and the bridge, the plugin's build and the folder.
   A release you skipped is still there, with its Update.
 - **The window minimizes** to one card, 240 px wide, with ⤡ on its last line: the file that matters most,

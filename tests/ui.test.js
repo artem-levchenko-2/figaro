@@ -884,6 +884,11 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     check("back: the files, and with Show other files off, this one's island alone",
           [/data-fid="here"/.test(env.app()), /data-fid="doc:KEY2"/.test(env.app()), env.heard()], [true, false, ["square 1700", "sine 780"]]);
+    env.board([files[0], file("KEY2", "Kit", { stuck: { agent: "icons", since: ago(300) } }), file("KEY3", "Landing", { agents: [agent("copy", { since: ago(20), last: ago(0), busy: true })] })],
+      { settings: { sounds: true, others: false, versions: true } });
+    await env.clock.advance(400);
+    check("…but a file where Figma isn't answering shows all the same, red, and one where an agent works doesn't",
+          [/data-fid="doc:KEY2"/.test(env.app()), /isn't answering/.test(env.app()), /data-fid="doc:KEY3"/.test(env.app())], [true, true, false]);
     env.board(files, { settings, update: { latest: "1.2.0", url: RELEASE }, skipped: "1.2.0" });
     env.click("gear");
     check("a skipped release still shows in the settings: the new version, with Update",
