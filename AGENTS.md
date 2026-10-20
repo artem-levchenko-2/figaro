@@ -247,12 +247,12 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   come out of these numbers are a hair off at most zooms (991.9999999999998 for 992), by how much depends on
   where the window is, so `canvasEdges` rounds them: without it a window held at the canvas's bottom moved a
   pixel and back every second. Figma has no event for a moved window or a resized canvas, so the window asks
-  again every second, and a window that isn't where the sandbox put it was moved by the user. An island that opens or closes drives the window frame by frame
-  (`drive` in `ui.html`): every frame it asks for the next height along the island's curve, and the fold takes
-  the height Figma has given the window by then, as Figma moves and sizes the window a frame or two after it
-  is asked. An open island's row sticks to the top only because `.island` has `overflow: clip`: `hidden` would
-  make it a scroll container. Minimized or restored, the window keeps its bottom right corner (`corner`), so
-  Minimize and Restore stay under the pointer.
+  again every second, and a window that isn't where the sandbox put it was moved by the user. An island that
+  opens or closes drives the window frame by frame (`drive` in `ui.html`): every frame it asks for the next
+  height along the island's curve, and the fold takes the height Figma has given the window by then, as Figma
+  moves and sizes the window a frame or two after it is asked. An open island's row sticks to the top only
+  because `.island` has `overflow: clip`: `hidden` would make it a scroll container. Minimized or restored, the
+  window keeps its bottom right corner (`corner`), so Minimize and Restore stay under the pointer.
   The header above the window (icon, title, close button) is Figma's: a plugin can put nothing there but the
   title, "Figaro Relay", which `figma.showUI` sets and only a new `showUI` changes, restarting the window. The
   menu shows the manifest's name, "Figaro".
