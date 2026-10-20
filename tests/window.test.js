@@ -20,16 +20,16 @@ const GAP = 8;      // CANVAS_GAP
 // is `env.canvasHeight` px tall, at `env.zoom`; the plugin window's corner is
 // at `at`. getPosition gives that corner in window space and on the canvas, as
 // Figma does, and reposition takes the canvas's coordinates. With `pixels`, as
-// in Figma, the window stands on whole pixels and getPosition gives the canvas
-// point reposition was given.
+// Figma does it (checked live), getPosition gives the corner in whole pixels and
+// on the canvas in whole canvas units: at 280 % one is 2.8 px.
 function makeFigma({ at = { x: 1600, y: 300 }, canvasTop = 0, canvasLeft = 332, canvasHeight = 1000, zoom = 1,
                      origin = { x: -1000, y: -686 }, pixels = false, noPosition = false, noMove = false } = {}) {
   const view = { x: origin.x, y: origin.y };  // the canvas point at the canvas's top left corner
-  let given = null;  // pixels: the canvas point the window was last put at
   const win = { x: at.x, y: at.y };
   const sizes = [];
   const widths = [];
   const moves = [];
+  const places = [];  // where reposition put it, [x, y]
   const told = [];
   const ui = {
     onmessage: null,
@@ -37,24 +37,21 @@ function makeFigma({ at = { x: 1600, y: 300 }, canvasTop = 0, canvasLeft = 332, 
     resize(w, h) { sizes.push(h); widths.push(w); },
   };
   if (!noPosition) {
-    ui.getPosition = () => ({
-      windowSpace: { x: win.x, y: win.y },
-      canvasSpace: given || { x: view.x + (win.x - canvasLeft) / env.zoom, y: view.y + (win.y - canvasTop) / env.zoom },
-    });
+    ui.getPosition = () => {
+      const c = { x: view.x + (win.x - canvasLeft) / env.zoom, y: view.y + (win.y - canvasTop) / env.zoom };
+      if (!pixels) return { windowSpace: { x: win.x, y: win.y }, canvasSpace: c };
+      return { windowSpace: { x: Math.round(win.x), y: Math.round(win.y) }, canvasSpace: { x: Math.round(c.x), y: Math.round(c.y) } };
+    };
   }
   if (!noPosition && !noMove) {
     ui.reposition = (cx, cy) => {
       win.x = canvasLeft + (cx - view.x) * env.zoom;
       win.y = canvasTop + (cy - view.y) * env.zoom;
-      if (pixels) {
-        given = { x: cx, y: cy };
-        win.x = Math.round(win.x);
-        win.y = Math.round(win.y);
-      }
       moves.push(Math.round(win.y));
+      places.push([Math.round(win.x), Math.round(win.y)]);
     };
   }
-  const env = { win, sizes, widths, moves, told, zoom, canvasHeight };
+  const env = { win, sizes, widths, moves, places, told, zoom, canvasHeight };
   const figma = {
     root: { name: "Draft", children: [] },
     fileKey: "KEY",
@@ -262,18 +259,30 @@ function check(label, actual, expected) {
   }
   {
     // Figma's numbers for the canvas come out a hair off at most zooms (991.9999999999998 for 992), and
-    // how far off depends on where the window is: a window held at the canvas's bottom by them moved a
-    // pixel up and back every second, as ui.html asked again
+    // the window's corner on the canvas comes in whole canvas units (at 280 %, 2.8 px): how far off the
+    // canvas's edges come out depends on where the window is. A window held at the canvas's bottom by
+    // them moved a pixel and back every second as ui.html asked again, and at 280 % sideways too
     const moved = [];
     for (const [zoom, originY, y, asks] of [[0.13, 13828.25, 500, [142, 600]], [0.09, 2207.33, 700, [142, 545]],
-                                             [0.13, 13828.25, 600, [545]]]) {  // the last one partly below the canvas
-      const env = makeFigma({ at: { x: 1600, y }, zoom, origin: { x: -1000.4, y: originY }, pixels: true });
+                                             [0.13, 13828.25, 600, [545]],  // partly below the canvas
+                                             [2.8164684772491455, -213.3877978810035, 700, [142, 545]],  // live, full screen
+                                             [2.8164684772491455, -213.3877978810035, 400, [142, 700]],
+                                             [10, 51.37, 600, [142, 545]]]) {
+      const env = makeFigma({ at: { x: 1600, y }, zoom, origin: { x: -664.662159123525, y: originY }, pixels: true });
       for (const h of asks) await env.ask(h);
-      const n = env.moves.length;
-      for (let i = 0; i < 4; i++) await env.ask(asks[asks.length - 1]);
-      if (env.moves.length > n) moved.push(`zoom ${zoom}, from y ${y}: ${env.moves.slice(n)}`);
+      const n = env.places.length;
+      for (let i = 0; i < 6; i++) await env.ask(asks[asks.length - 1]);
+      const drift = Math.abs(Math.round(env.win.x) - 1600);
+      if (env.places.length > n || drift > 2) moved.push(`zoom ${zoom}, from y ${y}: ${env.places.slice(n).join(" ")}, x off by ${drift}`);
     }
-    check("held at the canvas's bottom, the window stays put while it asks again", moved, []);
+    check("held at the canvas's bottom, the window stays put while it asks again, at any zoom", moved, []);
+  }
+  {
+    // where Figma puts it is a little off at a large zoom, but it ends at the canvas's bottom all the same
+    const env = makeFigma({ at: { x: 1600, y: 700 }, zoom: 2.8164684772491455, origin: { x: -664.66, y: -213.39 }, pixels: true });
+    await env.ask(142);
+    await env.ask(545);
+    check("at 280 %: the window ends within a pixel of the canvas's bottom", Math.abs(env.bottom() - env.floor()) <= 1, true);
   }
   {
     const env = makeFigma({ noPosition: true });

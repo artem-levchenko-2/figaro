@@ -16,10 +16,11 @@ file; the release notes say when it has to be imported again.
 
 ### Fixed
 
-- **The window no longer jumps a pixel up and back every second** when it is held at the canvas's bottom edge
-  (an open island or the settings with no room under the window). Figma's numbers for the canvas come out a
-  hair off at most zooms, and by how much depended on where the window was; the window now counts the
-  canvas's edges in whole pixels.
+- **The window no longer jumps a pixel back and forth every second** when it is held at the canvas's bottom
+  edge (an open island or the settings with no room under the window), up and down or, at a large zoom,
+  sideways too. Figma gives the window's place on the canvas in whole canvas units (at 280 %, 2.8 px), so where
+  the canvas starts came out a little different from each place of the window. The window now works it out
+  from every look and from where it has just put itself, and lands on the very pixel it asks for.
 
 ## [1.5.1] — 2026-10-19
 

@@ -9,7 +9,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-20.2";
+const PLUGIN_VERSION = "2026-10-20.3";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -462,11 +462,31 @@ const HEIGHT_MIN = 30;    // on a canvas too short for more: an island's row
 const WIDTH_MIN = 70;     // Figma's narrowest plugin window
 const placed = { height: 0, width: UI_WIDTH, spot: null, hidden: 0, pos: null, room: 0 };
 
-// The canvas's top and bottom edges in window space, less the gap, and where
-// the window is. null when Figma can't tell. The edges are whole pixels: from
-// Figma's numbers they come out a hair off (991.9999999999998 for 992), by how
-// much depends on where the window is, and a window held at the canvas's
-// bottom moved a pixel up and back every second.
+// Where the canvas's top left corner is in window space. getPosition gives the
+// window's corner in window space in whole pixels and on the canvas in whole
+// canvas units (checked live): at 280 % one unit is 2.8 px, so what one look
+// says can be off by more than a pixel either way, and by how much depends on
+// where the window is. Each look narrows the range the corner can be in (`lo`
+// to `hi`); one that falls outside it means Figma's layout changed (full screen,
+// a panel shown or hidden), and the range starts over from it. A window this
+// code has just moved is a sharper look (moveTo).
+const canvasAt = { x: null, y: null };
+function narrow(axis, at, slack) {
+  const r = canvasAt[axis];
+  if (r && at + slack >= r.lo && at - slack <= r.hi) {
+    r.lo = Math.max(r.lo, at - slack);
+    r.hi = Math.min(r.hi, at + slack);
+  } else {
+    canvasAt[axis] = { lo: at - slack, hi: at + slack };
+  }
+  return canvasAt[axis];
+}
+
+// The canvas's corner and its top and bottom edges in window space, the
+// edges less the gap; the viewport, and where the window is. Whole pixels:
+// Figma's numbers come out a hair off as well (991.9999999999998 for 992).
+// `off`: how far from where it is asked Figma may put the window, as the
+// canvas's corner is known no better. null when Figma can't tell.
 function canvasEdges() {
   try {
     const p = figma.ui.getPosition();
@@ -474,14 +494,17 @@ function canvasEdges() {
     const b = figma.viewport.bounds;
     if (!p || !p.windowSpace || !p.canvasSpace || !b || !(zoom > 0)) return null;
     // windowSpace and canvasSpace are one point, the window's corner: from it, where the canvas starts
-    const top = Math.round(p.windowSpace.y - (p.canvasSpace.y - b.y) * zoom);
-    return { at: p, zoom, top: top + CANVAS_GAP, bottom: top + Math.round(b.height * zoom) - CANVAS_GAP };
+    const slack = zoom / 2 + 1;  // half a canvas unit, and a pixel
+    const rx = narrow("x", p.windowSpace.x - (p.canvasSpace.x - b.x) * zoom, slack);
+    const ry = narrow("y", p.windowSpace.y - (p.canvasSpace.y - b.y) * zoom, slack);
+    const left = Math.round((rx.lo + rx.hi) / 2);
+    const top = Math.round((ry.lo + ry.hi) / 2);
+    return { at: p, zoom, view: b, left, origin: top, off: Math.max(rx.hi - rx.lo, ry.hi - ry.lo) / 2 + 1,
+             top: top + CANVAS_GAP, bottom: top + Math.round(b.height * zoom) - CANVAS_GAP };
   } catch (e) {
     return null;
   }
 }
-
-const near = (a, b) => Math.abs(a.x - b.x) <= 2 && Math.abs(a.y - b.y) <= 2;
 
 function fitWindow(ask) {
   const want = Math.min(Math.round(Number(ask.height)), HEIGHT_MAX);
@@ -503,8 +526,12 @@ function fitWindow(ask) {
 // Puts the window where `want` px of islands fit, and gives the height they get there.
 // `corner`: the window glides from one size to another about its bottom right corner.
 function placeWindow(edges, want, width, corner) {
-  const here = edges.at.windowSpace;
-  if (!placed.pos || !near(here, placed.pos)) {  // the user moved it, or this is the first ask
+  // Where the window is: where it was put, unless it is further from there than
+  // Figma may put it (`edges.off`), when the user moved it.
+  const seen = edges.at.windowSpace;
+  const ours = placed.pos && Math.abs(seen.x - placed.pos.x) <= edges.off && Math.abs(seen.y - placed.pos.y) <= edges.off;
+  let here = ours ? placed.pos : seen;
+  if (!ours) {  // the user moved it, or this is the first ask
     placed.spot = { x: here.x, y: here.y };
     placed.hidden = Math.max(0, Math.round(here.y + FIGMA_HEADER + (placed.height || want) - edges.bottom));
   }
@@ -518,21 +545,52 @@ function placeWindow(edges, want, width, corner) {
     placed.hidden = 0;
   }
   const spot = placed.spot;
-  const floor = edges.bottom + placed.hidden;  // where the window may end
-  const top = Math.min(spot.y, edges.top);     // and how high it may go
-  const y = Math.max(top, Math.min(spot.y, Math.floor(floor - FIGMA_HEADER - want)));
-  const x = spot.x;
-  if (Math.abs(y - here.y) >= 1 || Math.abs(x - here.x) >= 1) {
-    const p = edges.at;  // reposition takes the canvas's coordinates
-    figma.ui.reposition(p.canvasSpace.x + (x - here.x) / edges.zoom, p.canvasSpace.y + (y - here.y) / edges.zoom);
+  const place = (e) => {
+    const floor = e.bottom + placed.hidden;  // where the window may end
+    const top = Math.min(spot.y, e.top);     // and how high it may go
+    return { x: spot.x, y: Math.max(top, Math.min(spot.y, Math.floor(floor - FIGMA_HEADER - want))), floor, top };
+  };
+  let to = place(edges);
+  if ((to.y !== here.y || to.x !== here.x) && edges.off > 2) {
+    // The canvas's corner is known only roughly: the window goes there as well
+    // as can be told, which says where the canvas is, and its place is worked
+    // out again. All in one go, so Figma shows only where it ends.
+    moveTo(edges, to.x, to.y, 1);
+    edges = canvasEdges() || edges;
+    here = edges.at.windowSpace;
+    to = place(edges);
   }
-  placed.pos = { x, y };
-  const room = Math.max(HEIGHT_MIN, Math.floor(floor - top - FIGMA_HEADER));
+  if (to.y !== here.y || to.x !== here.x) moveTo(edges, to.x, to.y, 2);
+  placed.pos = { x: to.x, y: to.y };
+  const room = Math.max(HEIGHT_MIN, Math.floor(to.floor - to.top - FIGMA_HEADER));
   if (room !== placed.room) {
     placed.room = room;
     figma.ui.postMessage({ type: "room", height: room });
   }
-  return Math.max(HEIGHT_MIN, Math.min(want, Math.floor(floor - y - FIGMA_HEADER)));
+  return Math.max(HEIGHT_MIN, Math.min(want, Math.floor(to.floor - to.y - FIGMA_HEADER)));
+}
+
+// Puts the window's corner at x, y in window space. reposition takes the
+// canvas's coordinates, and getPosition sees the window there at once (checked
+// live): its corner in whole pixels, with the canvas point it was given, says
+// where the canvas starts to within a pixel, and a second try puts the window
+// on the very pixel asked for.
+function moveTo(edges, x, y, tries) {
+  const b = edges.view, zoom = edges.zoom;
+  let left = edges.left, top = edges.origin;
+  for (let i = 0; i < tries; i++) {
+    const cx = b.x + (x - left) / zoom, cy = b.y + (y - top) / zoom;
+    figma.ui.reposition(cx, cy);
+    const p = figma.ui.getPosition();
+    if (!p || !p.windowSpace) return;
+    // further off than the canvas's corner can be: Figma put it elsewhere, nothing to learn
+    if (Math.abs(p.windowSpace.x - x) > edges.off + 1 || Math.abs(p.windowSpace.y - y) > edges.off + 1) return;
+    const rx = narrow("x", p.windowSpace.x - (cx - b.x) * zoom, 0.75);
+    const ry = narrow("y", p.windowSpace.y - (cy - b.y) * zoom, 0.75);
+    if (p.windowSpace.x === x && p.windowSpace.y === y) return;
+    left = Math.round((rx.lo + rx.hi) / 2);
+    top = Math.round((ry.lo + ry.hi) / 2);
+  }
 }
 
 figma.ui.onmessage = async (msg) => {

@@ -243,16 +243,19 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   taller than the canvas is cut short, and its islands scroll. `getPosition` gives the window's corner both in
   window space and on the canvas, so together with `viewport.bounds` they say where the canvas starts (window
   space starts under Figma's tabs, at its window's left edge); the corner is the top of `FIGMA_HEADER` (40 px),
-  Figma's header with the line under it. It reads a move at once (all checked live). The canvas's edges that
-  come out of these numbers are a hair off at most zooms (991.9999999999998 for 992), by how much depends on
-  where the window is, so `canvasEdges` rounds them: without it a window held at the canvas's bottom moved a
-  pixel and back every second. Figma has no event for a moved window or a resized canvas, so the window asks
-  again every second, and a window that isn't where the sandbox put it was moved by the user. An island that
-  opens or closes drives the window frame by frame (`drive` in `ui.html`): every frame it asks for the next
-  height along the island's curve, and the fold takes the height Figma has given the window by then, as Figma
-  moves and sizes the window a frame or two after it is asked. An open island's row sticks to the top only
-  because `.island` has `overflow: clip`: `hidden` would make it a scroll container. Minimized or restored, the
-  window keeps its bottom right corner (`corner`), so Minimize and Restore stay under the pointer.
+  Figma's header with the line under it. It reads a move at once, `getPosition` sees a `reposition` at once,
+  and the window stays where it was put, between canvas units too (all checked live). But `getPosition` gives
+  the corner in whole pixels and on the canvas in whole canvas units, 2.8 px at 280 %, so where the canvas
+  starts comes out a little different from each place of the window: `canvasEdges` narrows a range for it over
+  every look (`narrow`), and `moveTo` reads the window back right after a move, which pins it to a pixel. Taken
+  from one look, it made a window held at the canvas's bottom move a pixel back and forth every second, and
+  sideways at a large zoom. Figma has no event for a moved window or a resized canvas, so the window asks again
+  every second, and a window that isn't where the sandbox put it was moved by the user. An island that opens or
+  closes drives the window frame by frame (`drive` in `ui.html`): every frame it asks for the next height along
+  the island's curve, and the fold takes the height Figma has given the window by then, as Figma moves and
+  sizes the window a frame or two after it is asked. An open island's row sticks to the top only because
+  `.island` has `overflow: clip`: `hidden` would make it a scroll container. Minimized or restored, the window
+  keeps its bottom right corner (`corner`), so Minimize and Restore stay under the pointer.
   The header above the window (icon, title, close button) is Figma's: a plugin can put nothing there but the
   title, "Figaro Relay", which `figma.showUI` sets and only a new `showUI` changes, restarting the window. The
   menu shows the manifest's name, "Figaro".
