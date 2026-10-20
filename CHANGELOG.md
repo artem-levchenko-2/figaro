@@ -9,6 +9,11 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+### Changed
+
+- **Settings' gear has six teeth:** with eight, at its 12 px on a screen that isn't Retina, it looked like a
+  ring.
+
 ### Fixed
 
 - **The window no longer jumps a pixel up and back every second** when it is held at the canvas's bottom edge
