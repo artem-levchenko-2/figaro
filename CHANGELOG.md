@@ -9,6 +9,8 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+## [1.5.2] — 2026-10-20
+
 ### Changed
 
 - **Settings' gear has six teeth:** with eight, at its 12 px on a screen that isn't Retina, it looked like a
