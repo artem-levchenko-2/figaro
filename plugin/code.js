@@ -9,7 +9,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-19.5";
+const PLUGIN_VERSION = "2026-10-20.1";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -463,7 +463,10 @@ const WIDTH_MIN = 70;     // Figma's narrowest plugin window
 const placed = { height: 0, width: UI_WIDTH, spot: null, hidden: 0, pos: null, room: 0 };
 
 // The canvas's top and bottom edges in window space, less the gap, and where
-// the window is. null when Figma can't tell.
+// the window is. null when Figma can't tell. The edges are whole pixels: from
+// Figma's numbers they come out a hair off (991.9999999999998 for 992), by how
+// much depends on where the window is, and a window held at the canvas's
+// bottom moved a pixel up and back every second.
 function canvasEdges() {
   try {
     const p = figma.ui.getPosition();
@@ -471,8 +474,8 @@ function canvasEdges() {
     const b = figma.viewport.bounds;
     if (!p || !p.windowSpace || !p.canvasSpace || !b || !(zoom > 0)) return null;
     // windowSpace and canvasSpace are one point, the window's corner: from it, where the canvas starts
-    const top = p.windowSpace.y - (p.canvasSpace.y - b.y) * zoom;
-    return { at: p, zoom, top: top + CANVAS_GAP, bottom: top + b.height * zoom - CANVAS_GAP };
+    const top = Math.round(p.windowSpace.y - (p.canvasSpace.y - b.y) * zoom);
+    return { at: p, zoom, top: top + CANVAS_GAP, bottom: top + Math.round(b.height * zoom) - CANVAS_GAP };
   } catch (e) {
     return null;
   }
