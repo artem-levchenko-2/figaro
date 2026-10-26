@@ -25,7 +25,7 @@ _PATH = re.compile(r"^/(?:design|file|proto|board|slides|deck|make|site)/([A-Za-
 # instance). In links the colons are dashes: "1-11", "I1-2;3-4".
 _NODE = re.compile(r"I?\d+[:-]\d+(?:;\d+[:-]\d+)*")
 # File keys are 22 letters and digits — what a bare key in -T looks like.
-FILE_KEY = re.compile(r"^[A-Za-z0-9]{22}$")
+FILE_KEY = re.compile(r"^[A-Za-z0-9]{22}\Z")  # \Z: "$" would let a "\n" after it through
 
 
 class Link(NamedTuple):

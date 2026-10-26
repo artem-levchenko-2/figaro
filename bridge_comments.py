@@ -182,10 +182,10 @@ def _file_key(doc):
     return live[0]["fileKey"] if live else None
 
 
-async def check(token, doc):
+async def check(token, doc, gen):
     """A token from the window: read the file's version history with it. A token
-    Figma takes is kept; anything else leaves the one there was."""
-    gen = STATE["gen"]
+    Figma takes is kept; anything else leaves the one there was. `gen` is the Save's
+    own: a Remove handled before this task first runs must win too."""
     key = _file_key(doc)
     STATE.update(check="checking", why=None, at=time.time())
     bridge_board.changed()
@@ -224,7 +224,7 @@ async def window_message(m):
             bridge_board.changed()
             return True
         doc = m.get("doc") if isinstance(m.get("doc"), str) else None
-        task = asyncio.get_running_loop().create_task(check(token, doc))
+        task = asyncio.get_running_loop().create_task(check(token, doc, STATE["gen"]))
         _tasks.add(task)
         task.add_done_callback(_tasks.discard)
     elif mtype == "figma-token-remove":
@@ -365,7 +365,7 @@ async def comments_handler(request: web.Request) -> web.Response:
     except FigmaError as e:
         print(f"[figma] comments of {key}: {e.why} (HTTP {e.status})")
         status, text = FAILS.get(e.why, FAILS["rejected"])
-        if e.why == "rejected":
+        if e.status == 401:  # Figma's "Invalid token"; a 403 is a scope or this file, not the token
             STATE["rejected"] = True
             if doc and doc not in DECLINED:
                 ASKS[doc] = {"agent": bridge_board._who(agent), "at": time.time()}

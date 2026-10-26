@@ -78,8 +78,8 @@ class FakeFigma:
         self.seen.append((request.path, got))
         if self.status:
             return web.json_response({"status": self.status, "err": "no"}, status=self.status)
-        if got != self.token:
-            return web.json_response({"status": 403, "err": "Invalid token"}, status=403)
+        if got != self.token:  # what Figma answers a bad token (checked live)
+            return web.json_response({"status": 401, "err": "Invalid token"}, status=401)
         return web.json_response(body)
 
     async def versions(self, request):
@@ -162,7 +162,7 @@ def test_a_token_figma_refuses_is_not_kept(monkeypatch):
     run(go())
 
 
-@pytest.mark.parametrize("status, why", [(404, "nofile"), (429, "busy"), (500, "busy"), (401, "rejected")])
+@pytest.mark.parametrize("status, why", [(404, "nofile"), (429, "busy"), (500, "busy"), (401, "rejected"), (403, "rejected")])
 def test_the_check_says_why_figma_didnt_take_it(monkeypatch, status, why):
     async def go():
         async with FakeFigma(monkeypatch, status=status):
@@ -245,6 +245,21 @@ def test_remove_while_a_check_runs_wins_over_the_check(monkeypatch):
                 await asyncio.sleep(0.4)
                 assert not bridge_comments.has_token() and not token_file().exists()
                 assert figma_of(p)["token"] is None and figma_of(p)["check"] is None
+            await c.close()
+    run(go())
+
+
+def test_remove_handled_before_the_check_first_runs_still_wins(monkeypatch):
+    async def go():
+        async with FakeFigma(monkeypatch):
+            c = await make_client()
+            async with FakePlugin(c, name="A", key=KEY, caps=CAPS) as p:
+                # nothing between the two yields, so the check's task hasn't run yet
+                await bridge_comments.window_message({"type": "figma-token", "token": TOKEN, "doc": "doc:" + KEY})
+                await bridge_comments.window_message({"type": "figma-token-remove"})
+                await asyncio.sleep(0.4)
+                assert not bridge_comments.has_token() and not token_file().exists()
+                assert figma_of(p)["token"] is None
             await c.close()
     run(go())
 
@@ -665,7 +680,7 @@ def test_a_file_key_from_the_plugin_that_is_not_a_key_never_goes_to_figma(monkey
     async def go():
         async with FakeFigma(monkeypatch) as fig:
             c = await make_client()
-            for bad in ("../../v1/me", "abc/def", "K1aaaaaaaaaaaaaaaaaaaa?x=1"):
+            for bad in ("../../v1/me", "abc/def", "K1aaaaaaaaaaaaaaaaaaaa?x=1", KEY + "\n"):
                 async with FakePlugin(c, name="Draft", key=bad, caps=CAPS) as p:
                     bridge_comments.STATE["token"] = TOKEN
                     r = await comments_of(c, target="Draft")
@@ -712,6 +727,22 @@ def test_remove_clears_a_rejected_token(monkeypatch):
                 await window(p, type="figma-token-remove")
                 await settle()
                 assert figma_of(p) == {"token": None, "check": None, "why": None, "rejected": False}
+            await c.close()
+    run(go())
+
+
+def test_a_403_on_the_comments_is_not_a_refused_token(monkeypatch):
+    async def go():
+        async with FakeFigma(monkeypatch) as fig:
+            c = await make_client()
+            async with FakePlugin(c, name="Draft", key=KEY, caps=CAPS) as p:
+                await save(p)
+                fig.status = 403  # a scope the token lacks, or a file its account can't open
+                r = await comments_of(c, target="Draft", agent="designer")
+                assert r.status == 403 and "scopes" in (await r.json())["error"]
+                await settle()
+                assert figma_of(p)["rejected"] is False and figma_of(p)["token"] == MASKED
+                assert island(p, "Draft")["ask"] is None
             await c.close()
     run(go())
 
