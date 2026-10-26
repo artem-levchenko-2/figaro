@@ -214,9 +214,8 @@ button { font: inherit; }
 .hot .act, .held .act, .agent:focus-within .act { width: 18px; margin-left: -2px; transition-delay: 0s; transition-timing-function: cubic-bezier(.2, .8, .2, 1); }
 .hot .act .ib, .held .act .ib, .agent:focus-within .act .ib { opacity: 1; transform: none; pointer-events: auto;
   transition: opacity .16s ease .06s, transform .22s cubic-bezier(.2, .8, .2, 1) .04s; }
-/* An open island with no agent and no change yet: a ghost of an agent's row,
-   where the first one will show, and how to get one there. */
-.agent.empty { margin-top: 7px; }
+/* An open island with no agent at work: a ghost of an agent's row under
+   Agents, where the first one will show, and how to get one there. */
 .av.ghost { background: none; border: 1px dashed var(--is-faint); }
 .msg { margin: -4px 0 0; padding: 0 0 7px 26px; color: var(--is-dim); font-size: 11.5px; line-height: 15px; overflow-wrap: anywhere; }
 .msg.err { color: var(--is-err); }
@@ -1021,8 +1020,11 @@ function panel(f) {
   const list = on ? agentsOf(f) : [];
   const feed = on ? f.recent.slice(0, 5) : [];
   const note = callout(f);
-  const empty = on && !note && !list.length && !feed.length
-    ? '<div class="agent empty"><div class="ah"><span class="av ghost"></span><span class="nm">No agents yet</span></div>'
+  // No agent at work: the Agents section is there all the same, with a ghost of
+  // an agent's row. Changes left from agents who went are no reason to drop it.
+  const empty = on && !note && !list.length
+    ? '<div class="sect">Agents</div><div class="agent empty"><div class="ah"><span class="av ghost"></span>'
+      + `<span class="nm">${f.recent.length ? "No agents at work" : "No agents yet"}</span></div>`
       + `<p class="msg">Give an agent a link to ${f.here ? "this" : "the"} file:<br>its work shows up here.</p></div>` : "";
   return '<div class="panel">' + note + empty
     + (list.length ? '<div class="sect">Agents</div>' + list.map((a) => agentRow(f, a)).join("") : "")

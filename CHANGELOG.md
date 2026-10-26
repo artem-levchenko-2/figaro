@@ -27,6 +27,13 @@ file; the release notes say when it has to be imported again.
   `absoluteRenderBounds` is cut by clipping parents; prototype reactions go through `setReactionsAsync`; and
   while a script runs Figma doesn't repaint, so search inside a node and never `figma.root.findAll`.
 
+### Fixed
+
+- **An open island always has its Agents section.** When the agents had gone (done, or quiet for five minutes)
+  and only their changes were left, the island showed Recent alone, as if no agent had ever worked there. Now
+  Agents stays above it with a dashed row: "No agents at work", and "No agents yet" when there are no changes
+  either.
+
 ## [1.5.2] — 2026-10-20
 
 ### Changed

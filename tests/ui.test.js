@@ -820,7 +820,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
           [grids(), /<span><span class="shim">working<\/span> <span[^>]*data-clock/.test(env.html())], [2, true]);
   }
 
-  // ─── an open island with nothing in it yet ─────────────────────────────
+  // ─── an open island with no agent at work ───────────────────────────────
   {
     const env = load();
     const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;
@@ -831,13 +831,24 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.click("toggle", "here");
     env.click("toggle", "doc:KEY2");
     const ghosts = () => (env.html().match(/class="agent empty"/g) || []).length;
-    check("no agent, no change: a ghost of an agent's row says how to get one, in this file and the other",
-          [ghosts(), /No agents yet/.test(env.html()), /a link to this file:/.test(env.html()), /a link to the file:/.test(env.html())],
-          [2, true, true, true]);
+    const sects = (name) => (env.html().match(new RegExp(`<div class="sect">${name}</div>`, "g")) || []).length;
+    check("no agent, no change: Agents, and under it a ghost of an agent's row that says how to get one, in this file and the other",
+          [ghosts(), sects("Agents"), sects("Recent"), (env.html().match(/No agents yet/g) || []).length,
+           /a link to this file:/.test(env.html()), /a link to the file:/.test(env.html())],
+          [2, 2, 0, 2, true, true]);
     env.board([file("KEY1", "Dashboard", { recent: [{ agent: "designer", at: ago(5), kind: "ok", summary: "Created KPI card" }] }),
                file("KEY2", "Kit", { agents: [agent("icons", { since: ago(30), last: ago(0), busy: true })] })]);
     await env.clock.advance(400);
-    check("…and goes once there is a change or an agent", [ghosts(), /Recent/.test(env.html()), /Agents/.test(env.html())], [0, true, true]);
+    check("…an agent at work takes the ghost's place; changes with no agent at work leave Agents and say so",
+          [ghosts(), sects("Agents"), sects("Recent"), /No agents at work/.test(env.html()), /No agents yet/.test(env.html()),
+           /a link to this file:/.test(env.html()), /Created KPI card/.test(env.html())], [1, 2, 1, true, false, true, true]);
+    env.board([file("KEY1", "Dashboard", { agents: [agent("designer", { since: ago(900), last: ago(700), done: { at: ago(600), text: "" } })],
+                                           recent: [{ agent: "designer", at: ago(5), kind: "ok", summary: "Created KPI card" }] }), file("KEY2", "Kit")]);
+    await env.clock.advance(400);
+    check("…an agent that is done and still on show is a row of Agents, with no ghost beside it", [ghosts(), /No agents at work/.test(env.html())], [1, false]);
+    env.board([file("KEY1", "Dashboard"), file("KEY2", "Kit", { stuck: { agent: "icons", since: ago(300) } })]);
+    await env.clock.advance(400);
+    check("…a file where Figma isn't answering shows that first, with no ghost under it", [/isn't answering/.test(env.html()), ghosts()], [true, 1]);
     env.board([file("KEY1", "Dashboard"), file("KEY2", "Kit")]);
     await env.clock.advance(400);
     env.ws().drop();
