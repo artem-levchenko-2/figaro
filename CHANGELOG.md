@@ -17,6 +17,7 @@ file; the release notes say when it has to be imported again.
   the page, the point and the nearest layers. A comment is often pinned to a frame and not to the text it talks
   about, so the skill tells agents to look among the frame's children. Resolved comments are left out, and it
   only reads. A file that isn't open in Figma can be named by its link or key: its layers then come as ids.
+  It reads up to 200 open comments and says how many it left out past that.
 - **A Figma token block in the window's settings**, between the switches and the version, with "Optional"
   by its title. Figma shows comments only to an app with the designer's personal access token, with the scopes
   to read comments and file versions (the same token will serve the version history later). Save checks the
@@ -30,11 +31,8 @@ file; the release notes say when it has to be imported again.
   designer chose not to add a token, and the window isn't asked again for that file until the bridge restarts.
   A window with a bridge from before it shows no token block and no ask, and `figaro comments` with such a
   bridge says to update it.
-- A saved token that Figma stops accepting (expired, revoked) no longer shows as "Connected": the settings show it
-  as refused, with the field for a new token and Remove, and the file's island asks again. A new token that
-  works, or Remove, clears it.
-- `figaro comments` says how many open comments it left out when a file has more than 200, and a bad `target` or
-  a file key that isn't one gets a plain error. Removing the token while Save is still checking it now sticks.
+- A saved token that Figma stops accepting (expired, revoked) shows as refused in the settings, with the field
+  for a new token and Remove, and the file's island asks again. A new token that works, or Remove, clears it.
 
 ### Changed
 
