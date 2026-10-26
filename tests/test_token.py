@@ -202,11 +202,17 @@ def test_the_cli_sends_the_token_from_the_file(monkeypatch, tmp_path):
         def __exit__(self, *a):
             return False
 
-        def read(self):
+        def read(self, n=-1):
             return b"{}"
+
+    class Root(Resp):
+        def read(self, n=-1):
+            return b'{"service": "figaro-bridge"}'
 
     class Local:
         def open(self, req, timeout):
+            if isinstance(req, str):  # the look at the port, which carries nothing
+                return Root()
             seen.append(req)
             return Resp()
 

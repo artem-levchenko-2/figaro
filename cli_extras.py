@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import argparse
 import base64
+import http.client
 import io
 import json
 import math
 import os
 import re
+import socket
 import subprocess
 import sys
 import tempfile
@@ -52,6 +54,9 @@ LOCAL = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 CLI = None           # the figaro module, set by attach()
 _started = False
+SERVICE = "figaro-bridge"  # what the bridge's `GET /` says it is (bridge.root_handler)
+PROBE_TIMEOUT = 3    # s: how long a port has to say what it is
+_verdicts = {}       # (host, port) -> what probe() found, kept for the life of the process
 
 
 def attach(cli):
@@ -129,7 +134,10 @@ def autostart(host, port):
     lock = _start_lock(port)
     try:
         # Another figaro call may have started it while this one waited.
-        started = _answers(host, port) or _start(cmd, port)
+        state = probe(host, port, fresh=True)["state"]
+        if state in ("foreign", "refused"):  # not ours: no bridge on top of it
+            return False
+        started = state == "ours" or _start(cmd, port)
     finally:
         if lock:
             try:
@@ -165,15 +173,84 @@ def _start_lock(port):
     return None
 
 
-def _answers(host, port):
-    """Something answers HTTP on the bridge's port."""
+def hostport(host, port):
+    """`host:port` as a URL has it: an IPv6 address goes in square brackets."""
+    host = str(host)
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    return f"{host}:{port}"
+
+
+def base_url(host, port):
+    return f"http://{hostport(host, port)}"
+
+
+def probe(host, port, fresh=False):
+    """What holds the bridge's port, by asking `GET /` (no token goes with it):
+    {"state": "ours"} when the answer is the bridge's JSON, {"state": "none"}
+    when nothing answers (nothing listens, or a sandbox keeps the call off the
+    network: the real request tells which), {"state": "foreign", "why": ...}
+    for another program, and {"state": "refused", "body": ...} for the bridge's
+    own refusal of the Host header. The CLI hands the token only to "ours".
+    One look per process; a port that was empty is looked at again."""
+    key = (host, port)
+    if not fresh and key in _verdicts:
+        return _verdicts[key]
+    verdict = _look(host, port)
+    if verdict["state"] != "none":
+        _verdicts[key] = verdict
+    else:
+        _verdicts.pop(key, None)
+    return verdict
+
+
+def _look(host, port):
     try:
-        with LOCAL.open(f"http://{host}:{port}/status", timeout=2):
-            return True
-    except urllib.error.HTTPError:
-        return True
-    except (OSError, ValueError):
-        return False
+        with LOCAL.open(base_url(host, port) + "/", timeout=PROBE_TIMEOUT) as r:
+            raw = r.read(65536)
+            status = r.status
+    except urllib.error.HTTPError as e:
+        body = _json(e.read(65536))
+        if e.code == 403 and "Host header" in str(body.get("error")):
+            return {"state": "refused", "status": 403, "body": body}
+        return {"state": "foreign", "why": f"GET / answered HTTP {e.code}, not the bridge's JSON"}
+    except urllib.error.URLError as e:
+        if isinstance(e.reason, (TimeoutError, socket.timeout)):
+            return {"state": "foreign", "why": f"GET / got no answer in {PROBE_TIMEOUT} s"}
+        return {"state": "none"}
+    except (TimeoutError, socket.timeout):
+        return {"state": "foreign", "why": f"GET / got no answer in {PROBE_TIMEOUT} s"}
+    except (http.client.HTTPException, ConnectionError, ValueError) as e:
+        return {"state": "foreign", "why": f"GET / failed: {e or type(e).__name__}"}
+    except OSError:
+        return {"state": "none"}
+    if _json(raw).get("service") == SERVICE:
+        return {"state": "ours"}
+    return {"state": "foreign", "why": f"GET / answered HTTP {status}, not the bridge's JSON"}
+
+
+def _json(raw):
+    try:
+        value = json.loads(raw or b"{}")
+    except ValueError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def foreign_answer(host, port, why):
+    """The CLI's error for a port held by another program, in the shape of
+    `figaro._request`'s other failures: {ok, error, hint}, with `foreign`."""
+    return {"ok": False, "foreign": True,
+            "error": (f"port {port} on {host} is held by another program, not the Figaro bridge "
+                      f"({why}); nothing was sent to it and no bridge was started"),
+            "hint": (f"free the port (`lsof -nP -iTCP:{port} -sTCP:LISTEN` shows who listens; on "
+                     f"Windows `netstat -ano | findstr :{port}`), or set FIGARO_PORT to another free "
+                     "port (the Figma plugin itself connects to 8788 only)")}
+
+
+def _answers(host, port):
+    """The Figaro bridge answers on this port."""
+    return probe(host, port, fresh=True)["state"] == "ours"
 
 
 def _start(cmd, port):
@@ -238,7 +315,7 @@ def _wait_for_plugins(host, port):
 
 def _connected(host, port):
     try:
-        with LOCAL.open(f"http://{host}:{port}/status", timeout=2) as r:
+        with LOCAL.open(f"{base_url(host, port)}/status", timeout=2) as r:
             return sorted(f.get("name") or "?" for f in json.load(r).get("files") or [])
     except (OSError, ValueError):
         return []

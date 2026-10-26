@@ -37,6 +37,12 @@ file; the release notes say when it has to be imported again.
   when none was left but their changes, the island showed Recent alone, as if no agent had ever worked there. Now
   Agents stays above it with a dashed row: "No agents at work", and "No agents yet" when there are no changes
   either.
+- **The token goes only to the Figaro bridge.** The CLI took any program that answered HTTP on the port for the
+  bridge and sent it the token. It now asks `GET /` once per call and trusts the port only when the answer is the
+  bridge's JSON (`"service": "figaro-bridge"`, which every release since 1.0.0 gives). Another program there
+  gets nothing, no bridge is started on top of it, and `figaro`, `doctor` and `wait` say that the port is held
+  by another program and what to do (free it, or set `FIGARO_PORT`).
+- **`FIGARO_HOST=::1` works:** an IPv6 address goes into the URL in square brackets (`http://[::1]:8788`).
 
 ## [1.5.2] — 2026-10-20
 

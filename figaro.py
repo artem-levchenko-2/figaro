@@ -141,11 +141,18 @@ def node_expr(id_or_alias):
 
 
 def _request(method, path, payload=None, timeout=65):
-    url = f"http://{HOST}:{PORT}{path}"
+    # The token goes only to what said it is the bridge (one `GET /` per process): any other
+    # program on the port would get a secret that runs code in the user's Figma file.
+    found = cli_extras.probe(HOST, PORT)
+    if found["state"] == "foreign":
+        return 0, cli_extras.foreign_answer(HOST, PORT, found["why"])
+    if found["state"] == "refused":  # the bridge itself, refusing the Host header
+        return found["status"], found["body"]
+    url = f"{cli_extras.base_url(HOST, PORT)}{path}"
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Content-Type": "application/json"} if data else {}
-    token = figaro_token.read_token(PORT)  # read each time: a restarted bridge has a new one
-    if token:
+    token = figaro_token.read_token(PORT) if found["state"] == "ours" else None
+    if token:  # read each time: a restarted bridge has a new one
         headers["X-Figaro-Token"] = token
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
@@ -528,14 +535,18 @@ def cmd_doctor(args):
 
     status, resp = _request("GET", "/status")
     if status == 0:
+        if resp.get("foreign"):  # the error says it all: another program holds the port
+            fail(resp.get("error"), resp.get("hint"))
+            return 1
         start = f"start it:  {cli_extras.start_hint()}"
-        fail(f"bridge not answering on {HOST}:{PORT} — {resp.get('error')}", resp.get("hint") or start)
+        fail(f"bridge not answering on {cli_extras.hostport(HOST, PORT)} — {resp.get('error')}",
+             resp.get("hint") or start)
         return 1
     if status == 403:
         fail(f"bridge refused the request: {resp.get('error')}",
              "a proxy is rewriting Host/Origin — talk to the bridge directly")
         return 1
-    ok(f"bridge answering on {HOST}:{PORT}"
+    ok(f"bridge answering on {cli_extras.hostport(HOST, PORT)}"
        + (f" — Figaro {resp['version']}" if resp.get("version") else ""))
     token_file = figaro_token.token_path(PORT)
     if figaro_token.read_token(PORT) is None:

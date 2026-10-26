@@ -20,6 +20,7 @@ import bridge_board  # noqa: E402
 import bridge_exec  # noqa: E402
 import bridge_settings  # noqa: E402
 import bridge_update  # noqa: E402
+import cli_extras  # noqa: E402
 
 
 TEST_TOKEN = "test-token"
@@ -59,6 +60,7 @@ def clean_state(tmp_path, tmp_path_factory, monkeypatch):
         bridge.ALLOWED_HOSTS = set()
         bridge.UPDATE = None
         bridge.SKIPPED = None
+        cli_extras._verdicts.clear()  # what the CLI found on a port is kept for one process
         bridge_exec._loaded = False
         bridge_board._send_task = None
         bridge_update.STATE.update(step=None, what=None, to=None)
