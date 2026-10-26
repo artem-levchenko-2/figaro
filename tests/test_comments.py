@@ -184,6 +184,11 @@ def test_the_check_says_when_figma_doesnt_answer(monkeypatch):
         c = await make_client()
         async with FakePlugin(c, name="A", key=KEY, caps=CAPS) as p:
             await save(p)
+            # Windows tries a refused connection again for about two seconds before it gives up
+            for _ in range(100):
+                if figma_of(p)["check"] != "checking":
+                    break
+                await asyncio.sleep(0.1)
             assert figma_of(p) == {"token": None, "check": "error", "why": "network", "rejected": False}
         await c.close()
     run(go())
