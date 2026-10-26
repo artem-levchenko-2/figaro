@@ -813,6 +813,27 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("its scripts still show in this file's island", /designer/.test(env.html()), true);
   }
 
+  // ─── the grid's wave runs along the diagonal; the sounds are ours ─────────
+  {
+    const cell = {};
+    for (const m of html.matchAll(/\.px i((?::nth-child\(\d\)(?:, \.px i)?)+) \{ animation-delay: ([\d.]+)ms/g)) {
+      for (const n of m[1].matchAll(/nth-child\((\d)\)/g)) cell[n[1]] = Number(m[2]);
+    }
+    const want = {};
+    for (let n = 1; n <= 9; n++) want[n] = ((Math.floor((n - 1) / 3) + (n - 1) % 3) / 4) * 0.5 * 900;
+    check("the grid's delays follow the diagonal, 0 to 450 ms", cell, want);
+    check("the grid's cycle is 0.9 s, on the beat of the 1.8 s shimmer",
+          [/animation: px 900ms ease-in-out infinite/.test(html), /animation: shim 1\.8s /.test(html)], [true, true]);
+    check("the grid's keyframes", /@keyframes px \{ 0%, 100% \{ opacity: \.18; \} 20% \{ opacity: 1; \} 50% \{ opacity: \.18; \} \}/.test(html), true);
+    check("open and close sweep a sine between 440 and 660 Hz",
+          [/open: \[\{ src: "sine", hz: \[440, 660\], env: \[0\.002, 0\.1, 0\.03\], gain: 0\.4 \}\]/.test(html),
+           /close: \[\{ src: "sine", hz: \[660, 440\], env: \[0\.002, 0\.1, 0\.03\], gain: 0\.4 \}\]/.test(html)], [true, true]);
+    check("a layer clicks twice, 14 ms apart",
+          [/layer: \[\{ src: "noise", filter: \["highpass", 3500, 0\.7\], env: \[0\.0002, 0\.006\], gain: 0\.34 \},/.test(html),
+           /\{ src: "noise", filter: \["bandpass", 1600, 3\], at: 0\.014, env: \[0\.0002, 0\.012\], gain: 0\.42 \}\]/.test(html)], [true, true]);
+    check("the cues' volume", /const CUE_VOLUME = 0\.30;/.test(html), true);
+  }
+
   // ─── at work: a pixel grid, and the word shimmers ───────────────────────
   {
     const env = load();
@@ -890,7 +911,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(50);
     check("…and a click opens them", env.heard(), ["square 1700", "sine 520"]);
     env.click("set", null, { name: "others" });
-    check("a switch tells the bridge, with a tick", [env.sent("set"), env.heard()], [[{ type: "set", name: "others", on: false }], ["square 2100"]]);
+    check("a switch tells the bridge, with a tick", [env.sent("set"), env.heard()], [[{ type: "set", name: "others", on: false }], ["noise", "noise"]]);
     env.click("set", null, { name: "sounds" });
     env.click("check");
     check("Sounds off: that switch and all after it are silent", env.heard(), []);
@@ -899,7 +920,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     check("…until the board says it looked: up to date, just now", /up to date · <span[^>]*>just now/.test(env.app()), true);
     env.click("set", null, { name: "sounds" });
-    check("Sounds on again: its switch ticks", env.heard(), ["square 2100"]);
+    check("Sounds on again: its switch ticks", env.heard(), ["noise", "noise"]);
     env.click("back");
     await env.clock.advance(400);
     check("back: the files, and with Show other files off, this one's island alone",
@@ -1248,10 +1269,10 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("…but a moment later there is one, asleep, so the first click needn't wait for it", env.cues(), "suspended");
     env.click("toggle", "here");
     await env.clock.advance(50);
-    check("opening an island: a blip up", env.heard(), ["sine 430"]);
+    check("opening an island: a blip up", env.heard(), ["sine 440"]);
     env.click("toggle", "here");
     await env.clock.advance(50);
-    check("…closing it: the same blip down", env.heard(), ["sine 640"]);
+    check("…closing it: the same blip down", env.heard(), ["sine 660"]);
     const failing = (at) => agent("icons", { since: ago(30), last: ago(0), busy: true, error: { text: "boom", line: 3, at } });
     env.board([file("KEY1", "Dashboard", { agents: [designer(), icons] }), kit([])]);
     env.board([file("KEY1", "Dashboard", { agents: [designer({ busy: false, done: { text: "Have a look", at: ago(0) } }), failing(ago(0))] }), kit([])]);
@@ -1270,7 +1291,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.click("skip", null, { version: "1.2.0" });
     await env.clock.advance(50);
     check("Stop thuds down, Update starts up in three pulses, a layer ticks, Skip flies off", env.heard(),
-          ["noise", "sine 340", "sine 330", "sine 415", "sine 523", "square 2100", "noise"]);
+          ["noise", "sine 340", "sine 330", "sine 415", "sine 523", "noise", "noise", "noise"]);
     await env.clock.advance(4000);
     check("the sounds' AudioContext sleeps a moment after the last", env.tone() === "none" && env.cues(), "suspended");
 
@@ -1286,7 +1307,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.board([file("KEY1", "Dashboard", { agents: [icons] }), kit([])], { sounds: true });
     env.click("toggle", "here");
     await env.clock.advance(50);
-    check("…and turned on again, they do", env.heard(), ["sine 640"]);
+    check("…and turned on again, they do", env.heard(), ["sine 660"]);
   }
   {
     const env = load();

@@ -36,6 +36,13 @@ file; the release notes say when it has to be imported again.
 - `figaro comments` says how many open comments it left out when a file has more than 200, and a bad `target` or
   a file key that isn't one gets a plain error. Removing the token while Save is still checking it now sticks.
 
+### Changed
+
+- **The window's agent icon and sounds are Figaro's own.** An agent at work shows the same 3x3 grid, now with a
+  wave running along the diagonal from the top left cell to the bottom right one, once every 0.9 s. An island
+  opens with a sine sweep up and closes with one down, a layer or a link clicks twice like a mechanical
+  switch, and the sounds are a little quieter.
+
 ## [1.6.0] — 2026-10-26
 
 ### Added

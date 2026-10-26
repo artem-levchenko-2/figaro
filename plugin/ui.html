@@ -129,17 +129,19 @@ button { font: inherit; }
 .spin { --c: var(--run); width: 12px; height: 12px; border: 2px solid color-mix(in srgb, var(--c) 24%, transparent); border-top-color: var(--c); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .dot { --c: var(--ok); width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 24%, transparent); }
-/* An agent at work: a 3x3 pixel grid with a chevron wavefront driving right, and a
-   shimmer running over the word. After Beautiful UI's Loading State (MIT,
-   Copyright (c) 2026 Shane Levine). The 650 ms cycle is shorter than the sweep,
-   so two fronts are always in flight; every grid and shimmer keeps one beat
-   (inStep). */
+/* An agent at work: a 3x3 pixel grid with a diagonal wave, from the top left cell to
+   the bottom right one, and a shimmer sweeping over the word. A cell's delay is
+   its row plus its column, a quarter of the wave's spread (half the cycle) per
+   step. The grid's cycle, 0.9 s, is half the shimmer's 1.8 s, so every grid and
+   shimmer keeps one beat (inStep). */
 .px { --c: var(--run); flex: none; display: grid; grid-template-columns: repeat(3, 2.5px); gap: 1px; }
-.px i { width: 2.5px; height: 2.5px; border-radius: .5px; background: var(--c); opacity: .18; animation: px 650ms ease-in-out 90ms infinite; }
-.px i:nth-child(4) { animation-delay: 0ms; }
-.px i:nth-child(2), .px i:nth-child(6), .px i:nth-child(8) { animation-delay: 180ms; }
-.px i:nth-child(3), .px i:nth-child(9) { animation-delay: 270ms; }
-@keyframes px { 0%, 100% { opacity: .18; } 18%, 42% { opacity: 1; } 62% { opacity: .18; } }
+.px i { width: 2.5px; height: 2.5px; border-radius: .5px; background: var(--c); opacity: .18; animation: px 900ms ease-in-out infinite; }
+.px i:nth-child(1) { animation-delay: 0ms; }
+.px i:nth-child(2), .px i:nth-child(4) { animation-delay: 112.5ms; }
+.px i:nth-child(3), .px i:nth-child(5), .px i:nth-child(7) { animation-delay: 225ms; }
+.px i:nth-child(6), .px i:nth-child(8) { animation-delay: 337.5ms; }
+.px i:nth-child(9) { animation-delay: 450ms; }
+@keyframes px { 0%, 100% { opacity: .18; } 20% { opacity: 1; } 50% { opacity: .18; } }
 .shim { background: linear-gradient(90deg, var(--is-dim) 35%, var(--is-text) 50%, var(--is-dim) 65%) 0 0 / 200% 100%;
   -webkit-background-clip: text; background-clip: text; color: transparent; animation: shim 1.8s linear infinite; }
 @keyframes shim { from { background-position: 150% center; } to { background-position: -50% center; } }
@@ -578,16 +580,16 @@ function toSandbox(msg) {
 // ─── sounds ──────────────────────────────────────────────────────────────
 // Short, quiet cues: for what you press in the window, and when Figma stops
 // answering in this window's own file, so that is heard once, not once per
-// window. `open` and `layer` are Beautiful UI's "page" and "tick" interaction
-// sounds (MIT, Copyright (c) 2026 Shane Levine), played the way
-// @web-kits/audio plays them; `close` is `open` backwards, and the others are
-// made of the same parts. A layer: its source (an oscillator's type and Hz, or
+// window. `open` is a rising sine sweep and `close` the same one falling; `layer`
+// is a double click, like a mechanical switch, and the others are made of the same
+// parts. A layer: its source (an oscillator's type and Hz, or
 // a sweep [from, to], or white noise), a filter [type, Hz or a sweep, Q], when
 // it starts (s), its envelope [attack, decay, release] (s) and its gain.
 const CUES = {
-  open: [{ src: "sine", hz: [430, 640], env: [0.002, 0.11, 0.03], gain: 0.4 }],       // an island opens
-  close: [{ src: "sine", hz: [640, 430], env: [0.002, 0.11, 0.03], gain: 0.4 }],      // …and closes
-  layer: [{ src: "square", hz: 2100, filter: ["bandpass", 2600, 1.6], env: [0.0004, 0.028], gain: 0.24 }],  // a layer, a link
+  open: [{ src: "sine", hz: [440, 660], env: [0.002, 0.1, 0.03], gain: 0.4 }],       // an island opens
+  close: [{ src: "sine", hz: [660, 440], env: [0.002, 0.1, 0.03], gain: 0.4 }],      // …and closes
+  layer: [{ src: "noise", filter: ["highpass", 3500, 0.7], env: [0.0002, 0.006], gain: 0.34 },  // a layer, a link: a double click
+          { src: "noise", filter: ["bandpass", 1600, 3], at: 0.014, env: [0.0002, 0.012], gain: 0.42 }],
   go: [{ src: "sine", hz: 330, env: [0.002, 0.045], gain: 0.36 },                     // Update, Reload: it starts
        { src: "sine", hz: 415, at: 0.06, env: [0.002, 0.045], gain: 0.38 },
        { src: "sine", hz: 523, at: 0.105, env: [0.002, 0.09, 0.02], gain: 0.42 }],
@@ -609,7 +611,7 @@ const CUES = {
          { src: "sine", hz: 1320, at: 0.11, env: [0.001, 0.04], gain: 0.2 }],
 };
 const HOLD_MS = 500;       // how long Minimize is held to nanomize (the ring's CSS takes as long)
-const CUE_VOLUME = 0.32;   // Beautiful UI's
+const CUE_VOLUME = 0.30;   // how loud the cues are: set by ear
 const CUE_LATE_MS = 300;   // a cue that couldn't play by then is dropped, not played late
 const CUE_HUSH_MS = 3000;  // the cues' own AudioContext, apart from the tone's, sleeps after that
 const CUE_WARM_MS = 500;   // after the first board, the cues' AudioContext is made (warmCues)
