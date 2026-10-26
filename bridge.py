@@ -430,9 +430,9 @@ ERROR_HINTS = [
     ("New parent is an instance",
      "layers cannot be added to an instance: detach it (inst.detachInstance()) or change its "
      "main component"),
-    ("STRETCH",
-     "counterAxisAlignItems has no STRETCH: to stretch a child across its parent use "
-     "await h.fill(child, 'x' or 'y') (layoutSizingHorizontal/Vertical = 'FILL')"),
+    ("set_counterAxisAlignItems",
+     "counterAxisAlignItems is MIN, MAX, CENTER or BASELINE, and has no STRETCH: to stretch a child "
+     "across its parent use await h.fill(child, 'x' or 'y') (layoutSizingHorizontal/Vertical = 'FILL')"),
     ("could not be loaded",
      "this font is not installed on this computer: await h.fonts(node) shows which are missing; "
      "for Font Awesome icon fonts, await h.fa() lists the installed ones"),

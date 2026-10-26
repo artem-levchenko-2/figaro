@@ -443,6 +443,9 @@ def test_a_shot_is_not_printed_twice():
      "detachInstance"),
     ('in set_counterAxisAlignItems: Invalid enum value. Expected \'MIN\' | \'MAX\', received \'STRETCH\'',
      "h.fill"),
+    # Figma's wording since October 2026 doesn't name the value
+    ('in set_counterAxisAlignItems: Property "counterAxisAlignItems" failed validation: Invalid option: '
+     'expected one of "MIN"|"MAX"|"CENTER"|"BASELINE"', "h.fill"),
     ('The font "Font Awesome 6 Pro Solid" could not be loaded', "h.fa()"),
     ('in set_fontName: Cannot use unloaded font "Roboto Mono Regular". Please call figma.loadFontAsync',
      "h.setText"),

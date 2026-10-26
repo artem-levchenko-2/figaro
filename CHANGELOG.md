@@ -46,6 +46,8 @@ file; the release notes say when it has to be imported again.
   answer is remembered: a port that hangs up or stays silent (a bridge restarting) is asked again, so
   `figaro wait` keeps waiting.
 - **A call that lands just as the bridge starts** asks again with the token instead of failing with 401.
+- **`counterAxisAlignItems = "STRETCH"` gets its hint again** (use `h.fill`): Figma's error no longer names the
+  value, and the bridge looked for it.
 - **`FIGARO_HOST=::1` works:** an IPv6 address goes into the URL in square brackets (`http://[::1]:8788`), and
   `[::1]` counts as this computer for starting the bridge, like `::1`.
 
