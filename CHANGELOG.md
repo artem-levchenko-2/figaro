@@ -41,8 +41,12 @@ file; the release notes say when it has to be imported again.
   bridge and sent it the token. It now asks `GET /` once per call and trusts the port only when the answer is the
   bridge's JSON (`"service": "figaro-bridge"`, which every release since 1.0.0 gives). Another program there
   gets nothing, no bridge is started on top of it, and `figaro`, `doctor` and `wait` say that the port is held
-  by another program and what to do (free it, or set `FIGARO_PORT`).
-- **`FIGARO_HOST=::1` works:** an IPv6 address goes into the URL in square brackets (`http://[::1]:8788`).
+  by another program and what to do (free it, or set `FIGARO_PORT`). This guards against a stray server on the
+  port, not against a program that copies the bridge's answer on purpose. Only a sure answer is remembered: a
+  port that hangs up or stays silent (a bridge restarting) is asked again, so `figaro wait` keeps waiting.
+- **A call that lands just as the bridge starts** asks again with the token instead of failing with 401.
+- **`FIGARO_HOST=::1` works:** an IPv6 address goes into the URL in square brackets (`http://[::1]:8788`), and
+  `[::1]` counts as this computer for starting the bridge, like `::1`.
 
 ## [1.5.2] — 2026-10-20
 

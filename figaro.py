@@ -148,6 +148,9 @@ def _request(method, path, payload=None, timeout=65):
         return 0, cli_extras.foreign_answer(HOST, PORT, found["why"])
     if found["state"] == "refused":  # the bridge itself, refusing the Host header
         return found["status"], found["body"]
+    if found["state"] == "unsure":  # hung up or silent, maybe a bridge that restarts: no token
+        return 0, {"ok": False, "error": f"connection: port {PORT} did not answer as the bridge "
+                                         f"({found['why']}); nothing was sent to it"}
     url = f"{cli_extras.base_url(HOST, PORT)}{path}"
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Content-Type": "application/json"} if data else {}
@@ -159,8 +162,14 @@ def _request(method, path, payload=None, timeout=65):
         with cli_extras.LOCAL.open(req, timeout=timeout) as r:
             return r.status, _answer(r.read(), r.status)
     except urllib.error.HTTPError as e:
+        # A 401 to a call that went without the token: the look found the port empty, and a
+        # bridge started since (another call did it). Look again and ask with the token.
+        if (e.code == 401 and found["state"] == "none"
+                and cli_extras.probe(HOST, PORT, fresh=True)["state"] == "ours"):
+            return _request(method, path, payload, timeout)
         return e.code, _answer(e.read(), e.code)
     except urllib.error.URLError as e:
+        cli_extras.forget(HOST, PORT)
         # Nothing listens — start our bridge once and ask again.
         if isinstance(e.reason, ConnectionRefusedError) and cli_extras.autostart(HOST, PORT):
             return _request(method, path, payload, timeout)
@@ -173,6 +182,7 @@ def _request(method, path, payload=None, timeout=65):
     except (TimeoutError, socket.timeout):  # socket.timeout is no TimeoutError before 3.10
         return 0, {"ok": False, "error": "request timed out"}
     except (http.client.HTTPException, ConnectionError) as e:
+        cli_extras.forget(HOST, PORT)
         # The bridge hung up without an answer: it stopped or restarted meanwhile.
         return 0, {"ok": False, "error": f"connection: {e or type(e).__name__}"}
 
@@ -426,6 +436,7 @@ def cmd_wait(args):
     end = time.monotonic() + args.timeout
     said = None
     while True:
+        cli_extras.forget(HOST, PORT)  # a long wait: look at the port again, it may have changed hands
         status, resp = _request("GET", "/status", timeout=10)
         state = _file_state(status, resp, target)
         if state.get("ready"):

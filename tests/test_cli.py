@@ -1269,11 +1269,13 @@ def test_a_port_that_never_answers_is_not_trusted(monkeypatch):
 
     port, stop = serve(Silent)
     monkeypatch.setattr(cli_extras, "PROBE_TIMEOUT", 0.3)
+    monkeypatch.setattr(cli_extras, "RETRY_PAUSE", 0)
     monkeypatch.setattr(figaro, "HOST", "127.0.0.1")
     monkeypatch.setattr(figaro, "PORT", port)
     try:
         status, body = figaro._request("POST", "/exec", {"code": "1"})
-        assert status == 0 and body["foreign"] and "no answer" in body["error"]
+        assert status == 0 and "no answer" in body["error"] and "nothing was sent" in body["error"]
+        assert cli_extras._verdicts == {}  # silence may be a bridge that restarts: not kept
     finally:
         stop()
 
@@ -1359,3 +1361,181 @@ def test_a_bridge_on_ipv6_loopback_is_reached_at_a_bracketed_url(monkeypatch):
     finally:
         server.shutdown()
         server.server_close()
+
+
+# ─── a look that fails for a moment, a bridge that starts late ───────────
+
+class HangsUp(Status):
+    """Hangs up on the first `n` looks at `/`, then answers as the bridge."""
+    n = 0
+    looks = 0
+
+    def do_GET(self):
+        if self.path == "/":
+            type(self).looks += 1
+            if type(self).looks <= self.n:
+                self.close_connection = True
+                return
+        super().do_GET()
+
+
+def hangs_up(n):
+    return type("HangsUp", (HangsUp,), {"n": n, "looks": 0})
+
+
+def at(monkeypatch, port):
+    monkeypatch.setattr(figaro, "HOST", "127.0.0.1")
+    monkeypatch.setattr(figaro, "PORT", port)
+    monkeypatch.setattr(cli_extras, "RETRY_PAUSE", 0)
+
+
+def test_a_look_that_is_hung_up_on_is_made_again_once(monkeypatch):
+    port, stop = serve(hangs_up(1))
+    at(monkeypatch, port)
+    try:
+        assert cli_extras.probe("127.0.0.1", port)["state"] == "ours"
+    finally:
+        stop()
+
+
+def test_a_hang_up_is_neither_foreign_nor_kept(monkeypatch):
+    """A bridge that restarts hangs up for a moment: the call says it didn't
+    answer, a long `wait` goes on, and the next look finds the bridge."""
+    port, stop = serve(hangs_up(2))
+    at(monkeypatch, port)
+    try:
+        status, body = figaro._request("POST", "/exec", {"code": "1"})
+        assert status == 0 and not body.get("foreign") and "did not answer as the bridge" in body["error"]
+        assert "hint" not in body and cli_extras._verdicts == {}
+        assert figaro._request("GET", "/status")[0] == 200
+        assert cli_extras._verdicts[("127.0.0.1", port)]["state"] == "ours"
+    finally:
+        stop()
+
+
+def test_wait_goes_on_while_the_bridge_hangs_up(monkeypatch, capsys):
+    port, stop = serve(hangs_up(2))
+    at(monkeypatch, port)
+    try:
+        args = figaro.build_parser().parse_args(["wait"])
+        assert figaro.cmd_wait(args) == 0
+        assert "ready" in capsys.readouterr().out
+    finally:
+        stop()
+
+
+def test_an_empty_port_is_looked_at_again(monkeypatch):
+    port = free_port()
+    assert cli_extras.probe("127.0.0.1", port)["state"] == "none"
+    assert cli_extras._verdicts == {}
+    server = http.server.HTTPServer(("127.0.0.1", port), Status)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        assert cli_extras.probe("127.0.0.1", port)["state"] == "ours"
+        assert cli_extras.probe("127.0.0.1", port) is cli_extras._verdicts[("127.0.0.1", port)]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_port_that_was_ours_and_failed_is_looked_at_again(monkeypatch):
+    port, stop = serve(Status)
+    at(monkeypatch, port)
+    assert figaro._request("GET", "/status")[0] == 200
+    assert cli_extras._verdicts[("127.0.0.1", port)]["state"] == "ours"
+    stop()
+    status, body = figaro._request("GET", "/status")
+    assert status == 0 and cli_extras._verdicts == {}
+
+
+def test_wait_does_not_trust_a_foreign_verdict_from_earlier(monkeypatch, capsys):
+    port, stop = serve(Status)
+    at(monkeypatch, port)
+    cli_extras._verdicts[("127.0.0.1", port)] = {"state": "foreign", "why": "GET / answered HTTP 404"}
+    try:
+        assert figaro.cmd_wait(figaro.build_parser().parse_args(["wait"])) == 0
+    finally:
+        stop()
+
+
+def test_a_401_after_a_look_at_an_empty_port_is_asked_again_with_the_token(monkeypatch):
+    """Another call started the bridge between our look and our request."""
+    seen = []
+
+    class NeedsToken(Status):
+        def do_POST(self):
+            token = self.headers.get("X-Figaro-Token")
+            seen.append(token)
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            code = 200 if token else 401
+            body = json.dumps({"ok": bool(token)}).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+
+    port, stop = serve(NeedsToken)
+    at(monkeypatch, port)
+    real = cli_extras.probe
+    calls = []
+
+    def first_look_finds_nothing(host, p, fresh=False):
+        calls.append(fresh)
+        return {"state": "none"} if len(calls) == 1 else real(host, p, fresh)
+
+    monkeypatch.setattr(cli_extras, "probe", first_look_finds_nothing)
+    try:
+        status, body = figaro._request("POST", "/exec", {"code": "1"})
+        assert (status, body["ok"]) == (200, True)
+        assert seen == [None, figaro_token_of(port)]
+    finally:
+        stop()
+
+
+class Refuses(http.server.BaseHTTPRequestHandler):
+    seen = []
+    error = "unexpected Host header: 'x:1'"
+
+    def _answer(self):
+        self.seen.append((self.path, self.headers.get("X-Figaro-Token")))
+        body = json.dumps({"ok": False, "error": self.error}).encode()
+        self.send_response(403)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(body)
+
+    do_GET = do_POST = _answer
+
+    def log_message(self, *a):
+        pass
+
+
+def test_the_bridges_refusal_of_the_host_is_shown_not_called_foreign(monkeypatch, capsys):
+    handler = type("Refuses", (Refuses,), {"seen": []})
+    port, stop = serve(handler)
+    at(monkeypatch, port)
+    try:
+        status, body = figaro._request("POST", "/exec", {"code": "1"})
+        assert status == 403 and "Host header" in body["error"] and not body.get("foreign")
+        assert [p for p, t in handler.seen] == ["/"] and all(t is None for p, t in handler.seen)
+        assert figaro.cmd_doctor(None) == 1
+        assert "bridge refused the request" in capsys.readouterr().out
+    finally:
+        stop()
+
+
+def test_another_403_is_a_foreign_program(monkeypatch):
+    handler = type("Refuses", (Refuses,), {"seen": [], "error": "forbidden"})
+    port, stop = serve(handler)
+    at(monkeypatch, port)
+    try:
+        status, body = figaro._request("POST", "/exec", {"code": "1"})
+        assert status == 0 and body["foreign"] is True and "HTTP 403" in body["error"]
+    finally:
+        stop()
+
+
+def test_a_bracketed_ipv6_host_counts_as_local_for_autostart(tmp_path, monkeypatch):
+    runs = fake_start(tmp_path, monkeypatch)
+    assert cli_extras.autostart("[::1]", free_port()) is True
+    assert runs.read_text() == "started\n"

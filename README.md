@@ -543,7 +543,7 @@ at the first broken link it says what to do.
 | **"Older&nbsp;build"** | The plugin in that file runs older code. Press **Reload** at the bottom of its window, or run `figaro reload -T <file>` |
 | **zsh:&nbsp;no&nbsp;matches&nbsp;found** | Put the link in quotes |
 | **Computer&nbsp;won't&nbsp;sleep** | Figma "plays audio": the silent tone that keeps a background Figma quick. It stops three minutes after the last script ends, or as soon as the bridge stops |
-| **Port&nbsp;8788&nbsp;taken** | `figaro` says "port 8788 … is held by another program, not the Figaro bridge" and sends it nothing: it gives the token only to what answers as the bridge. `lsof -nP -iTCP:8788 -sTCP:LISTEN` shows who listens. Stop a bridge with `bash start-bridge.sh --stop`, or `start-bridge.ps1 -Stop` on Windows: they stop nothing else. Never `kill` everything `lsof -ti` prints: Figma itself is on that list |
+| **Port&nbsp;8788&nbsp;taken** | `figaro` says "port 8788 … is held by another program, not the Figaro bridge" and sends it nothing: it gives the token only to what answers as the bridge (a guard against a stray server, not against one that copies the answer on purpose). `lsof -nP -iTCP:8788 -sTCP:LISTEN` shows who listens. Stop a bridge with `bash start-bridge.sh --stop`, or `start-bridge.ps1 -Stop` on Windows: they stop nothing else. Never `kill` everything `lsof -ti` prints: Figma itself is on that list |
 
 More cases, each with its fix, are in
 [`pitfalls.md`](skill/figaro/references/pitfalls.md).

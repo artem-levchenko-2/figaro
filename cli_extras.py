@@ -56,6 +56,7 @@ CLI = None           # the figaro module, set by attach()
 _started = False
 SERVICE = "figaro-bridge"  # what the bridge's `GET /` says it is (bridge.root_handler)
 PROBE_TIMEOUT = 3    # s: how long a port has to say what it is
+RETRY_PAUSE = 0.5    # s: before a second look at a port that hung up or was silent
 _verdicts = {}       # (host, port) -> what probe() found, kept for the life of the process
 
 
@@ -129,13 +130,13 @@ def autostart(host, port):
         return False
     _started = True
     script, cmd = start_command(port)
-    if host not in LOCAL_HOSTS or not script.exists():
+    if str(host).strip("[]") not in LOCAL_HOSTS or not script.exists():
         return False
     lock = _start_lock(port)
     try:
         # Another figaro call may have started it while this one waited.
         state = probe(host, port, fresh=True)["state"]
-        if state in ("foreign", "refused"):  # not ours: no bridge on top of it
+        if state in ("foreign", "refused", "unsure"):  # not ours, or not sure: no bridge on top
             return False
         started = state == "ours" or _start(cmd, port)
     finally:
@@ -188,20 +189,36 @@ def base_url(host, port):
 def probe(host, port, fresh=False):
     """What holds the bridge's port, by asking `GET /` (no token goes with it):
     {"state": "ours"} when the answer is the bridge's JSON, {"state": "none"}
-    when nothing answers (nothing listens, or a sandbox keeps the call off the
-    network: the real request tells which), {"state": "foreign", "why": ...}
-    for another program, and {"state": "refused", "body": ...} for the bridge's
-    own refusal of the Host header. The CLI hands the token only to "ours".
-    One look per process; a port that was empty is looked at again."""
+    when nothing listens (or a sandbox keeps the call off the network: the real
+    request tells which), {"state": "foreign", "why": ...} when something
+    answers HTTP and is not the bridge, {"state": "refused", "body": ...} for
+    the bridge's own refusal of the Host header, and {"state": "unsure", "why":
+    ...} when the port hung up or didn't answer in time (a bridge restarting
+    does that). The CLI hands the token only to "ours". This is a guard against
+    a stray server on the port, not against a program that copies the bridge's
+    JSON on purpose.
+
+    One look per process, but only a sure answer is kept: "ours", "foreign" and
+    "refused". An empty or unsure port is looked at again; unsure once more
+    after RETRY_PAUSE, so a bridge that restarts meanwhile is found."""
     key = (host, port)
     if not fresh and key in _verdicts:
         return _verdicts[key]
     verdict = _look(host, port)
-    if verdict["state"] != "none":
+    if verdict["state"] == "unsure":
+        time.sleep(RETRY_PAUSE)
+        verdict = _look(host, port)
+    if verdict["state"] in ("ours", "foreign", "refused"):
         _verdicts[key] = verdict
     else:
         _verdicts.pop(key, None)
     return verdict
+
+
+def forget(host, port):
+    """Drop what is known about the port: the connection failed, so the program
+    there may be another one by now."""
+    _verdicts.pop((host, port), None)
 
 
 def _look(host, port):
@@ -216,12 +233,14 @@ def _look(host, port):
         return {"state": "foreign", "why": f"GET / answered HTTP {e.code}, not the bridge's JSON"}
     except urllib.error.URLError as e:
         if isinstance(e.reason, (TimeoutError, socket.timeout)):
-            return {"state": "foreign", "why": f"GET / got no answer in {PROBE_TIMEOUT} s"}
+            return {"state": "unsure", "why": f"GET / got no answer in {PROBE_TIMEOUT} s"}
+        if isinstance(e.reason, ConnectionResetError):
+            return {"state": "unsure", "why": f"GET / failed: {e.reason}"}
         return {"state": "none"}
     except (TimeoutError, socket.timeout):
-        return {"state": "foreign", "why": f"GET / got no answer in {PROBE_TIMEOUT} s"}
+        return {"state": "unsure", "why": f"GET / got no answer in {PROBE_TIMEOUT} s"}
     except (http.client.HTTPException, ConnectionError, ValueError) as e:
-        return {"state": "foreign", "why": f"GET / failed: {e or type(e).__name__}"}
+        return {"state": "unsure", "why": f"GET / failed: {e or type(e).__name__}"}
     except OSError:
         return {"state": "none"}
     if _json(raw).get("service") == SERVICE:
