@@ -65,6 +65,7 @@ The references next to this file — read each one when you reach its step:
 | `figaro text <layer> "text"` | new text for a layer; loads the fonts itself |
 | `figaro variant <instance> "Size=L" "Label=Pay now" "Icon=false"` | an instance's variant and properties; short or full names (`Label#12:0`) |
 | `figaro clone <layer> --right [--gap 100] [--name N]` | a copy next to the layer: `--left`, `--up`, `--down` |
+| `figaro image <layer> <file> [--mode fill\|fit\|crop\|tile]` | fills a layer with a picture from a file, instead of the fills it has. PNG, JPEG or GIF by the file's bytes, up to 4096 px wide and high (Figma's limit) and 30 MB; the CLI refuses anything else before it asks Figma, and says why. `fill` (the default) covers the layer, `fit` shows the whole picture, `crop` starts with the whole picture stretched to the layer, `tile` repeats it at its own size. The layer needs fills: a frame, rectangle, ellipse, shape or text — not a group; put the picture on a rectangle inside it. The file goes in the request, not in the command line, so a large one is fine. `undo` takes it back |
 | `figaro icomp <key>` | an instance of a published library component on the current page |
 | `figaro rm <layer>…` | delete; finds every id first, so one wrong id deletes nothing |
 | `figaro undo` | undo the file's last script, when that is safe (section 5) |
@@ -80,7 +81,7 @@ take every selected one) or `page` (the current page). Quote ids with a `;` (`I1
 not `doctor`) also take `--timeout` (seconds) and `--raw` (the whole JSON answer).
 
 The readers `inspect`, `shot`, `tree`, `find`, `sel`, `link` and `doctor` change nothing and answer within
-milliseconds. `text`, `variant`, `clone`, `icomp` and `rm` write to the file, as `exec` does. Without `figaro`
+milliseconds. `text`, `variant`, `clone`, `image`, `icomp` and `rm` write to the file, as `exec` does. Without `figaro`
 on PATH: `<Figaro folder>/venv/bin/python <Figaro folder>/figaro.py …` (on Windows, `venv\Scripts\python`).
 
 ## 4. The script
@@ -118,6 +119,9 @@ JS
   Importing by key (`h.importComp`, `h.importVar`, `import…ByKeyAsync`) counts as reading.
 - `--shot` — a picture right after the script: of the layer whose id the script returned (`return { id }`),
   or else of what it created; `--shot <layer>` — of that layer.
+- `--image NAME=FILE` — a picture for the script to fill a layer with (repeatable): `h.image(node, "NAME",
+  "fit")` (`helpers.md`). The same checks as `figaro image`. Without it a script has no way to read a file
+  from your disk: it runs in Figma, not on your machine.
 - `--lib my.js` — your own functions for several scripts (`lib.<name>`). The plugin keeps the file compiled:
   don't paste the library into every script.
 - An error prints `line N: <the script's line>` and `hint:` — read the hint, it knows the common cases.

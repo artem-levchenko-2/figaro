@@ -1,9 +1,9 @@
-"""More of the CLI: links, starting the bridge, inspect, shot, link, --lib.
+"""More of the CLI: links, starting the bridge, inspect, shot, link, image, --lib.
 
 figaro.py calls in here for:
 - Figma links in place of `-T` and of node ids (figma_links);
 - starting the bridge when nothing answers on its port;
-- `inspect`, `shot`, `link`, `exec --shot`, `exec --lib`.
+- `inspect`, `shot`, `link`, `image`, `exec --shot`, `exec --lib`, `exec --image`.
 
 It reaches figaro.py's own functions (`_exec`, `_emit`, `node_expr`)
 through `CLI`, which figaro.py sets with attach() — importing it from here
@@ -488,6 +488,86 @@ def read_libs(paths):
     return libs
 
 
+# ─── image ───────────────────────────────────────────────────────────────
+
+IMAGE_MAX_PX = 4096                  # Figma's createImage: at most 4096 px in width and in height
+IMAGE_MAX_BYTES = 30 * 1024 * 1024   # all files of a call; they travel as base64, and the bridge takes 64 MB
+IMAGE_MODES = ("fill", "fit", "crop", "tile")
+IMAGE_NAME = re.compile(r"[A-Za-z0-9_.-]{1,80}$")
+
+
+def sniff_image(data):
+    """("png" | "jpg" | "gif", (width, height) | None) from the first bytes of a
+    file, or None when it is none of the three Figma takes. The size is None when
+    it can't be read from the header: Figma then has the say."""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png", image_size(data, "png")
+    if data[:3] == b"\xff\xd8\xff":
+        return "jpg", image_size(data, "jpg")
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        size = (int.from_bytes(data[6:8], "little"), int.from_bytes(data[8:10], "little")) \
+            if len(data) >= 10 else None
+        return "gif", size
+    return None
+
+
+def read_image(path_text, label):
+    """(bytes, format) of a picture file, checked as far as Figma will: sys.exit
+    with the reason in English, here, instead of a timeout from the plugin."""
+    path = Path(path_text).expanduser()
+    try:
+        size = path.stat().st_size
+        if size > IMAGE_MAX_BYTES:
+            sys.exit(f"figaro: {label}: {path.name} is {size / 1048576:.1f} MB; the limit is "
+                     f"{IMAGE_MAX_BYTES // 1048576} MB — shrink it first")
+        data = path.read_bytes()
+    except OSError as e:
+        sys.exit(f"figaro: {label}: {path_text}: {e.strerror or e}")
+    if not data:
+        sys.exit(f"figaro: {label}: {path.name} is empty")
+    found = sniff_image(data)
+    if not found:
+        head = data[:200].lstrip().lower()
+        why = ("an SVG is vector, not a picture: figma.createNodeFromSvg(text) in `figaro exec` "
+               "makes layers of it" if head.startswith((b"<svg", b"<?xml"))
+               else "Figma takes only PNG, JPEG and GIF — convert it first (WebP, HEIC, TIFF and "
+                    "the like are refused)")
+        sys.exit(f"figaro: {label}: {path.name} is not a PNG, JPEG or GIF: {why}")
+    fmt, dims = found
+    if dims and (min(dims) < 1 or max(dims) > IMAGE_MAX_PX):
+        what = "has no pixels" if min(dims) < 1 else (
+            f"is {dims[0]}x{dims[1]} px; Figma takes up to {IMAGE_MAX_PX} px in width and in height")
+        sys.exit(f"figaro: {label}: {path.name} {what} — scale it down first "
+                 f"(macOS: `sips -Z {IMAGE_MAX_PX} {path.name} --out smaller.{fmt}`)")
+    return data, fmt
+
+
+def read_images(specs):
+    """--image NAME=FILE (repeatable) as [{name, data}], data in base64; the
+    bytes go in the request's body, never in a command line."""
+    images, total = [], 0
+    for spec in specs or []:
+        name, eq, file = spec.partition("=")
+        if not eq or not file or not IMAGE_NAME.match(name):
+            sys.exit(f"figaro: --image {spec}: use NAME=FILE, the name of letters, digits, . _ -")
+        if any(i["name"] == name for i in images):
+            sys.exit(f"figaro: --image: the name {name} is used twice")
+        data, _ = read_image(file, f"--image {name}")
+        total += len(data)
+        if total > IMAGE_MAX_BYTES:
+            sys.exit(f"figaro: --image: the files are over {IMAGE_MAX_BYTES // 1048576} MB together")
+        images.append({"name": name, "data": base64.b64encode(data).decode("ascii")})
+    return images
+
+
+def cmd_image(args):
+    images = read_images([f"image={args.file}"])
+    code = (f"const n = {CLI.node_expr(args.node_id)};"
+            f"if (!n) throw new Error('node not found: ' + {json.dumps(args.node_id)});"
+            f"return h.image(n, 'image', {json.dumps(args.mode)});")
+    return CLI._emit(CLI._exec(code, args.timeout, images=images)[1], raw=args.raw)
+
+
 # ─── argparse ────────────────────────────────────────────────────────────
 
 def add_exec_flags(p):
@@ -496,6 +576,9 @@ def add_exec_flags(p):
                         "lib.<name>; sent to the plugin once, then by its hash (env FIGARO_LIB)")
     p.add_argument("--shot", nargs="?", const="auto", metavar="ID",
                    help="a picture after the script: of ID, else of what it returned or created")
+    p.add_argument("--image", action="append", metavar="NAME=FILE",
+                   help="a PNG, JPEG or GIF the script fills a layer with: h.image(node, \"NAME\"); "
+                        "repeatable, up to 30 MB together")
 
 
 def add_parsers(sub, common):
@@ -520,6 +603,16 @@ def add_parsers(sub, common):
     p.add_argument("--tile", type=above_zero, default=TILE,
                    help=f"cut taller pictures into parts (default {TILE} px)")
     p.add_argument("-o", "--out", metavar="DIR", help=f"folder (default {SHOTS}/<file key>)")
+
+    p = sub.add_parser("image", help="fill a layer with a picture from a file (PNG, JPEG, GIF), "
+                                     "instead of its fills")
+    common(p)
+    p.add_argument("node_id", help="node id or Figma link of a frame, rectangle or shape; "
+                                   "`sel` for the first selected layer")
+    p.add_argument("file", help="the picture: PNG, JPEG or GIF, up to 4096 px wide and high")
+    p.add_argument("--mode", choices=IMAGE_MODES, default="fill",
+                   help="fill covers the layer (default), fit shows the whole picture, "
+                        "crop, tile repeats it")
 
     p = sub.add_parser("link", help="clickable links to layers, for reports")
     common(p)

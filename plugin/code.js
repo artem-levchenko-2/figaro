@@ -9,12 +9,12 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-20.3";
+const PLUGIN_VERSION = "2026-10-26.1";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
 const CAPS = ["changes", "readOnly", "undo", "reload", "checkpoint",
-                 "quick", "libs", "links", "inspect", "shot", "gate", "board"];
+                 "quick", "libs", "links", "inspect", "shot", "gate", "board", "images"];
 
 let keptView = null;  // the window's view (below)
 
@@ -124,6 +124,10 @@ const SCRIPT_FIGMA = Symbol("figma");
 function figmaOf(h) {
   return (h && h[SCRIPT_FIGMA]) || figma;
 }
+
+// The files that came with the script (`exec --image NAME=FILE`, `figaro
+// image`): name -> base64, so h.image(node, "name") finds its bytes.
+const SCRIPT_IMAGES = Symbol("images");
 
 // The script's deadline or the bridge's abort, not an answer from Figma.
 function stopped(e) {
@@ -672,6 +676,7 @@ figma.ui.onmessage = async (msg) => {
   try {
     const fig = scriptFigma(h.aborted, print, gate);
     h[SCRIPT_FIGMA] = fig;  // a helper's import by key ends at the deadline too
+    h[SCRIPT_IMAGES] = scriptImages(msg.images);
     const guard = (name) => loopGuard(id, deadline, name);
     const lib = loadLibs(msg.libs, fig, print, h, libErrors, guard);  // --lib files
     const script = compileScript(code);
@@ -748,6 +753,14 @@ const NOT_THE_FILE = /^figma\.(?:currentPage|skipInvisibleInstanceChildren|viewp
 const OWN_CALL = /^\s*(?:new\s+(?:Map|Set|WeakMap|WeakSet|Array|Object)\b|(?:Object\s*\.\s*(?:create|fromEntries)|Array\s*\.\s*from|JSON\s*\.\s*parse|structuredClone)(?=\s*\())/;
 const KEYWORD_BEFORE = /(?:^|[^\w$])(?:const|let|var|return|typeof|void|delete|await|yield|in|of|new|case|throw|else|do)$/;
 const MEMBER = /[\w$)\]]\s*(?:\??\.\s*[A-Za-z_$]|\[)/;  // x.y or x[k] inside a pattern
+
+function scriptImages(list) {
+  const files = new Map();
+  if (Array.isArray(list)) {
+    for (const f of list) if (f && typeof f.name === "string" && typeof f.data === "string") files.set(f.name, f.data);
+  }
+  return files;
+}
 
 function codeMayWrite(code, libs) {
   if (Array.isArray(libs) && libs.length) return true;
@@ -2207,6 +2220,49 @@ async function shotOf(node, opts) {
   };
 }
 
+// ─── images ──────────────────────────────────────────────────────────────
+
+const IMAGE_MODES = { fill: "FILL", fit: "FIT", crop: "CROP", tile: "TILE" };
+const IMAGE_MAX_PX = 4096;  // Figma: "a maximum size of 4096 pixels in width and height"
+
+function imageFill(node, source, mode, h) {
+  if (!node || typeof node !== "object") throw new Error("h.image: needs a layer as its first argument");
+  const how = IMAGE_MODES[String(mode == null ? "fill" : mode).toLowerCase()];
+  if (!how) {
+    throw new Error("h.image: the mode is fill, fit, crop or tile, not " + JSON.stringify(mode));
+  }
+  if (!("fills" in node)) {
+    throw new Error("h.image: " + nodeLabel(node) + " has no fills, so it can't hold a picture — " +
+      "put the picture on a frame, a rectangle or a shape inside it");
+  }
+  let bytes = source;
+  if (typeof source === "string") {
+    const files = (h && h[SCRIPT_IMAGES]) || new Map();
+    if (!files.has(source)) {
+      throw new Error("h.image: no file named " + JSON.stringify(source) + " came with the script" +
+        (files.size ? " (it has: " + Array.from(files.keys()).join(", ") + ")" : "") +
+        " — figaro exec --image " + source + "=FILE");
+    }
+    bytes = figma.base64Decode(files.get(source));
+  }
+  if (!(bytes instanceof Uint8Array)) {
+    throw new Error("h.image: the picture is the bytes of a PNG, JPEG or GIF (a Uint8Array), or the " +
+      "name of a file that came with the script");
+  }
+  let image;
+  try {
+    image = figma.createImage(bytes);
+  } catch (e) {
+    throw new Error("h.image: Figma refused the picture: " + errorText(e) +
+      " (it takes PNG, JPEG and GIF up to " + IMAGE_MAX_PX + " px wide and high)");
+  }
+  const paint = { type: "IMAGE", scaleMode: how, imageHash: image.hash };
+  if (how === "CROP") paint.imageTransform = [[1, 0, 0], [0, 1, 0]];  // the whole picture, until it is moved
+  if (how === "TILE") paint.scalingFactor = 1;                        // at its own size
+  node.fills = [paint];
+  return { id: node.id, name: node.name, mode: how.toLowerCase(), hash: image.hash };
+}
+
 // ─── fonts ───────────────────────────────────────────────────────────────
 // A text with several fonts has `figma.mixed` for fontName, so its fonts are
 // read per range. loadFonts loads them all at once and reports the ones this
@@ -2435,6 +2491,14 @@ Object.assign(HELPERS, {
   async shot(node, opts) {
     const n = typeof node === "string" ? await HELPERS.resolve(node) : node;
     return await shotOf(n, opts);
+  },
+
+  // Fill a layer with a picture, instead of the fills it has: `source` is the
+  // bytes of a PNG, JPEG or GIF (a Uint8Array) or the name of a file that came
+  // with the script (`exec --image NAME=FILE`); `mode` is fill (the default),
+  // fit, crop or tile. Returns {id, name, mode, hash}.
+  image(node, source, mode) {
+    return imageFill(node, source, mode, this);
   },
 
   // Load every font of a subtree (mixed ranges too), a FontName or a list of

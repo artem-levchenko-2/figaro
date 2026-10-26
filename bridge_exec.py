@@ -1,6 +1,6 @@
 """The bridge's side of exec: change reports, read-only, checkpoints, undo.
 
-    POST /exec    {..., read_only?, checkpoint?, quick?, libs?}
+    POST /exec    {..., read_only?, checkpoint?, quick?, libs?, images?}
                   -> {..., changes?, line?, source?, lib?, lib_missing?, rolled_back?, checkpoint?}
     POST /undo    {target?, agent?, force?}      -> revert the file's last script
     POST /reload  {target?}                      -> run plugin/code.js from disk in
@@ -52,8 +52,12 @@ class Options(NamedTuple):
     checkpoint: str | bool | None  # a label forces one, False skips it, None: hourly rule
     quick: bool                    # the CLI's own readers: no change report, ~150 ms less
     libs: list                     # [{"name", "code"}] — the agent's --lib files
+    images: list = []              # [{"name", "data"}] — files for `figaro image`, `exec --image`
 
 
+IMAGES_MAX = 20            # files in one request
+IMAGES_SIZE = 40 * 1024 * 1024  # base64 characters together: ~30 MB of files, well inside the
+                                # 64 MB the bridge's body and WebSocket take
 LIBS_MAX = 50              # per plugin connection; plugin/code.js keeps as many
 LIBS_SIZE = 4 * 1024 * 1024
 
@@ -75,7 +79,8 @@ def exec_options(body):
     quick = body.get("quick", False)
     if not isinstance(quick, bool):
         raise ValueError("'quick' must be true or false")
-    return Options(read_only or quick, checkpoint, quick, _libs(body.get("libs")))
+    return Options(read_only or quick, checkpoint, quick, _libs(body.get("libs")),
+                   _images(body.get("images")))
 
 
 def _libs(value):
@@ -88,6 +93,20 @@ def _libs(value):
         raise ValueError(f"'libs' are over {LIBS_SIZE // (1024 * 1024)} MB together")
     return [{"name": str(x.get("name") or f"lib{i + 1}")[:80], "code": x["code"]}
             for i, x in enumerate(value)]
+
+
+def _images(value):
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(
+            isinstance(x, dict) and isinstance(x.get("name"), str) and x["name"]
+            and isinstance(x.get("data"), str) for x in value):
+        raise ValueError("'images' must be a list of {name, data}: base64 of a file")
+    if len(value) > IMAGES_MAX:
+        raise ValueError(f"'images' has more than {IMAGES_MAX} files")
+    if sum(len(x["data"]) for x in value) > IMAGES_SIZE:
+        raise ValueError(f"'images' are over {IMAGES_SIZE * 3 // 4 // (1024 * 1024)} MB together")
+    return [{"name": x["name"][:80], "data": x["data"]} for x in value]
 
 
 def exec_fields(conn_id, agent, opts, parallel=False):
@@ -105,6 +124,8 @@ def exec_fields(conn_id, agent, opts, parallel=False):
         fields["checkpoint"] = title
     if opts.libs:
         fields["libs"] = _lib_fields(conn_id, opts.libs)
+    if opts.images:
+        fields["images"] = opts.images
     return fields
 
 

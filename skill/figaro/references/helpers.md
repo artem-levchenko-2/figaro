@@ -44,6 +44,12 @@ A `figaro exec` script runs as the body of an async function with the parameters
 | `await h.inspect(node, {depth, hidden})` | the data behind `figaro inspect`: layout, fills with style and variable names, texts, instances, keys |
 | `await h.shot(node, {format, scale, width, absolute})` | a picture in base64; `absolute: true` exports exactly the layer's size even if children or effects stick out of it (for a picture reused inside another mockup). The CLI is handier: `figaro shot` or `exec --shot` write a file |
 
+## Pictures
+
+| Helper | What it does |
+|---|---|
+| `h.image(node, source, mode)` | fills the layer with a picture, instead of its fills: `source` is the name of a file that came with the script (`figaro exec --image logo=./logo.png`, then `h.image(n, "logo", "fit")`) or the bytes of a PNG, JPEG or GIF (a `Uint8Array`, e.g. from `figma.base64Decode`); `mode` is `fill` (default), `fit`, `crop` or `tile`. Returns `{id, name, mode, hash}`. A layer with no fills (a group) or a picture Figma refuses (not PNG, JPEG or GIF; over 4096 px wide or high) fails with an error that says so. The CLI is handier for one layer: `figaro image` |
+
 ## Colour
 
 | Helper | What it does |

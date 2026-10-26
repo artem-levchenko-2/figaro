@@ -109,6 +109,13 @@ function makeFigma() {
       return { id: "v" + saved.length };
     },
     async loadFontAsync(font) { fontLoads.push(font.family + " " + font.style); },
+    // Figma's pictures: it takes PNG, JPEG and GIF, and names an image by a hash of its bytes.
+    base64Decode(text) { return new Uint8Array(Buffer.from(text, "base64")); },
+    createImage(bytes) {
+      const png = bytes[0] === 0x89 && bytes[1] === 0x50;
+      if (!png) throw new Error("Image type is unsupported");
+      return { hash: require("crypto").createHash("sha1").update(bytes).digest("hex") };
+    },
     // A script's edits: they wait in the undo stack until committed.
     edit(...specs) {
       const changes = specs.map((s) => parse(s, "LOCAL"));
@@ -667,6 +674,56 @@ function check(label, actual, expected) {
     await env.figma.ui.onmessage({ type: "reload", id: "r2", code: "throw new Error('broken')", html: "" });
     const err = env.posted.find((m) => m.id === "r2");
     check("a broken reload says so", err && err.text, "reload: broken");
+  }
+
+  // ─── pictures that come with a script ───────────────────────────────────
+  {
+    const env = load();
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from("-picture-")]);
+    const files = [{ name: "image", data: png.toString("base64") },
+                   { name: "logo", data: Buffer.from("not a picture").toString("base64") }];
+    const rect = { id: "1:2", name: "Photo", type: "RECTANGLE", fills: [{ type: "SOLID" }] };
+    env.nodes.set("1:2", rect);
+    env.nodes.set("1:3", { id: "1:3", name: "Group", type: "GROUP" });  // a group has no fills
+    const hash = require("crypto").createHash("sha1").update(png).digest("hex");
+
+    const r = await exec(env, "return h.image(await h.resolve('1:2'), 'image', 'fit');", { images: files });
+    check("a file that came with the script fills a layer", [r.type, r.value],
+      ["result", { id: "1:2", name: "Photo", mode: "fit", hash }]);
+    check("…instead of its fills, by the picture's hash",
+      rect.fills, [{ type: "IMAGE", scaleMode: "FIT", imageHash: hash }]);
+    await exec(env, "h.image(await h.resolve('1:2'), 'image');", { images: files });
+    check("…fill is the default mode", rect.fills[0].scaleMode, "FILL");
+    await exec(env, "h.image(await h.resolve('1:2'), 'image', 'CROP');", { images: files });
+    check("crop starts with the whole picture", [rect.fills[0].scaleMode, rect.fills[0].imageTransform],
+      ["CROP", [[1, 0, 0], [0, 1, 0]]]);
+    await exec(env, "h.image(await h.resolve('1:2'), 'image', 'tile');", { images: files });
+    check("tile keeps the picture's own size", [rect.fills[0].scaleMode, rect.fills[0].scalingFactor], ["TILE", 1]);
+    await exec(env, "h.image(await h.resolve('1:2'), new Uint8Array([0x89, 0x50, 1, 2]), 'fit');");
+    check("bytes work without a file", rect.fills[0].scaleMode, "FIT");
+
+    const fails = async (code, opts) => {
+      const e = await exec(env, code, opts);
+      return e.type === "error" ? e.text : "no error: " + JSON.stringify(e.value);
+    };
+    check("a group has no fills, and the error says what to do instead",
+      /GROUP .* has no fills.*frame, a rectangle or a shape/.test(
+        await fails("h.image(await h.resolve('1:3'), 'image');", { images: files })), true);
+    check("a name that did not come lists those that did",
+      /no file named "photo" came with the script \(it has: image, logo\)/.test(
+        await fails("h.image(await h.resolve('1:2'), 'photo');", { images: files })), true);
+    check("…and with none, says how to bring one",
+      /no file named "photo".*figaro exec --image photo=FILE/.test(
+        await fails("h.image(await h.resolve('1:2'), 'photo');")), true);
+    check("a mode that does not exist is refused",
+      /the mode is fill, fit, crop or tile, not "stretch"/.test(
+        await fails("h.image(await h.resolve('1:2'), 'image', 'stretch');", { images: files })), true);
+    check("Figma's refusal of the bytes comes with what it takes",
+      /Figma refused the picture: Image type is unsupported \(it takes PNG, JPEG and GIF up to 4096 px/.test(
+        await fails("h.image(await h.resolve('1:2'), 'logo');", { images: files })), true);
+    check("a refused picture leaves the fills as they were", rect.fills[0].scaleMode, "FIT");
+    check("a script that fills a layer counts as one that writes",
+      [env.api.codeMayWrite("h.image(n, 'image');"), env.api.codeMayWrite("return h.shot(n);")], [true, false]);
   }
 
   // ─── a helper's long walk ───────────────────────────────────────────────

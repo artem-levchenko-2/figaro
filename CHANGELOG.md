@@ -9,15 +9,23 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+### Added
+
+- **`figaro image <layer> <file> [--mode fill|fit|crop|tile]`** fills a layer with a PNG, JPEG or GIF from a
+  file. The file travels in the request's body, not in the command line, so a large one is fine; the CLI
+  checks the format by its bytes and the size (Figma takes up to 4096 px wide and high) and says what is wrong
+  before it asks Figma. The helper behind it is `h.image(node, source, mode)`; `figaro exec --image NAME=FILE`
+  hands a file to a script of your own. A layer with no fills, such as a group, gets an error that says so.
+
 ### Changed
 
-- **The skill knows more traps of Figma, each checked in a draft:** a text style replaces an existing text's font, size
-  and in-line formatting; `textTruncation` is set before `maxLines`, and `maxHeight` cuts too; the
-  auto-layout order is `layoutMode`, `resize()`, sizing modes (the parent and the padding can come at any point,
-  the old rule was stricter than Figma), and `resize()` fixes only the axes it changes; an empty group deletes itself; a section keeps its size and its
-  children's coordinates are relative to it; `absoluteRenderBounds` is cut by clipping parents; prototype
-  reactions go through `setReactionsAsync`; and while a script runs Figma doesn't repaint, so search inside a
-  node and never `figma.root.findAll`.
+- **The skill knows more traps of Figma, each checked in a draft:** a text style replaces an existing text's
+  font, size and in-line formatting; `textTruncation` is set before `maxLines`, and `maxHeight` cuts too; the
+  auto-layout order is `layoutMode`, `resize()`, sizing modes (the parent and the padding can come at any
+  point, the old rule was stricter than Figma), and `resize()` fixes only the axes it changes; an empty group
+  deletes itself; a section keeps its size and its children's coordinates are relative to it;
+  `absoluteRenderBounds` is cut by clipping parents; prototype reactions go through `setReactionsAsync`; and
+  while a script runs Figma doesn't repaint, so search inside a node and never `figma.root.findAll`.
 
 ## [1.5.2] — 2026-10-20
 

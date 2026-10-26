@@ -1,5 +1,5 @@
 """The bridge's side of exec — read-only, checkpoints, undo, reload,
-quick reads, --lib, links and shots.
+quick reads, --lib, --image, links and shots.
 
 The plugin's side is covered by tests/exec.test.js; here a fake plugin
 answers, and the tests pin what the bridge sends it and returns.
@@ -7,6 +7,7 @@ answers, and the tests pin what the bridge sends it and returns.
     pytest tests/test_exec.py
 """
 import asyncio
+import base64
 import json
 import re
 import time
@@ -20,9 +21,10 @@ import bridge_exec
 from bridge_exec import Options
 from test_bridge import make_client, run
 
-CAPS = ("changes", "readOnly", "undo", "reload", "checkpoint", "quick", "libs")
+CAPS = ("changes", "readOnly", "undo", "reload", "checkpoint", "quick", "libs", "images")
 KEY = "AbCdEfGhIjKlMnOpQrStUv"  # a file key as Figma makes them: 22 letters and digits
 LIB = {"name": "grid.js", "code": "function col(n) { return n * 72; }"}
+IMAGE = {"name": "image", "data": base64.b64encode(b"\x89PNG\r\n\x1a\n-picture-").decode()}
 
 
 class FakePlugin:
@@ -45,7 +47,9 @@ class FakePlugin:
         return [m for m in self.received if m.get("type") == mtype]
 
     async def __aenter__(self):
-        self.ws = await self.client.ws_connect("/plugin", headers={"Origin": "null"})
+        # aiohttp's client takes 4 MB a message; the window in Figma, a browser, takes more
+        self.ws = await self.client.ws_connect("/plugin", headers={"Origin": "null"},
+                                               max_msg_size=64 * 1024 * 1024)
         await self.ws.send_str(json.dumps({
             "type": "hello", "version": "test", "name": self.name, "fileKey": self.key,
             "docSig": self.key, "plugin": self.plugin, "caps": self.caps}))
@@ -236,8 +240,8 @@ def test_the_plugin_window_passes_every_exec_field_on(monkeypatch):
     arrives — quick and libs did not, at first."""
     monkeypatch.setitem(bridge.PLUGINS, "conn", {"docSig": "D1"})
     fields = set(bridge_exec.exec_fields("conn", "anna", Options(True, "label", False, [LIB])))
-    fields |= set(bridge_exec.exec_fields("conn", "anna", Options(True, None, True, [LIB])))
-    assert fields == {"readOnly", "quick", "agent", "checkpoint", "libs"}
+    fields |= set(bridge_exec.exec_fields("conn", "anna", Options(True, None, True, [LIB], [IMAGE])))
+    assert fields == {"readOnly", "quick", "agent", "checkpoint", "libs", "images"}
     html = (bridge.PLUGIN_CODE.parent / "ui.html").read_text(encoding="utf-8")
     forwarded = re.search(r'toSandbox\(\{\s*type: "exec",(.*?)\}\);', html, re.S).group(1)
     for key in fields:
@@ -308,6 +312,50 @@ def test_an_error_inside_a_lib_names_its_line():
                                                  "stack": None, "lib": lib_error}):
             body = await (await post(c, libs=[LIB])).json()
             assert body["lib"] == lib_error
+        await c.close()
+    run(go())
+
+
+# ─── images ───────────────────────────────────────────────────────────────
+
+def test_images_are_options_and_malformed_ones_are_refused():
+    assert bridge_exec.exec_options({}).images == []
+    assert bridge_exec.exec_options({"images": [IMAGE]}).images == [IMAGE]
+    for bad in ("data", [{"name": "a"}], [{"data": "AAAA"}], [{"name": "", "data": "AAAA"}],
+                [{"name": "a", "data": 5}], ["AAAA"],
+                [{"name": f"i{n}", "data": "AAAA"} for n in range(bridge_exec.IMAGES_MAX + 1)],
+                [{"name": "big", "data": "A" * (bridge_exec.IMAGES_SIZE + 1)}]):
+        with pytest.raises(ValueError):
+            bridge_exec.exec_options({"images": bad})
+
+
+def test_a_picture_reaches_the_plugin_whole_even_a_big_one():
+    """It rides in the exec message, as base64 in the request body: tens of MB
+    pass the bridge's body and WebSocket limits, which a command line never could."""
+    big = {"name": "big", "data": base64.b64encode(b"\xff\xd8\xff" + bytes(range(256)) * 100000).decode()}
+    assert len(big["data"]) > 30 * 1024 * 1024
+
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c) as p:
+            r = await post(c, images=[IMAGE, big], timeout=30)
+            assert r.status == 200, await r.text()
+            assert p.of("exec")[0]["images"] == [IMAGE, big]
+            r = await post(c, images="nope")
+            assert r.status == 400 and "images" in (await r.json())["error"]
+            assert len(p.of("exec")) == 1
+        await c.close()
+    run(go())
+
+
+def test_a_plugin_build_without_images_is_not_sent_a_picture():
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, caps=[x for x in CAPS if x != "images"]) as p:
+            r = await post(c, images=[IMAGE])
+            assert r.status == 400 and "figaro reload" in (await r.json())["error"]
+            assert (await post(c)).status == 200  # a script without one is fine
+            assert len(p.of("exec")) == 1
         await c.close()
     run(go())
 

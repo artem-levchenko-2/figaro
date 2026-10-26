@@ -283,6 +283,7 @@ $ figaro shot 12:34
 | `figaro shot <layer>` | Saves a picture of it for the agent to open |
 | `figaro exec` | Runs a script with the whole Plugin API |
 | `figaro text <layer> "…"` | Changes a text, loading its fonts |
+| `figaro image <layer> <file>` | Fills a layer with a picture from a file |
 | `figaro undo` | Takes back the last script, when that is safe |
 | `figaro doctor` | Checks the bridge, the plugin and the file |
 
@@ -310,6 +311,7 @@ Change
   figaro variant <instance> "Size=L" "Label=Pay now"
                                   switch variants and set properties by short names
   figaro clone <layer> --right    a copy beside it; --left, --up, --down, --gap
+  figaro image <layer> <file>     fill a layer with a PNG, JPEG or GIF; --mode fill, fit, crop or tile
   figaro icomp <key>              an instance of a published library component
   figaro rm <layer>…              delete layers; one wrong id and nothing is deleted
   figaro undo                     take back the file's last script, when that is safe

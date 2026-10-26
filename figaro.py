@@ -179,7 +179,7 @@ def _answer(body, status):
     return value
 
 
-def _exec(code, timeout=60, read_only=False, quick=False, libs=None, probe=False):
+def _exec(code, timeout=60, read_only=False, quick=False, libs=None, probe=False, images=None):
     payload = {"code": code, "timeout": timeout}
     if TARGET:
         payload["target"] = TARGET
@@ -197,6 +197,8 @@ def _exec(code, timeout=60, read_only=False, quick=False, libs=None, probe=False
         payload["probe"] = True
     if libs:
         payload["libs"] = libs
+    if images:  # files for h.image, as base64 in the body: a command line would be too short
+        payload["images"] = images
     queue = timeout if QUEUE_TIMEOUT is None else QUEUE_TIMEOUT
     payload["queue_timeout"] = queue
     # The socket deadline has to outlast the bridge's own: time in the file's
@@ -630,9 +632,10 @@ def cmd_exec(args):
         print("figaro: provide code (positional, --file, or --stdin)", file=sys.stderr)
         return 2
     libs = cli_extras.read_libs(args.lib)
-    resp = _exec(code, args.timeout, libs=libs)[1]
+    images = cli_extras.read_images(args.image)
+    resp = _exec(code, args.timeout, libs=libs, images=images)[1]
     if resp.get("lib_missing"):  # the plugin lost a --lib before the script ran; now the code goes
-        resp = _exec(code, args.timeout, libs=libs)[1]
+        resp = _exec(code, args.timeout, libs=libs, images=images)[1]
     rc = _emit(resp, raw=args.raw)
     if rc == 0 and args.shot is not None:
         rc = cli_extras.shot_after(args, resp)
@@ -939,6 +942,7 @@ DISPATCH = {
     "inspect": cli_extras.cmd_inspect,
     "shot": cli_extras.cmd_shot,
     "link": cli_extras.cmd_link,
+    "image": cli_extras.cmd_image,
 }
 
 

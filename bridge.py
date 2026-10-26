@@ -835,6 +835,9 @@ async def exec_handler(request: web.Request) -> web.Response:
     if conn_id is None:
         return info
     target_ws = info["ws"]
+    if opts.images and "images" not in (info.get("caps") or []):
+        return bad("the plugin in this file is an older build and would drop the picture — "
+                   "run `figaro reload` first")
 
     # Reads are safe to fan out; anything that mutates must take the file's lock.
     # So a parallel script is read-only — the plugin rolls back its changes.
@@ -1271,7 +1274,7 @@ async def root_handler(request: web.Request) -> web.Response:
         "version": VERSION,
         "endpoints": {
             "POST /exec": ("{code, target?, agent?, timeout?, queue_timeout?, parallel?, force?, "
-                           "read_only?, checkpoint?, quick?, libs?, probe?} -> "
+                           "read_only?, checkpoint?, quick?, libs?, images?, probe?} -> "
                            "{ok, result, value, logs, elapsed_ms}. Serialized per file "
                            "unless parallel:true (reads only)."),
             "GET /status": "{plugin_connected, files, pending, abandoned, lost}",

@@ -1,6 +1,6 @@
 """The CLI's own helpers (cli_extras.py, inspect_text.py, bridge_idle.py):
 links in arguments, starting the bridge, inspect, shot,
-link, --lib, exec --shot, and the bridge leaving: when idle, and with its
+link, image, --lib, exec --shot, --image, and the bridge leaving: when idle, and with its
 plugin sockets closed at once.
 
 A fake bridge answers the CLI here; the plugin's side is in
@@ -1039,3 +1039,92 @@ def test_a_stopping_bridge_closes_plugin_sockets_at_once():
         if proc.poll() is None:
             proc.kill()
         proc.wait(10)
+
+
+# ─── image ───────────────────────────────────────────────────────────────
+
+def png_header(w, h):
+    """The first 24 bytes of a PNG: all the CLI reads of a picture's size."""
+    return b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + w.to_bytes(4, "big") + h.to_bytes(4, "big")
+
+
+def test_image_sends_the_file_in_the_body_not_in_the_command_line(monkeypatch, capsys, tmp_path):
+    pic = tmp_path / "photo.png"
+    pic.write_bytes(png(60, 40))
+    reply = {"ok": True, "result": '{"id":"1:2","mode":"fit"}', "elapsed_ms": 5}
+    rc, out, err, calls = cli(monkeypatch, capsys, "image", URL, str(pic), "--mode", "fit",
+                              bridge_reply=reply)
+    assert rc == 0 and '"mode":"fit"' in out
+    (payload,) = calls
+    assert payload["target"] == URL and "quick" not in payload and "read_only" not in payload
+    assert payload["images"] == [{"name": "image", "data": base64.b64encode(pic.read_bytes()).decode()}]
+    assert 'h.image(n, \'image\', "fit")' in payload["code"] and '"1:11"' in payload["code"]
+    assert len(payload["code"]) < 500  # the picture is not in the script
+    assert str(pic) in sys.argv and len(" ".join(sys.argv)) < 300  # the command line holds a path only
+
+
+def test_image_modes_and_the_default():
+    args, _ = args_of("image", "1:2", "a.png")
+    assert args.mode == "fill"
+    for mode in ("fill", "fit", "crop", "tile"):
+        assert args_of("image", "1:2", "a.png", "--mode", mode)[0].mode == mode
+    with pytest.raises(SystemExit):
+        args_of("image", "1:2", "a.png", "--mode", "stretch")
+
+
+@pytest.mark.parametrize("name, data, text", [
+    ("a.webp", b"RIFF\x00\x00\x00\x00WEBPVP8 ", "not a PNG, JPEG or GIF"),
+    ("a.svg", b"<svg xmlns='http://www.w3.org/2000/svg'/>", "createNodeFromSvg"),
+    ("a.png", b"", "is empty"),
+    ("a.png", png_header(5000, 3000), "5000x3000 px; Figma takes up to 4096"),
+    ("a.png", png_header(100, 0), "has no pixels"),
+])
+def test_a_file_figma_would_refuse_is_refused_before_anything_is_sent(
+        monkeypatch, capsys, tmp_path, name, data, text):
+    pic = tmp_path / name
+    pic.write_bytes(data)
+    fake = FakeBridge({"ok": True})
+    monkeypatch.setattr(figaro, "_request", fake)
+    monkeypatch.setattr(sys, "argv", ["figaro", "image", "1:2", str(pic)])
+    with pytest.raises(SystemExit) as done:
+        figaro.main()
+    assert text in str(done.value.code) and fake.calls == []
+
+
+def test_image_refuses_a_missing_file_and_a_too_big_one(monkeypatch, tmp_path):
+    with pytest.raises(SystemExit, match="nope.png"):
+        cli_extras.read_image(str(tmp_path / "nope.png"), "image")
+    big = tmp_path / "big.png"
+    big.write_bytes(png_header(10, 10) + bytes(1024))
+    monkeypatch.setattr(cli_extras, "IMAGE_MAX_BYTES", 1000)
+    with pytest.raises(SystemExit, match=r"MB; the limit"):
+        cli_extras.read_image(str(big), "image")
+
+
+def test_the_formats_figma_takes_are_told_by_their_first_bytes(tmp_path):
+    from PIL import Image
+    for fmt, ext in (("PNG", "png"), ("JPEG", "jpg"), ("GIF", "gif")):
+        buf = io.BytesIO()
+        Image.new("RGB", (30, 20), (1, 2, 3)).save(buf, fmt)
+        assert cli_extras.sniff_image(buf.getvalue()) == (ext, (30, 20)), fmt
+    assert cli_extras.sniff_image(b"BM....") is None
+    # the name does not matter, the bytes do
+    wrong = tmp_path / "photo.jpg"
+    wrong.write_bytes(png(8, 8))
+    assert cli_extras.read_image(str(wrong), "image")[1] == "png"
+
+
+def test_exec_image_attaches_named_files(monkeypatch, capsys, tmp_path):
+    a, b = tmp_path / "a.png", tmp_path / "b.png"
+    a.write_bytes(png(8, 8))
+    b.write_bytes(png(9, 9))
+    rc, out, err, calls = cli(monkeypatch, capsys, "exec", "--image", f"logo={a}", "--image",
+                              f"hero={b}", 'return h.image(await h.resolve("1:2"), "logo")')
+    assert rc == 0
+    assert [(i["name"], base64.b64decode(i["data"])) for i in calls[0]["images"]] == [
+        ("logo", a.read_bytes()), ("hero", b.read_bytes())]
+    rc, out, err, calls = cli(monkeypatch, capsys, "exec", "return 1")
+    assert "images" not in calls[0]
+    for specs in (["nofile"], ["=x.png"], ["bad name=x.png"], [f"logo={a}", f"logo={b}"]):
+        with pytest.raises(SystemExit, match="--image"):
+            cli_extras.read_images(specs)

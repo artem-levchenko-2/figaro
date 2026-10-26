@@ -102,8 +102,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - `figaro.py` — the CLI: commands, how replies are printed, `exec` flags (`-R`, `--checkpoint`,
   `--no-checkpoint`, `--lib`, `--shot`), `figaro wait` (polls `/status`, so it works with older bridges;
   `_pick_file` mirrors the bridge's `resolve_target`).
-- `cli_extras.py` — links in arguments, starting the bridge on demand, `inspect`, `shot`, `link`, `--lib`,
-  `exec --shot`; `inspect_text.py` — the text `inspect` prints.
+- `cli_extras.py` — links in arguments, starting the bridge on demand, `inspect`, `shot`, `link`, `image`,
+  `--lib`, `exec --shot`, `exec --image` (a file is checked here: format by its bytes, 4096 px, 30 MB);
+  `inspect_text.py` — the text `inspect` prints.
 - `bridge.py` — HTTP and WebSocket, routing to files (a file's scripts go to its first live window, and a
   later window of the same file waits until that one closes), the queue and lock per file, Origin/Host
   checks, the API token and the plugin socket's User-Agent (`_guard`; `figaro_token.py` is the path and the
@@ -127,7 +128,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   new (the newest release's notes from GitHub, else this version's from `CHANGELOG.md`, each item's first
   clause), the folder, when GitHub last answered (`bridge.CHECKED`; ↻ is `bridge.look_now`).
 - `bridge_exec.py` — the bridge's side of exec: the fields it sends (`readOnly`, `checkpoint`, `quick`,
-  `libs` — a library's code goes once, then its hash), when checkpoints are due, links as targets,
+  `libs` — a library's code goes once, then its hash; `images` — base64 of the files `h.image` fills a layer
+  with, in the body and the socket, never in an argument), when checkpoints are due, links as targets,
   `POST /undo`, `POST /reload`.
 - `bridge_idle.py` — the bridge exits after `--idle-exit` with no plugins and no requests; on any exit it
   closes the plugins' connections at once.
