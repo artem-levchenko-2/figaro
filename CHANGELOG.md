@@ -9,6 +9,28 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+### Added
+
+- **`figaro comments [<link>]`** lets an agent read the file's open Figma comments, which the Plugin API can't
+  show: who wrote each, when, the replies under it, and what it is pinned to. For each comment it names the
+  layer, with a link, and the deepest layer under the pin; a pin on the empty canvas of a page says so, with
+  the page, the point and the nearest layers. A comment is often pinned to a frame and not to the text it talks
+  about, so the skill tells agents to look among the frame's children. Resolved comments are left out, and it
+  only reads. A file that isn't open in Figma can be named by its link or key: its layers then come as ids.
+- **A Figma token block in the window's settings**, between the switches and the version, with "Optional"
+  by its title. Figma shows comments only to an app with the designer's personal access token, with the scopes
+  to read comments and file versions (the same token will serve the version history later). Save checks the
+  token on the file's version history before it keeps it, and says plainly when Figma didn't accept it.
+  Figaro keeps the token on this computer only, in a file of its own next to the bridge's API token, readable
+  by you alone; it is not in the settings file, the board, the logs or any reply, and the window shows just its
+  last four characters. Remove forgets it.
+- **An agent that wants comments and finds no token asks the designer on the file's island**: "designer wants
+  to read comments", with Add a Figma token (opens the settings) and Not now. The agent's reply says the
+  designer was asked and how to go on. After Not now, `figaro comments` in that file answers at once that the
+  designer chose not to add a token, and the window isn't asked again for that file until the bridge restarts.
+  A window with a bridge from before it shows no token block and no ask, and `figaro comments` with such a
+  bridge says to update it.
+
 ## [1.6.0] — 2026-10-26
 
 ### Added

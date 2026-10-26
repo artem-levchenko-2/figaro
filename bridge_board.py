@@ -23,7 +23,8 @@ its running script ends and its agent gets a 409; pressed between its
 scripts, its next script there is refused with a 409 and runs nothing),
 `update-now` and `reload-all` (bridge_update), `skip` (a release, and why its
 update failed), `set` (a switch in the settings, bridge_settings) and
-`check-update` (↻ there: ask GitHub now).
+`check-update` (↻ there: ask GitHub now), and `figma-token`, `figma-token-remove` and `ask-hide`
+(the Figma token block and the ask for it, bridge_comments).
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ import time
 from aiohttp import web
 
 import bridge
+import bridge_comments
 import bridge_exec
 import bridge_settings
 import bridge_update
@@ -165,6 +167,7 @@ def payload():
     stopped answering has `stuck`, and one whose window closed mid-script is
     in `lost`: a window older than both shows neither."""
     files, done = [], set()
+    asking = bridge_comments.asks()
     for cid, info in bridge._live_plugins():
         key = bridge._doc_key(cid)
         if not info.get("hello") or key in done:
@@ -179,6 +182,7 @@ def payload():
                        for n, a in f["agents"].items()],
             "recent": f["recent"],
             "stuck": stuck(key),
+            "ask": {"agent": asking[key]} if key in asking else None,
         })
     lost = [{"doc": key, "sig": l["sig"], "name": l["name"], "agents": [],
              "recent": (FILES.get(key) or {}).get("recent", []),
@@ -197,6 +201,7 @@ def payload():
              "skipped": bridge.SKIPPED, "stale": _bridge_stale()}
     board.update(bridge_update.board())
     board.update(bridge_settings.board())
+    board["figma"] = bridge_comments.board_part()  # whether there is a token, masked: never the token
     return board
 
 
@@ -431,7 +436,7 @@ async def handle(conn_id, m):
         bridge_settings.switch(m.get("name"), m.get("on"))
     elif mtype == "check-update":
         bridge.look_now()
-    else:
+    elif not await bridge_comments.window_message(m):
         return False
     return True
 

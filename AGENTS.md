@@ -134,6 +134,15 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   `libs` — a library's code goes once, then its hash; `images` — base64 of the files `h.image` fills a layer
   with, in the body and the socket, never in an argument), when checkpoints are due, links as targets,
   `POST /undo`, `POST /reload`.
+- `bridge_comments.py` — Figma comments and the designer's Figma token. The token is in `figma-token` next to
+  the API token (`figaro_token.figma_token_path`, mode 0600): never in `settings.json`, the board, a log or a
+  reply — the board's `figma` has only its masked form and how a check goes. The window's Save sends it
+  (`figma-token`) and the bridge checks it on the file's version history (REST, `API`; a fake server in the
+  tests, none reaches Figma). `POST /comments` lists a file's open comments from REST; without a token it
+  answers 403 `needs_token` and puts the file's `ask` on the board (the island's callout; `ask-hide` is Not now,
+  kept until the bridge restarts). `comments_text.py` is the CLI's side: the quick script that finds each
+  pin's layer in the plugin, and the text it prints. A new route or field of the board needs the older
+  window/bridge cases of "Rules" kept.
 - `bridge_idle.py` — the bridge exits after `--idle-exit` with no plugins and no requests; on any exit it
   closes the plugins' connections at once.
 - `figma_links.py` — Figma links: the file key and node id in a link, links to layers for reports.

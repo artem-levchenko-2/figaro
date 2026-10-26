@@ -342,6 +342,29 @@ div.tg { cursor: default; }  /* the version's row: nothing to open */
 .sw.on { background: var(--run); }
 .sw.on::after { transform: translateX(10px); }
 .sw:disabled { opacity: .45; cursor: default; }
+/* The Figma token, open in the settings all the time; the ask for it on an island */
+.set .t b .opt { margin-left: 6px; color: var(--is-faint); font-weight: 400; font-size: 11px; }
+.fld { display: flex; gap: 6px; padding: 0 var(--pad); }
+.inp { flex: 1; min-width: 0; height: 24px; display: flex; align-items: center; padding: 0 8px; border: 0; border-radius: 5px; outline: 0;
+  background: var(--is-fill); box-shadow: inset 0 0 0 1px var(--is-line); color: var(--is-text); font: 11px/1 var(--sys-mono); white-space: nowrap; overflow: hidden; }
+.inp:focus { box-shadow: inset 0 0 0 1.5px var(--run); }
+.inp::placeholder { color: var(--is-faint); opacity: 1; }
+.inp.err, .inp.err:focus { box-shadow: inset 0 0 0 1.5px var(--err); }
+.inp.dim, .inp:disabled { color: var(--is-dim); }
+.fld .go { height: 24px; border-radius: 12px; padding: 0 12px; }
+.go:disabled { background: var(--is-fill-2); color: var(--is-faint); cursor: default; }
+.go .spin { width: 9px; height: 9px; border-width: 1.5px; --c: var(--is-dim); }
+.help { margin: 0; padding: 8px var(--pad) 0; color: var(--is-dim); font-size: 11px; line-height: 15px; }
+.help b { color: var(--is-text); font-weight: 500; }
+.help .lnk { display: inline-flex; vertical-align: top; color: var(--is-text); line-height: 15px; }
+.help.err { color: var(--is-err); }
+.help.last { padding-bottom: 10px; }
+.set.tok { padding-bottom: 8px; }
+.set .go2 { height: 20px; padding: 0 9px; }
+.set .t .okc { color: var(--ok); }
+.callout.ask { --c: var(--run); }
+.callout .acts { display: flex; gap: 6px; margin: 4px 0 0 26px; }
+.callout .acts .go, .callout .acts .go2 { height: 20px; padding: 0 9px; }
 .row .go, .row .go2 { height: 20px; padding: 0 9px; margin-right: 1px; }
 .row .chk-up { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--is-faint); cursor: pointer; }
 .row .chk-up:hover { background: var(--is-fill); color: var(--is-text); }
@@ -775,6 +798,7 @@ function takeBoard(m) {
   if (m.version) version = m.version;
   const fileOf = (f) => ({
     id: f.doc, doc: f.doc, sig: f.sig, name: f.name || "Untitled", here: false,
+    ask: f.ask && typeof f.ask === "object" ? { agent: String(f.ask.agent || "An agent") } : null,  // wants comments, has no token
     agents: (Array.isArray(f.agents) ? f.agents : []).map((a) => ({
       name: a.name, since: t(a.since), last: t(a.last), busy: !!a.busy,
       done: a.done ? { text: a.done.text || "", at: t(a.done.at) } : null,
@@ -795,6 +819,10 @@ function takeBoard(m) {
     // release (`checks` false: it never does). A bridge too old to send them
     // has its settings shown, but not to change.
     settings: m.settings && typeof m.settings === "object" ? Object.assign({}, m.settings) : null,
+    // The Figma token: {token: "figd_…a1c4" or null, check: "checking" or "error" or null, why}. A bridge
+    // before the token has none, and the window shows no block and no ask.
+    figma: m.figma && typeof m.figma === "object"
+      ? { token: typeof m.figma.token === "string" ? m.figma.token : null, check: m.figma.check || null, why: m.figma.why || null } : null,
     notes: m.notes && Array.isArray(m.notes.items) ? m.notes : null,
     folder: typeof m.folder === "string" ? m.folder : "",
     newest: m.newest && m.newest.latest ? m.newest : null,  // skipped or not: {latest, url, button}
@@ -919,8 +947,14 @@ const agoShort = (ts) => `<span data-ago="${ts}">${ago(ts)}</span>`;
 // The first letter, or the whole emoji: a name may start with one.
 const av = (name) => `<span class="av" style="--av: ${color(name)}">${esc((Array.from(String(name))[0] || "?").toUpperCase())}</span>`;
 
-// What a closed island shows: the file, then what matters most in it.
+// What a closed island shows: the file, then what matters most in it. An agent that
+// wants comments with no token to read them says so there too.
 function headline(f) {
+  const h = headlineOf(f);
+  return f.ask && board && board.figma && !board.figma.token && !h.alarm && h.kind !== "connecting" && h.kind !== "nobridge"
+    ? Object.assign({}, h, { sub: esc(f.ask.agent) + " wants to read comments" }) : h;
+}
+function headlineOf(f) {
   if (f.here && conn === "connecting") return { kind: "connecting", ind: '<span class="spin" style="--c: var(--idle)"></span>', sub: "connecting…" };
   if (f.here && conn === "nobridge") return { kind: "nobridge", ind: '<span class="dot" style="--c: var(--idle)"></span>', sub: "no bridge yet" };
   if (alarm(f)) return { kind: "alarm", ind: `<span class="warn">${ICON.warn}</span>`, sub: "Figma isn't answering", alarm: true };
@@ -964,6 +998,13 @@ function callout(f) {
       : `Figaro's window there closed while a script by ${esc(f.lost.agent)} was running, ${agoSpan(f.lost.at)}.`;
     return `<div class="callout alarm"><div class="h"><span class="ind">${h.ind}</span>Figma isn't answering</div><p>${why}</p>`
       + `<p>Reload ${f.here ? "this file" : "the file"} in Figma: close its tab and open it again, or quit Figma if the tab won't close. Then run Figaro in it.</p></div>`;
+  }
+  // An agent asked for comments, and the designer hasn't given Figaro a token: add one, or not now.
+  if (f.ask && board && board.figma && !board.figma.token) {
+    return `<div class="callout ask"><div class="h"><span class="ind"><span class="dot" style="--c: var(--run)"></span></span>${esc(f.ask.agent)} wants to read comments</div>`
+      + "<p>Figma shows comments only to an app with your token. Add one in the settings, and your agent can go on.</p>"
+      + '<div class="acts"><button type="button" class="go" data-act="ask-add">Add a Figma token</button>'
+      + '<button type="button" class="go2" data-act="ask-hide">Not now</button></div></div>';
   }
   return "";
 }
@@ -1259,7 +1300,46 @@ function settingsView() {
   const off = can ? "" : `<p class="sets-off">${conn !== "ok" ? "They can change once the bridge is up." : "Restart the bridge to change them: it runs an older Figaro."}</p>`;
   return `<div class="head"><button type="button" class="back" data-act="back" aria-label="Back to the files">${ICON.left}<span>Back</span></button></div>`
     + `<div class="slot"><div class="island">${sets}${off}</div></div>`
+    + tokenCard()
     + versionCard();
+}
+
+// The Figma token, always open: lets agents read comments in Figma (and, later,
+// see who changed a layer). The bridge keeps it on this computer; the window
+// only ever knows its last four characters. A bridge before the token has no
+// `figma` on its board, and the block isn't there.
+const TOKEN_HELP = "https://help.figma.com/hc/en-us/articles/8085703771159-Manage-personal-access-tokens";
+const TOKEN_WHY = {
+  rejected: "Figma didn't accept this token. Check that you copied all of it and that it can read comments and file versions.",
+  nofile: "Figma doesn't show this file to that token. Make the token in an account that can open the file.",
+  open: "Open a Figma file where Figaro runs, then save the token: Figaro checks it on that file.",
+  network: "Figma didn't answer. Check the connection and try again.",
+  busy: "Figma is busy right now. Try again in a minute.",
+};
+let tokenDraft = "";           // what the field holds, kept across redraws
+function tokenCard() {
+  const fg = board && board.figma;
+  if (!fg) return "";
+  const title = '<b>Figma token<span class="opt">Optional</span></b>';
+  if (fg.token) {
+    tokenDraft = "";
+    return '<div class="slot"><div class="island"><div class="set"><span class="t">' + title
+      + `<span><span class="okc">Connected</span> · ${esc(fg.token)}. Agents can read comments and the version history of the files they work in</span></span>`
+      + `<button type="button" class="go2" data-act="token-remove"${conn === "ok" ? "" : " disabled"}>Remove</button></div></div></div>`;
+  }
+  const checking = fg.check === "checking", failed = fg.check === "error";
+  const can = conn === "ok" && !checking;
+  const how = '<p class="help">In Figma: account menu → <b>Settings</b> → <b>Security</b> → <b>Generate new token</b>. '
+    + `Let it read comments and file versions. <button type="button" class="lnk" data-act="release" data-url="${TOKEN_HELP}"><span>Figma help</span>${ICON.out}</button></p>`;
+  const why = failed ? `<p class="help err">${TOKEN_WHY[fg.why] || TOKEN_WHY.rejected}</p>` : "";
+  const save = checking
+    ? '<button type="button" class="go" data-act="token-save" disabled><span class="spin"></span>Checking</button>'
+    : `<button type="button" class="go" data-act="token-save"${can && tokenDraft.trim() ? "" : " disabled"}>Save</button>`;
+  return '<div class="slot"><div class="island"><div class="set tok"><span class="t">' + title
+    + "<span>Lets agents read comments in Figma and see who changed a layer and when</span></span></div>"
+    + `<div class="fld"><input class="inp${failed ? " err" : ""}${checking ? " dim" : ""}" type="password" data-field="figma-token" placeholder="figd_…" `
+    + `autocomplete="off" spellcheck="false" aria-label="Figma token" value="${esc(tokenDraft)}"${can ? "" : " disabled"}>${save}</div>`
+    + why + how + '<p class="help last">Figaro keeps it on this computer only.</p></div></div>';
 }
 
 // The version: what to do about it, what is new, and where Figaro runs. A
@@ -1529,9 +1609,17 @@ function renderView() {
   const enter = Date.now() - viewSince < ANIM_MS;
   const html = view === "settings" ? settingsView() : miniView(view === "nano", enter && !calm());
   const tail = footer();
+  const typing = document.activeElement;  // the token field keeps its place when the settings are drawn anew
+  const caret = typing && typing.dataset && typing.dataset.field === "figma-token"
+    ? { from: typing.selectionStart, to: typing.selectionEnd } : null;
   if (html !== lastHtml) {
     app.innerHTML = html;
     lastHtml = html;
+    const field = caret && tokenField();
+    if (field && !field.disabled) {
+      field.focus();
+      if (field.setSelectionRange && caret.from !== null) field.setSelectionRange(caret.from, caret.to);
+    }
   }
   if (tail !== lastFoot) {
     foot.innerHTML = tail;
@@ -1767,6 +1855,31 @@ function act(name, fid, el) {
     el.classList.toggle("on", on);  // the switch slides, and the redraw that follows changes nothing
     el.setAttribute("aria-checked", String(on));
     lastHtml = settingsView();
+  } else if (name === "token-save") {
+    const token = tokenDraft.trim();
+    if (!token || !board || !board.figma || board.figma.token || board.figma.check === "checking") return;
+    cue("go");
+    board.figma.check = "checking";  // at once; the bridge's board says how the check went
+    board.figma.why = null;
+    const here = filesNow().find((x) => x.id === "here");
+    send({ type: "figma-token", token, doc: here && here.doc ? here.doc : undefined });
+    render();
+  } else if (name === "token-remove" && board && board.figma) {
+    cue("layer");
+    board.figma.token = null;
+    board.figma.check = null;
+    send({ type: "figma-token-remove" });
+    render();
+  } else if (name === "ask-add") {
+    cue("gear");
+    setView("settings");
+    setTimeout(focusToken, GLIDE.ms + 60);
+  } else if (name === "ask-hide" && f && f.doc) {
+    cue("back");
+    send({ type: "ask-hide", doc: f.doc });
+    const own = board && board.files.find((x) => x.doc === f.doc);
+    if (own) own.ask = null;
+    render();
   } else if (name === "check") {
     cue("layer");
     checkAsked = Date.now();
@@ -1775,6 +1888,26 @@ function act(name, fid, el) {
     render();
   }
 }
+
+// The token field: what is typed is kept here, and Save follows it without a redraw.
+function tokenField() {
+  return app.querySelector ? app.querySelector('[data-field="figma-token"]') : null;
+}
+function focusToken() {
+  const el = tokenField();
+  if (el && !el.disabled && el.focus) el.focus();
+}
+document.addEventListener("input", (e) => {
+  const el = e.target;
+  if (!el || !el.dataset || el.dataset.field !== "figma-token") return;
+  tokenDraft = String(el.value || "");
+  const save = app.querySelector ? app.querySelector('[data-act="token-save"]') : null;
+  if (save) save.disabled = !tokenDraft.trim();
+  lastHtml = settingsView();  // the redraw that follows changes nothing
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target && e.target.dataset && e.target.dataset.field === "figma-token") act("token-save", null, e.target);
+});
 
 // The pointer on an agent's row: the window is drawn anew from its state, so
 // the new rows take `hot` from here, and a redraw neither drops the highlight

@@ -175,6 +175,15 @@ function load({ calm = false, layout = null, figma = null } = {}) {
         },
       };
     },
+    // Text typed in the Figma token field, and Enter pressed in it.
+    type(value) {
+      const el = { dataset: { field: "figma-token" }, value };
+      for (const fn of listeners.input || []) fn({ target: el });
+    },
+    enter() {
+      const el = { dataset: { field: "figma-token" } };
+      for (const fn of listeners.keydown || []) fn({ key: "Enter", target: el });
+    },
     // The pointer on an agent's row, or with no agent anywhere else in the window.
     point(fid, name) {
       const slot = { dataset: { fid } };
@@ -983,6 +992,133 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("a bridge before the switch: the lists stay, as they were", recent(), 2);
     env.click("gear");
     check("…and the settings have no such switch", [(env.app().match(/role="switch"/g) || []).length, /Show recent changes/.test(env.app())], [3, false]);
+  }
+
+  // ─── the Figma token ────────────────────────────────────────────────────
+  {
+    const env = load();
+    const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    const files = [file("KEY1", "Dashboard"), file("KEY2", "Kit")];
+    const settings = { sounds: true, others: true, recent: true, versions: true };
+    const figma = (extra) => Object.assign({ token: null, check: null, why: null }, extra);
+    const field = () => /<input class="inp([^"]*)"[^>]*value="([^"]*)"/.exec(env.app());
+    const save = () => /<button type="button" class="go" data-act="token-save"( disabled)?>/.exec(env.app());
+    env.board(files, { settings, figma: figma() });
+    await env.clock.advance(400);
+    env.click("gear");
+    check("the token block sits between the switches and the version, Optional by its title, and is open",
+          [/<b>Save versions as agents work<\/b>.*<b>Figma token<span class="opt">Optional<\/span><\/b>.*class="fld".*Figaro 1\.1\.0/.test(env.app()),
+           /Lets agents read comments in Figma and see who changed a layer and when/.test(env.app()),
+           /Figaro keeps it on this computer only\./.test(env.app())],
+          [true, true, true]);
+    check("…its help says where to make the token, with a link to Figma's",
+          [/In Figma: account menu → <b>Settings<\/b> → <b>Security<\/b> → <b>Generate new token<\/b>\. Let it read comments and file versions\./.test(env.app()),
+           /data-act="release" data-url="https:\/\/help\.figma\.com[^"]*"><span>Figma help<\/span>/.test(env.app())], [true, true]);
+    check("empty: a figd_… field, Save disabled and no Add or Cancel",
+          [field()[1], field()[2], /placeholder="figd_…"/.test(env.app()), save()[1], /Add|Cancel/.test(env.app().split("Figma token")[1].split("Figaro 1")[0])],
+          ["", "", true, " disabled", false]);
+    env.click("token-save");
+    check("…and a click on the disabled Save sends nothing", env.sent("figma-token"), []);
+    let tick = 0;
+    const redraw = async (extra) => {  // the settings drawn anew: the version line's "checked" changes
+      env.board(files, Object.assign({ settings, figma: figma(), checked: 900 + 10 * ++tick }, extra));
+      await env.clock.advance(400);
+    };
+    env.type("figd_abc");
+    await redraw();
+    check("typed: the field keeps it through a redraw, and Save is on", [field()[2], save()[1]], ["figd_abc", undefined]);
+    env.type("   ");
+    await redraw();
+    check("only blanks: Save is off again", save()[1], " disabled");
+    env.type(" figd_abc ");
+    env.click("token-save");
+    check("Save sends the token and this file, and the field says Checking at once, with its spinner",
+          [env.sent("figma-token"), /<button type="button" class="go" data-act="token-save" disabled><span class="spin"><\/span>Checking<\/button>/.test(env.app()),
+           /<input class="inp dim"[^>]*disabled/.test(env.app())],
+          [[{ type: "figma-token", token: "figd_abc", doc: "doc:KEY1" }], true, true]);
+    env.click("token-save");
+    check("…and a second press while it checks sends nothing", env.sent("figma-token").length, 1);
+    env.board(files, { settings, figma: figma({ check: "checking" }) });
+    await env.clock.advance(400);
+    check("the bridge says it is checking: the same", /Checking<\/button>/.test(env.app()), true);
+    env.board(files, { settings, figma: figma({ check: "error", why: "rejected" }) });
+    await env.clock.advance(400);
+    check("rejected: a red field that keeps what was typed, Save active, and Figma's words",
+          [/ err/.test(field()[1]), field()[2], save()[1], /<p class="help err">Figma didn't accept this token\. Check that you copied all of it and that it can read comments and file versions\.<\/p>/.test(env.app())],
+          [true, " figd_abc ", undefined, true]);
+    check("…with the help and the promise still under it", [/In Figma: account menu/.test(env.app()), /Figaro keeps it on this computer only/.test(env.app())], [true, true]);
+    for (const [why, text] of [["network", "Figma didn't answer"], ["nofile", "doesn't show this file"], ["open", "Open a Figma file where Figaro runs"], ["busy", "busy right now"]]) {
+      env.board(files, { settings, figma: figma({ check: "error", why }) });
+      await env.clock.advance(400);
+      check(`…${why}: its own words`, new RegExp(`<p class="help err">[^<]*${text}`).test(env.app()), true);
+    }
+    env.board(files, { settings, figma: figma({ token: "figd_…a1c4" }) });
+    await env.clock.advance(400);
+    check("connected: the masked token, what agents can do, and Remove; no field, no help",
+          [/<span class="okc">Connected<\/span> · figd_…a1c4\. Agents can read comments and the version history of the files they work in/.test(env.app()),
+           /<button type="button" class="go2" data-act="token-remove">Remove<\/button>/.test(env.app()), /class="inp/.test(env.app()), /In Figma: account menu/.test(env.app())],
+          [true, true, false, false]);
+    env.click("token-remove");
+    check("Remove tells the bridge, and the field is back, empty", [env.sent("figma-token-remove"), field()[2], save()[1]],
+          [[{ type: "figma-token-remove" }], "", " disabled"]);
+    await redraw();
+    env.type("figd_x");
+    await redraw();
+    check("what is typed survives the settings being drawn anew", field()[2], "figd_x");
+    env.type("figd_y");
+    env.enter();
+    check("Enter in the field saves too", env.sent("figma-token").slice(-1), [{ type: "figma-token", token: "figd_y", doc: "doc:KEY1" }]);
+    env.click("back");
+  }
+  {
+    // a bridge before the token: no `figma` on its board, no block and no ask
+    const env = load();
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    const files = [file("KEY1", "Dashboard", { ask: { agent: "designer" } })];
+    env.board(files, { settings: { sounds: true, others: true, recent: true, versions: true } });
+    await env.clock.advance(400);
+    env.click("toggle", "here");
+    check("an older bridge: no ask on the island", /wants to read comments/.test(env.html()), false);
+    env.click("gear");
+    check("…and no token block in the settings", [/Figma token/.test(env.app()), /class="inp/.test(env.app())], [false, false]);
+  }
+  {
+    // an agent wants comments, and there is no token: the island asks
+    const env = load();
+    const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    const settings = { sounds: true, others: true, recent: true, versions: true };
+    const asking = (n) => [file("KEY1", "Dashboard", { agents: [agent("designer", { since: ago(40), last: ago(0), busy: true })], ask: { agent: "designer" } }),
+                           file("KEY2", "Kit", n ? { ask: { agent: "writer" } } : {})];
+    env.board(asking(false), { settings, figma: { token: null, check: null, why: null } });
+    await env.clock.advance(400);
+    check("a folded island says what the agent wants", /<span class="sub">designer wants to read comments<\/span>/.test(env.html()), true);
+    env.click("toggle", "here");
+    await env.clock.advance(400);
+    check("opened, it has the ask: the agent, why, and two buttons, above the agents",
+          [/<div class="callout ask"><div class="h">.*designer wants to read comments<\/div>/.test(env.html()),
+           /<p>Figma shows comments only to an app with your token\. Add one in the settings, and your agent can go on\.<\/p>/.test(env.html()),
+           /<button type="button" class="go" data-act="ask-add">Add a Figma token<\/button><button type="button" class="go2" data-act="ask-hide">Not now<\/button>/.test(env.html()),
+           env.html().indexOf("callout ask") < env.html().indexOf('<div class="sect">Agents</div>')], [true, true, true, true]);
+    env.click("ask-add", "here");
+    await env.clock.advance(1000);
+    check("Add a Figma token opens the settings, at the token block", [/<b>Figma token<span/.test(env.app()), /class="tl on" data-act="gear"/.test(env.foot())], [true, true]);
+    env.click("back");
+    await env.clock.advance(400);
+    env.click("ask-hide", "here");
+    check("Not now tells the bridge which file, and the ask is gone at once",
+          [env.sent("ask-hide"), /wants to read comments/.test(env.html()), /data-agent="designer"/.test(env.html())],
+          [[{ type: "ask-hide", doc: "doc:KEY1" }], false, true]);
+    env.board(asking(true), { settings, figma: { token: null, check: null, why: null } });
+    await env.clock.advance(400);
+    check("another file's ask is its own: it shows on that island", /data-fid="doc:KEY2".*writer wants to read comments/.test(env.html()), true);
+    env.board(asking(true), { settings, figma: { token: "figd_…a1c4", check: null, why: null } });
+    await env.clock.advance(400);
+    check("once there is a token, no ask shows", /wants to read comments/.test(env.html()), false);
   }
 
   // ─── minimized ──────────────────────────────────────────────────────────

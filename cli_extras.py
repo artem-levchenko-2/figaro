@@ -29,6 +29,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+import comments_text
 import inspect_text
 import figma_links
 
@@ -566,6 +567,46 @@ def cmd_link(args):
     return 0
 
 
+# ─── comments ────────────────────────────────────────────────────────────
+
+def cmd_comments(args):
+    """Open comments of the file: the bridge reads them with the designer's token, and one quick
+    read in the file says what each pin is on."""
+    if args.file and not CLI.TARGET:
+        CLI.TARGET = args.file
+    payload = {k: v for k, v in (("target", CLI.TARGET), ("agent", CLI.AGENT)) if v}
+    status, resp = CLI._request("POST", "/comments", payload, timeout=45)
+    if status == 404:  # an older bridge has no such route (this one answers a missing file with 409)
+        resp = {"ok": False, "error": "the bridge runs code older than `figaro comments`",
+                "hint": "restart it when no other agent is using it:  " + start_hint(restart=True)}
+    if not resp.get("ok"):
+        if args.raw:
+            return CLI._emit(resp, raw=True)
+        print(f"figaro: {resp.get('error', 'comments failed')}", file=sys.stderr)
+        if resp.get("hint"):
+            print(f"   hint: {resp['hint']}", file=sys.stderr)
+        return 1
+    threads = resp.get("comments") or []
+    answers, note = None, None
+    code = comments_text.pin_code(threads) if resp.get("connected") else None
+    if code:
+        _, got = CLI._exec(code, args.timeout, quick=True)
+        if got.get("ok") and isinstance(got.get("value"), list):
+            answers = {a["id"]: a for a in got["value"] if isinstance(a, dict) and a.get("id")}
+        else:
+            note = got.get("error") or "no answer"
+    if args.raw:
+        resp["pins"] = answers
+        return CLI._emit(resp, raw=True)
+    for line in comments_text.render(resp, answers):
+        print(line)
+    if note:
+        say(f"  ⚠ layer names are missing: {note}")
+    elif not resp.get("connected") and threads:
+        say("  ⚠ the file isn't open with Figaro, so the layers are listed by id only")
+    return 0
+
+
 # ─── --lib ───────────────────────────────────────────────────────────────
 
 def read_libs(paths):
@@ -712,6 +753,12 @@ def add_parsers(sub, common):
     p.add_argument("--mode", choices=IMAGE_MODES, default="fill",
                    help="fill covers the layer (default), fit shows the whole picture, "
                         "crop, tile repeats it")
+
+    p = sub.add_parser("comments", help="the file's open Figma comments: who, what, the replies, and the "
+                                        "layer each is pinned to (needs the designer's Figma token)")
+    common(p)
+    p.add_argument("file", nargs="?", default=None,
+                   help="a Figma link or file key; default: the connected file, or -T")
 
     p = sub.add_parser("link", help="clickable links to layers, for reports")
     common(p)

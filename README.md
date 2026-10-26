@@ -304,6 +304,7 @@ Look
   figaro find <layer> name~Card   search by name=, name~, type=, text= and text~
   figaro sel                      what you have selected, with links
   figaro link <layer>…            links to layers
+  figaro comments [<link>]        the file's open Figma comments, each with the layer it is pinned to (needs a Figma token, see Settings)
 
 Change
   figaro exec …                   run a script (see Scripts below)
@@ -487,8 +488,20 @@ in every window and across restarts: the bridge keeps them in
 | Show recent changes | on | Off: an island lists its agents only, without what they changed lately |
 | Save versions as agents work | on | Off: no version before an agent's first change in a file, and none hourly. An agent's `--checkpoint "label"` still saves one |
 
-Under them is the version: what is new in it, ↻ to look for a new release now,
-and where Figaro runs.
+Under them is the **Figma token**, which is optional, and under it the version:
+what is new in it, ↻ to look for a new release now, and where Figaro runs.
+
+**The Figma token** lets agents read the comments in your files: Figma's Plugin
+API can't show them, and only Figma's REST API can, to an app with your personal
+access token. In Figma: account menu → Settings → Security → Generate new token,
+with read access to comments and file versions. Paste it in the field and press
+Save: Figaro checks it by reading the open file's version history, and keeps it
+on your computer only, in a file of its own next to the bridge's API token that
+only you can read (`~/.figaro/figma-token`). It is not in `settings.json`, the
+window, the logs or anything an agent is told; the window shows its last four
+characters. Remove forgets it. Without a token, an agent that runs
+`figaro comments` makes the file's island ask you for one (Add a Figma token, or
+Not now, which stops the asking for that file until the bridge restarts).
 
 **Everything else** is environment variables: put them in
 your shell's profile, such as `export FIGARO_UPDATE_BUTTON=off` in `~/.zshrc`

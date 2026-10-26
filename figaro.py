@@ -23,6 +23,7 @@ Commands:
     figaro shot <id> ...            # picture(s) saved to files; tall ones cut in parts
     figaro link <id|sel> ...        # clickable links to layers, for reports
     figaro image <id> <file> [--mode fill|fit|crop|tile]   # fill a layer with a PNG, JPEG or GIF
+    figaro comments [<link>]        # the file's open Figma comments, each with the layer it is pinned to
     figaro "<js>"                   # shorthand for `exec`
 
 -R / --read-only: the script must not change the file; if it does, the plugin
@@ -968,6 +969,7 @@ DISPATCH = {
     "shot": cli_extras.cmd_shot,
     "link": cli_extras.cmd_link,
     "image": cli_extras.cmd_image,
+    "comments": cli_extras.cmd_comments,
 }
 
 

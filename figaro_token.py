@@ -20,3 +20,10 @@ def read_token(port):
         return token_path(port).read_text(encoding="utf-8").strip() or None
     except (OSError, UnicodeDecodeError):
         return None
+
+
+def figma_token_path(port):
+    """The user's Figma personal access token, next to the bridge's own: a file of
+    its own (mode 0600), never `settings.json`, the board or a log. `figaro_token`
+    only knows where it is; bridge_comments reads and writes it."""
+    return token_path(port).parent / "figma-token"

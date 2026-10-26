@@ -39,6 +39,7 @@ from aiohttp import web, WSMsgType
 if __name__ == "__main__":
     sys.modules.setdefault("bridge", sys.modules[__name__])
 import bridge_board  # noqa: E402
+import bridge_comments  # noqa: E402
 import bridge_exec  # noqa: E402
 import bridge_idle  # noqa: E402
 import bridge_settings  # noqa: E402
@@ -87,7 +88,7 @@ def _file_digest(path: Path):
 
 # The bridge runs its helper modules too — a changed bridge_exec.py is old code just the same.
 _BRIDGE_CODE = [Path(__file__).resolve()] + [
-    HERE / n for n in ("bridge_board.py", "bridge_exec.py", "bridge_idle.py", "bridge_settings.py",
+    HERE / n for n in ("bridge_board.py", "bridge_comments.py", "bridge_exec.py", "bridge_idle.py", "bridge_settings.py",
                        "bridge_update.py", "figma_links.py", "figaro_token.py")]
 BRIDGE_DIGEST = [_file_digest(p) for p in _BRIDGE_CODE]
 
@@ -1285,6 +1286,8 @@ async def root_handler(request: web.Request) -> web.Response:
             "POST /done": ("{target, agent?, text?} -> the agent is done in the file: the plugin's "
                            "window says so, with the note, until its next script there that "
                            "can change the file"),
+            "POST /comments": ("{target?, agent?} -> the file's open Figma comments, each with where "
+                               "it is pinned; needs the designer's Figma token (403 `needs_token`)"),
             "WS /plugin": "Figma plugin connects here (one per open file)",
         },
     })
@@ -1293,6 +1296,7 @@ async def root_handler(request: web.Request) -> web.Response:
 def build_app() -> web.Application:
     load_skipped()
     bridge_settings.load()
+    bridge_comments.load()
     app = web.Application(client_max_size=64 * 1024 * 1024,  # 16 → 64 MB, like the WebSocket
                           middlewares=[guard])
     app.router.add_get("/", root_handler)
@@ -1303,6 +1307,7 @@ def build_app() -> web.Application:
     app.router.add_get("/plugin", plugin_ws_handler)
     bridge_exec.install(app)  # /undo, /reload
     bridge_board.install(app)  # /done
+    bridge_comments.install(app)  # /comments
     return app
 
 
