@@ -140,7 +140,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   (`figma-token`) and the bridge checks it on the file's version history (REST, `API`; a fake server in the
   tests, none reaches Figma). `POST /comments` lists a file's open comments from REST; without a token it
   answers 403 `needs_token` and puts the file's `ask` on the board (the island's callout; `ask-hide` is Not now,
-  kept until the bridge restarts). `comments_text.py` is the CLI's side: the quick script that finds each
+  kept until the bridge restarts; a stored token Figma refuses sets the board's `figma.rejected`, which brings
+  the ask back and shows the token block as refused). A file key from the plugin's `hello` is checked like a
+  link's before it goes in a REST path. `comments_text.py` is the CLI's side: the quick script that finds each
   pin's layer in the plugin, and the text it prints. A new route or field of the board needs the older
   window/bridge cases of "Rules" kept.
 - `bridge_idle.py` — the bridge exits after `--idle-exit` with no plugins and no requests; on any exit it

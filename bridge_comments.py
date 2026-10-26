@@ -44,14 +44,14 @@ ERROR_KEEP = 120      # the window shows a rejected token this long
 THREADS_MAX = 200     # open comments one call lists
 TEXT_MAX = 4000       # characters of one comment
 
-STATE: dict = {"token": None, "check": None, "why": None, "at": 0.0}
+STATE: dict = {"token": None, "check": None, "why": None, "at": 0.0, "gen": 0, "rejected": False}
 ASKS: dict = {}       # doc key -> {"agent", "at"}: an agent that wanted comments with no token
 DECLINED: set = set()  # doc keys whose designer pressed Not now, until the bridge restarts
 _tasks: set = set()
 
 
 def reset():
-    STATE.update(token=None, check=None, why=None, at=0.0)
+    STATE.update(token=None, check=None, why=None, at=0.0, gen=0, rejected=False)
     ASKS.clear()
     DECLINED.clear()
 
@@ -64,7 +64,7 @@ def _path():
 
 def load():
     """The token the file keeps, once the bridge starts."""
-    STATE["token"] = None
+    STATE.update(token=None, rejected=False)
     try:
         text = _path().read_text(encoding="utf-8").strip()
     except (OSError, UnicodeDecodeError):
@@ -102,6 +102,10 @@ def _keep(token):
         os.replace(part, path)
         return True
     except OSError as e:
+        try:
+            path.with_name(path.name + ".part").unlink()
+        except OSError:
+            pass
         print(f"[figma] can't keep the token in {path} ({e.strerror or e}): until the bridge restarts")
         return False
 
@@ -120,12 +124,13 @@ def board_part():
     check, why = STATE["check"], STATE["why"]
     if check == "error" and time.time() - STATE["at"] > ERROR_KEEP:
         check = why = None
-    return {"token": mask(STATE["token"]), "check": check, "why": why if check == "error" else None}
+    return {"token": mask(STATE["token"]), "check": check, "why": why if check == "error" else None,
+            "rejected": bool(STATE["token"] and STATE["rejected"])}
 
 
 def asks():
     """{doc key: agent} of the islands that ask for a token now."""
-    if has_token():
+    if has_token() and not STATE["rejected"]:
         return {}
     now = time.time()
     return {k: a["agent"] for k, a in ASKS.items() if now - a["at"] < ASK_FOR and k not in DECLINED}
@@ -162,11 +167,17 @@ async def _get(path, token):
         raise FigmaError(0, "network") from None
 
 
+def _sound_key(key):
+    """A file key that may go in a REST path: what Figma's links carry, nothing else
+    (the plugin's `hello` is not trusted to say it)."""
+    return isinstance(key, str) and bool(figma_links.FILE_KEY.match(key))
+
+
 def _file_key(doc):
     """The file key of the window's file, else of any file that has one."""
-    live = [info for _, info in bridge._live_plugins() if info.get("fileKey")]
+    live = [info for _, info in bridge._live_plugins() if _sound_key(info.get("fileKey"))]
     for cid, info in bridge._live_plugins():
-        if info.get("fileKey") and bridge._doc_key(cid) == doc:
+        if _sound_key(info.get("fileKey")) and bridge._doc_key(cid) == doc:
             return info["fileKey"]
     return live[0]["fileKey"] if live else None
 
@@ -174,6 +185,7 @@ def _file_key(doc):
 async def check(token, doc):
     """A token from the window: read the file's version history with it. A token
     Figma takes is kept; anything else leaves the one there was."""
+    gen = STATE["gen"]
     key = _file_key(doc)
     STATE.update(check="checking", why=None, at=time.time())
     bridge_board.changed()
@@ -186,10 +198,12 @@ async def check(token, doc):
         except FigmaError as e:
             why = e.why
             print(f"[figma] the token check failed: {e.why} (HTTP {e.status})")
+    if gen != STATE["gen"]:
+        return  # a Remove or a newer Save came while Figma was answering: it wins
     if why is None:
         if _keep(token):
             print("[figma] a token was saved")
-        STATE.update(token=token, check=None, why=None)
+        STATE.update(token=token, check=None, why=None, rejected=False)
         ASKS.clear()
     else:
         STATE.update(check="error", why=why, at=time.time())
@@ -204,8 +218,7 @@ async def window_message(m):
     if mtype == "figma-token":
         token = m.get("token")
         token = token.strip() if isinstance(token, str) else ""
-        if STATE["check"] == "checking":
-            return True
+        STATE["gen"] += 1  # a check on its way no longer counts
         if not _valid(token):
             STATE.update(check="error", why="rejected", at=time.time())
             bridge_board.changed()
@@ -215,7 +228,8 @@ async def window_message(m):
         _tasks.add(task)
         task.add_done_callback(_tasks.discard)
     elif mtype == "figma-token-remove":
-        STATE.update(token=None, check=None, why=None)
+        STATE.update(token=None, check=None, why=None, rejected=False)
+        STATE["gen"] += 1  # a check on its way must not save it again
         _drop()
         print("[figma] the token was removed")
         bridge_board.changed()
@@ -276,7 +290,7 @@ def threads(comments):
                     "message": _text(c.get("message")), "pin": _pin(c),
                     "replies": [{"id": str(r["id"]), "author": _who(r), "at": r.get("created_at"),
                                  "message": _text(r.get("message"))} for r in mine]})
-    return out[:THREADS_MAX], skipped
+    return out, skipped
 
 
 def _no_token(asked, declined):
@@ -311,6 +325,9 @@ async def comments_handler(request: web.Request) -> web.Response:
     agent = body.get("agent")
     agent = agent.strip()[:40] or None if isinstance(agent, str) else None
     target = body.get("target")
+    if target is not None and not isinstance(target, str):
+        return web.json_response({"ok": False, "error": "'target' is a Figma link or a file key, as text"},
+                                 status=400)
     link = figma_links.parse(target) if target else None
     key = link.key if link else target if target and figma_links.FILE_KEY.match(target) else None
     conn_id, info = bridge_exec.resolve_target(target)
@@ -322,6 +339,11 @@ async def comments_handler(request: web.Request) -> web.Response:
                 "ok": False,
                 "error": (f"the plugin in \"{name}\" runs a build that doesn't tell the file's key: "
                           f"update it first: figaro reload")}, status=409)
+        if not _sound_key(key):
+            return web.json_response({
+                "ok": False,
+                "error": (f"the plugin in \"{name}\" gave a file key that isn't one: "
+                          f"run it again from the menu, or figaro reload")}, status=409)
     elif key is None:
         status = 503 if not bridge._live_plugins() else 409
         return web.json_response({"ok": False, "error": info}, status=status)
@@ -343,12 +365,24 @@ async def comments_handler(request: web.Request) -> web.Response:
     except FigmaError as e:
         print(f"[figma] comments of {key}: {e.why} (HTTP {e.status})")
         status, text = FAILS.get(e.why, FAILS["rejected"])
+        if e.why == "rejected":
+            STATE["rejected"] = True
+            if doc and doc not in DECLINED:
+                ASKS[doc] = {"agent": bridge_board._who(agent), "at": time.time()}
+                asyncio.get_running_loop().call_later(ASK_FOR + 0.1, bridge_board.changed)
+            bridge_board.changed()
         return web.json_response({"ok": False, "error": text, "token_rejected": e.why == "rejected"},
                                  status=status)
     listed = data.get("comments") if isinstance(data, dict) else None
     found, skipped = threads(listed if isinstance(listed, list) else [])
+    cut = max(0, len(found) - THREADS_MAX)
+    found = found[:THREADS_MAX]
+    if STATE["rejected"]:
+        STATE["rejected"] = False
+        ASKS.clear()
+        bridge_board.changed()
     return web.json_response({"ok": True, "file": name, "fileKey": key, "connected": conn_id is not None,
-                              "comments": found, "skipped": skipped,
+                              "comments": found, "skipped": skipped, "cut": cut,
                               "elapsed_ms": int((time.time() - t0) * 1000)})
 
 

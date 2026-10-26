@@ -30,6 +30,11 @@ file; the release notes say when it has to be imported again.
   designer chose not to add a token, and the window isn't asked again for that file until the bridge restarts.
   A window with a bridge from before it shows no token block and no ask, and `figaro comments` with such a
   bridge says to update it.
+- A saved token that Figma stops accepting (expired, revoked) no longer shows as "Connected": the settings show it
+  as refused, with the field for a new token and Remove, and the file's island asks again. A new token that
+  works, or Remove, clears it.
+- `figaro comments` says how many open comments it left out when a file has more than 200, and a bad `target` or
+  a file key that isn't one gets a plain error. Removing the token while Save is still checking it now sticks.
 
 ## [1.6.0] — 2026-10-26
 

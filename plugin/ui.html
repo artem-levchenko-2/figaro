@@ -822,7 +822,7 @@ function takeBoard(m) {
     // The Figma token: {token: "figd_…a1c4" or null, check: "checking" or "error" or null, why}. A bridge
     // before the token has none, and the window shows no block and no ask.
     figma: m.figma && typeof m.figma === "object"
-      ? { token: typeof m.figma.token === "string" ? m.figma.token : null, check: m.figma.check || null, why: m.figma.why || null } : null,
+      ? { token: typeof m.figma.token === "string" ? m.figma.token : null, check: m.figma.check || null, why: m.figma.why || null, rejected: m.figma.rejected === true } : null,
     notes: m.notes && Array.isArray(m.notes.items) ? m.notes : null,
     folder: typeof m.folder === "string" ? m.folder : "",
     newest: m.newest && m.newest.latest ? m.newest : null,  // skipped or not: {latest, url, button}
@@ -951,7 +951,7 @@ const av = (name) => `<span class="av" style="--av: ${color(name)}">${esc((Array
 // wants comments with no token to read them says so there too.
 function headline(f) {
   const h = headlineOf(f);
-  return f.ask && board && board.figma && !board.figma.token && !h.alarm && h.kind !== "connecting" && h.kind !== "nobridge"
+  return f.ask && board && board.figma && (!board.figma.token || board.figma.rejected) && !h.alarm && h.kind !== "connecting" && h.kind !== "nobridge"
     ? Object.assign({}, h, { sub: esc(f.ask.agent) + " wants to read comments" }) : h;
 }
 function headlineOf(f) {
@@ -1000,7 +1000,7 @@ function callout(f) {
       + `<p>Reload ${f.here ? "this file" : "the file"} in Figma: close its tab and open it again, or quit Figma if the tab won't close. Then run Figaro in it.</p></div>`;
   }
   // An agent asked for comments, and the designer hasn't given Figaro a token: add one, or not now.
-  if (f.ask && board && board.figma && !board.figma.token) {
+  if (f.ask && board && board.figma && (!board.figma.token || board.figma.rejected)) {
     return `<div class="callout ask"><div class="h"><span class="ind"><span class="dot" style="--c: var(--run)"></span></span>${esc(f.ask.agent)} wants to read comments</div>`
       + "<p>Figma shows comments only to an app with your token. Add one in the settings, and your agent can go on.</p>"
       + '<div class="acts"><button type="button" class="go" data-act="ask-add">Add a Figma token</button>'
@@ -1321,7 +1321,8 @@ function tokenCard() {
   const fg = board && board.figma;
   if (!fg) return "";
   const title = '<b>Figma token<span class="opt">Optional</span></b>';
-  if (fg.token) {
+  const refused = !!(fg.token && fg.rejected);  // Figma turned the saved token down: it is replaced or removed
+  if (fg.token && !refused) {
     tokenDraft = "";
     return '<div class="slot"><div class="island"><div class="set"><span class="t">' + title
       + `<span><span class="okc">Connected</span> · ${esc(fg.token)}. Agents can read comments and the version history of the files they work in</span></span>`
@@ -1331,13 +1332,15 @@ function tokenCard() {
   const can = conn === "ok" && !checking;
   const how = '<p class="help">In Figma: account menu → <b>Settings</b> → <b>Security</b> → <b>Generate new token</b>. '
     + `Let it read comments and file versions. <button type="button" class="lnk" data-act="release" data-url="${TOKEN_HELP}"><span>Figma help</span>${ICON.out}</button></p>`;
-  const why = failed ? `<p class="help err">${TOKEN_WHY[fg.why] || TOKEN_WHY.rejected}</p>` : "";
+  const why = failed ? `<p class="help err">${TOKEN_WHY[fg.why] || TOKEN_WHY.rejected}</p>`
+    : refused ? `<p class="help err">Figma no longer accepts the saved token, ${esc(fg.token)}. Paste a new one, or remove it.</p>` : "";
+  const drop = refused ? `<button type="button" class="go2" data-act="token-remove"${conn === "ok" ? "" : " disabled"}>Remove</button>` : "";
   const save = checking
     ? '<button type="button" class="go" data-act="token-save" disabled><span class="spin"></span>Checking</button>'
     : `<button type="button" class="go" data-act="token-save"${can && tokenDraft.trim() ? "" : " disabled"}>Save</button>`;
   return '<div class="slot"><div class="island"><div class="set tok"><span class="t">' + title
-    + "<span>Lets agents read comments in Figma and see who changed a layer and when</span></span></div>"
-    + `<div class="fld"><input class="inp${failed ? " err" : ""}${checking ? " dim" : ""}" type="password" data-field="figma-token" placeholder="figd_…" `
+    + "<span>Lets agents read comments in Figma and see who changed a layer and when</span></span>" + drop + "</div>"
+    + `<div class="fld"><input class="inp${failed || refused ? " err" : ""}${checking ? " dim" : ""}" type="password" data-field="figma-token" placeholder="figd_…" `
     + `autocomplete="off" spellcheck="false" aria-label="Figma token" value="${esc(tokenDraft)}"${can ? "" : " disabled"}>${save}</div>`
     + why + how + '<p class="help last">Figaro keeps it on this computer only.</p></div></div>';
 }
@@ -1857,7 +1860,7 @@ function act(name, fid, el) {
     lastHtml = settingsView();
   } else if (name === "token-save") {
     const token = tokenDraft.trim();
-    if (!token || !board || !board.figma || board.figma.token || board.figma.check === "checking") return;
+    if (!token || !board || !board.figma || (board.figma.token && !board.figma.rejected) || board.figma.check === "checking") return;
     cue("go");
     board.figma.check = "checking";  // at once; the bridge's board says how the check went
     board.figma.why = null;
@@ -1867,6 +1870,7 @@ function act(name, fid, el) {
   } else if (name === "token-remove" && board && board.figma) {
     cue("layer");
     board.figma.token = null;
+    board.figma.rejected = false;
     board.figma.check = null;
     send({ type: "figma-token-remove" });
     render();

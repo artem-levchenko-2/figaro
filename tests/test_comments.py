@@ -30,7 +30,7 @@ from test_exec import FakePlugin
 
 TOKEN = "figd_" + "x" * 30 + "a1c4"
 MASKED = "figd_…a1c4"
-KEY = "KEY1"
+KEY = "K1aaaaaaaaaaaaaaaaaaaa"
 
 
 def frame_pin(**extra):
@@ -103,7 +103,7 @@ def figma_of(p):
     return boards(p)[-1]["figma"]
 
 
-async def save(p, token=TOKEN, doc="doc:KEY1"):
+async def save(p, token=TOKEN, doc="doc:K1aaaaaaaaaaaaaaaaaaaa"):
     await window(p, type="figma-token", token=token, doc=doc)
     await asyncio.sleep(0.4)
 
@@ -115,10 +115,10 @@ def test_a_token_figma_takes_is_kept_in_a_file_of_its_own_and_nowhere_else(monke
         async with FakeFigma(monkeypatch) as fig:
             c = await make_client()
             async with FakePlugin(c, name="A", key=KEY, caps=CAPS) as p:
-                assert figma_of(p) == {"token": None, "check": None, "why": None}
+                assert figma_of(p) == {"token": None, "check": None, "why": None, "rejected": False}
                 await save(p)
-                assert figma_of(p) == {"token": MASKED, "check": None, "why": None}
-                assert ("/v1/files/KEY1/versions", TOKEN) in fig.seen  # checked on this file's version history
+                assert figma_of(p) == {"token": MASKED, "check": None, "why": None, "rejected": False}
+                assert ("/v1/files/K1aaaaaaaaaaaaaaaaaaaa/versions", TOKEN) in fig.seen  # checked on this file's version history
                 path = token_file()
                 assert path.read_text(encoding="utf-8") == TOKEN
                 assert path.parent == figaro_token.token_path(bridge.PORT).parent
@@ -150,7 +150,7 @@ def test_a_token_figma_refuses_is_not_kept(monkeypatch):
             c = await make_client()
             async with FakePlugin(c, name="A", key=KEY, caps=CAPS) as p:
                 await save(p)
-                assert figma_of(p) == {"token": None, "check": "error", "why": "rejected"}
+                assert figma_of(p) == {"token": None, "check": "error", "why": "rejected", "rejected": False}
                 assert not token_file().exists()
                 assert not bridge_comments.has_token()
                 for m in p.received:
@@ -184,7 +184,7 @@ def test_the_check_says_when_figma_doesnt_answer(monkeypatch):
         c = await make_client()
         async with FakePlugin(c, name="A", key=KEY, caps=CAPS) as p:
             await save(p)
-            assert figma_of(p) == {"token": None, "check": "error", "why": "network"}
+            assert figma_of(p) == {"token": None, "check": "error", "why": "network", "rejected": False}
         await c.close()
     run(go())
 
@@ -206,7 +206,7 @@ def test_a_token_that_is_no_token_never_goes_to_figma(monkeypatch):
             c = await make_client()
             async with FakePlugin(c, name="A", key=KEY, caps=CAPS) as p:
                 for bad in ("", "   ", "two words", "x" * 600, "figd_" + chr(0x431), 42, None):
-                    await window(p, type="figma-token", token=bad, doc="doc:KEY1")
+                    await window(p, type="figma-token", token=bad, doc="doc:K1aaaaaaaaaaaaaaaaaaaa")
                 await settle()
                 assert fig.seen == [] and not bridge_comments.has_token()
             await c.close()
@@ -218,7 +218,7 @@ def test_remove_forgets_the_token_in_every_window(monkeypatch):
         async with FakeFigma(monkeypatch):
             c = await make_client()
             async with FakePlugin(c, name="A", key=KEY, caps=CAPS) as a, \
-                    FakePlugin(c, name="B", key="KEY2", caps=CAPS) as b:
+                    FakePlugin(c, name="B", key="K2aaaaaaaaaaaaaaaaaaaa", caps=CAPS) as b:
                 await save(a)
                 assert figma_of(b)["token"] == MASKED
                 await window(b, type="figma-token-remove")
@@ -230,20 +230,55 @@ def test_remove_forgets_the_token_in_every_window(monkeypatch):
     run(go())
 
 
-def test_a_second_save_while_checking_is_ignored(monkeypatch):
+def test_remove_while_a_check_runs_wins_over_the_check(monkeypatch):
     async def go():
         async with FakeFigma(monkeypatch) as fig:
             gate = fig.gate = asyncio.Event()
             c = await make_client()
             async with FakePlugin(c, name="A", key=KEY, caps=CAPS) as p:
-                await window(p, type="figma-token", token=TOKEN, doc="doc:KEY1")
+                await window(p, type="figma-token", token=TOKEN, doc="doc:" + KEY)
                 await settle()
                 assert figma_of(p)["check"] == "checking"
-                await window(p, type="figma-token", token="figd_second", doc="doc:KEY1")
+                await window(p, type="figma-token-remove")
                 await settle()
                 gate.set()
-                await asyncio.sleep(0.3)
-                assert len(fig.seen) == 1 and figma_of(p)["token"] == MASKED
+                await asyncio.sleep(0.4)
+                assert not bridge_comments.has_token() and not token_file().exists()
+                assert figma_of(p)["token"] is None and figma_of(p)["check"] is None
+            await c.close()
+    run(go())
+
+
+def test_a_newer_save_wins_over_a_check_that_started_before_it(monkeypatch):
+    async def go():
+        async with FakeFigma(monkeypatch) as fig:
+            gate = fig.gate = asyncio.Event()
+            c = await make_client()
+            async with FakePlugin(c, name="A", key=KEY, caps=CAPS) as p:
+                await window(p, type="figma-token", token="figd_first", doc="doc:" + KEY)
+                await settle()
+                await window(p, type="figma-token", token=TOKEN, doc="doc:" + KEY)
+                await settle()
+                gate.set()
+                await asyncio.sleep(0.4)
+                # the first one, which Figma refuses, must not leave an error over the second
+                assert figma_of(p) == {"token": MASKED, "check": None, "why": None, "rejected": False}
+                assert token_file().read_text(encoding="utf-8") == TOKEN
+            await c.close()
+    run(go())
+
+
+def test_a_failed_write_leaves_no_part_file(monkeypatch):
+    async def go():
+        async with FakeFigma(monkeypatch):
+            c = await make_client()
+            async with FakePlugin(c, name="A", key=KEY, caps=CAPS) as p:
+                def boom(*a, **k):
+                    raise OSError(28, "No space left on device")
+                monkeypatch.setattr(os, "replace", boom)
+                await save(p)
+                assert not list(token_file().parent.glob("figma-token*"))
+                assert bridge_comments.has_token()  # kept until the bridge restarts
             await c.close()
     run(go())
 
@@ -287,7 +322,7 @@ def test_comments_lists_the_open_ones_with_their_pins(monkeypatch):
                 assert [t["id"] for t in body["comments"]] == ["10", "11"]
                 assert body["comments"][0]["replies"][0]["message"] == "agreed"
                 assert TOKEN not in json.dumps(body)
-                assert fig.seen[-1] == ("/v1/files/KEY1/comments", TOKEN)
+                assert fig.seen[-1] == ("/v1/files/K1aaaaaaaaaaaaaaaaaaaa/comments", TOKEN)
             await c.close()
     run(go())
 
@@ -296,8 +331,8 @@ def test_comments_of_a_file_that_isnt_open_are_listed_without_a_window(monkeypat
     async def go():
         async with FakeFigma(monkeypatch, comments=[page_pin()]) as fig:
             c = await make_client()
-            async with FakePlugin(c, name="Other", key="KEY2", caps=CAPS) as p:
-                await save(p, doc="doc:KEY2")
+            async with FakePlugin(c, name="Other", key="K2aaaaaaaaaaaaaaaaaaaa", caps=CAPS) as p:
+                await save(p, doc="doc:K2aaaaaaaaaaaaaaaaaaaa")
                 key = "AbCdEfGhIjKlMnOpQrStUv"
                 r = await comments_of(c, target=f"https://www.figma.com/design/{key}/Sandbox?node-id=1-2")
                 body = await r.json()
@@ -325,7 +360,7 @@ def test_without_a_token_the_designer_is_asked_on_the_files_island(monkeypatch):
         async with FakeFigma(monkeypatch, comments=[page_pin()]):
             c = await make_client()
             async with FakePlugin(c, name="Draft", key=KEY, caps=CAPS) as p, \
-                    FakePlugin(c, name="Other", key="KEY2", caps=CAPS) as q:
+                    FakePlugin(c, name="Other", key="K2aaaaaaaaaaaaaaaaaaaa", caps=CAPS) as q:
                 r = await comments_of(c, target="Draft", agent="designer")
                 body = await r.json()
                 assert r.status == 403 and body["needs_token"] and body["asked"] and not body["declined"]
@@ -335,7 +370,7 @@ def test_without_a_token_the_designer_is_asked_on_the_files_island(monkeypatch):
                 assert island(p, "Draft")["ask"] == {"agent": "designer"}
                 assert island(q, "Other")["ask"] is None
                 # a token comes: the ask is gone, and the next call works
-                await save(q, doc="doc:KEY2")
+                await save(q, doc="doc:K2aaaaaaaaaaaaaaaaaaaa")
                 assert island(p, "Draft")["ask"] is None
                 r = await comments_of(c, target="Draft", agent="designer")
                 assert r.status == 200
@@ -348,12 +383,12 @@ def test_not_now_stops_the_asking_until_the_bridge_restarts(monkeypatch):
         async with FakeFigma(monkeypatch):
             c = await make_client()
             async with FakePlugin(c, name="Draft", key=KEY, caps=CAPS) as p, \
-                    FakePlugin(c, name="Other", key="KEY2", caps=CAPS) as q:
+                    FakePlugin(c, name="Other", key="K2aaaaaaaaaaaaaaaaaaaa", caps=CAPS) as q:
                 await comments_of(c, target="Draft", agent="designer")
                 await comments_of(c, target="Other", agent="writer")
                 await settle()
                 assert island(p, "Draft")["ask"] and island(q, "Other")["ask"]
-                await window(p, type="ask-hide", doc="doc:KEY1")
+                await window(p, type="ask-hide", doc="doc:K1aaaaaaaaaaaaaaaaaaaa")
                 await settle()
                 assert island(p, "Draft")["ask"] is None and island(q, "Other")["ask"] == {"agent": "writer"}
                 r = await comments_of(c, target="Draft", agent="designer")
@@ -376,7 +411,7 @@ def test_not_now_stops_the_asking_until_the_bridge_restarts(monkeypatch):
 def test_a_file_that_isnt_open_cant_be_asked(monkeypatch):
     async def go():
         c = await make_client()
-        async with FakePlugin(c, name="Other", key="KEY2", caps=CAPS) as p:
+        async with FakePlugin(c, name="Other", key="K2aaaaaaaaaaaaaaaaaaaa", caps=CAPS) as p:
             r = await comments_of(c, target="AbCdEfGhIjKlMnOpQrStUv")
             body = await r.json()
             assert r.status == 403 and body["needs_token"] and body["asked"] is False
@@ -610,3 +645,93 @@ def test_the_times_are_read_as_figma_writes_them():
 
 def test_the_bridge_code_digest_covers_the_new_module():
     assert any(p.name == "bridge_comments.py" for p in bridge._BRIDGE_CODE)
+
+
+def test_a_target_that_is_not_text_is_400(monkeypatch):
+    async def go():
+        async with FakeFigma(monkeypatch) as fig:
+            c = await make_client()
+            async with FakePlugin(c, name="Draft", key=KEY, caps=CAPS):
+                bridge_comments.STATE["token"] = TOKEN
+                for bad in (5, ["Draft"], {"a": 1}, True):
+                    r = await comments_of(c, target=bad)
+                    assert r.status == 400 and "'target'" in (await r.json())["error"]
+                assert fig.seen == []
+            await c.close()
+    run(go())
+
+
+def test_a_file_key_from_the_plugin_that_is_not_a_key_never_goes_to_figma(monkeypatch):
+    async def go():
+        async with FakeFigma(monkeypatch) as fig:
+            c = await make_client()
+            for bad in ("../../v1/me", "abc/def", "K1aaaaaaaaaaaaaaaaaaaa?x=1"):
+                async with FakePlugin(c, name="Draft", key=bad, caps=CAPS) as p:
+                    bridge_comments.STATE["token"] = TOKEN
+                    r = await comments_of(c, target="Draft")
+                    assert r.status == 409 and "isn't one" in (await r.json())["error"]
+                    bridge_comments.STATE["token"] = None
+                    await window(p, type="figma-token", token=TOKEN, doc="doc:" + str(bad))
+                    await settle()
+                    assert figma_of(p)["check"] == "error" and figma_of(p)["why"] == "open"
+            assert fig.seen == []
+            await c.close()
+    run(go())
+
+
+def test_a_saved_token_figma_refuses_shows_as_rejected_and_asks_again(monkeypatch):
+    async def go():
+        async with FakeFigma(monkeypatch, comments=[page_pin()]) as fig:
+            c = await make_client()
+            async with FakePlugin(c, name="Draft", key=KEY, caps=CAPS) as p:
+                await save(p)
+                assert island(p, "Draft")["ask"] is None
+                fig.token = "figd_changed"
+                r = await comments_of(c, target="Draft", agent="designer")
+                assert r.status == 403 and (await r.json())["token_rejected"] is True
+                await settle()
+                assert figma_of(p)["rejected"] is True and figma_of(p)["token"] == MASKED
+                assert island(p, "Draft")["ask"] == {"agent": "designer"}
+                assert TOKEN not in json.dumps(p.received[-1])
+                # a new token that works clears both
+                fig.token = "figd_" + "y" * 30 + "b2d3"
+                await save(p, token=fig.token)
+                assert figma_of(p)["rejected"] is False and island(p, "Draft")["ask"] is None
+            await c.close()
+    run(go())
+
+
+def test_remove_clears_a_rejected_token(monkeypatch):
+    async def go():
+        async with FakeFigma(monkeypatch) as fig:
+            c = await make_client()
+            async with FakePlugin(c, name="Draft", key=KEY, caps=CAPS) as p:
+                await save(p)
+                fig.token = "figd_changed"
+                await comments_of(c, target="Draft")
+                await window(p, type="figma-token-remove")
+                await settle()
+                assert figma_of(p) == {"token": None, "check": None, "why": None, "rejected": False}
+            await c.close()
+    run(go())
+
+
+def test_threads_left_out_by_the_limit_are_counted(monkeypatch):
+    monkeypatch.setattr(bridge_comments, "THREADS_MAX", 2)
+
+    async def go():
+        many = [frame_pin(id=str(100 + i), created_at=f"2026-10-26T15:12:{i:02d}Z") for i in range(5)]
+        async with FakeFigma(monkeypatch, comments=many):
+            c = await make_client()
+            async with FakePlugin(c, name="Draft", key=KEY, caps=CAPS) as p:
+                await save(p)
+                body = await (await comments_of(c, target="Draft")).json()
+                assert len(body["comments"]) == 2 and body["cut"] == 3
+            await c.close()
+    run(go())
+
+
+def test_the_report_says_how_many_open_comments_were_left_out():
+    text = comments_text.render(dict(LISTED, comments=LISTED["comments"][:1], cut=7), None)
+    assert "7 more open, left out" in "\n".join(text)
+    assert "more open" not in "\n".join(comments_text.render(dict(LISTED, comments=LISTED["comments"][:1]), None))

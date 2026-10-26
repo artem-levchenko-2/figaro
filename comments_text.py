@@ -179,6 +179,9 @@ def render(resp, answers):
             if threads else f'no open comments in "{name}"')
     if skipped:
         head += f" ({skipped} resolved, left out)"
+    cut = resp.get("cut") or 0
+    if cut:
+        head += f" ({cut} more open, left out)"
     out = [head]
     for t in threads:
         out.append("")

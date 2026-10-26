@@ -1119,6 +1119,21 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.board(asking(true), { settings, figma: { token: "figd_…a1c4", check: null, why: null } });
     await env.clock.advance(400);
     check("once there is a token, no ask shows", /wants to read comments/.test(env.html()), false);
+    // a saved token that Figma turned down: the ask is back, and the settings say so
+    env.board(asking(true), { settings, figma: { token: "figd_…a1c4", check: null, why: null, rejected: true } });
+    await env.clock.advance(400);
+    check("a refused saved token asks again, on each island that has an ask", [/designer wants to read comments/.test(env.html()), /writer wants to read comments/.test(env.html())], [true, true]);
+    env.click("ask-add", "here");
+    await env.clock.advance(1000);
+    check("…its button leads to the settings, where the token shows as refused, with a field and Remove",
+          [/<b>Figma token<span/.test(env.app()), /<p class="help err">Figma no longer accepts the saved token, figd_…a1c4\. Paste a new one, or remove it\.<\/p>/.test(env.app()),
+           /class="inp err"/.test(env.app()), /data-act="token-remove"/.test(env.app()), /<span class="okc">Connected/.test(env.app())], [true, true, true, true, false]);
+    env.type("figd_new");
+    env.board(asking(true), { settings, figma: { token: "figd_…a1c4", check: null, why: null, rejected: true }, checked: 9000 });
+    await env.clock.advance(400);
+    env.click("token-save");
+    check("…and a new token can be saved over it", env.sent("figma-token").slice(-1), [{ type: "figma-token", token: "figd_new", doc: "doc:KEY1" }]);
+    env.click("back");
   }
 
   // ─── minimized ──────────────────────────────────────────────────────────
