@@ -8,6 +8,8 @@ it follows the variable the bridge started with (FIGARO_SOUNDS=off).
     sounds    the window's sounds (never the keep-awake tone)
     others    the islands of other files where agents work; off: this file, and
               those where Figma stopped answering
+    recent    each island's list of what agents changed lately; off: only the
+              agents (a window before the switch ignores it)
     versions  a checkpoint before an agent first changes a file, then hourly
               (bridge_exec); an agent's --checkpoint "label" still saves one
 
@@ -29,7 +31,7 @@ import bridge
 import bridge_board
 import figaro_token
 
-NAMES = ("sounds", "others", "versions")
+NAMES = ("sounds", "others", "recent", "versions")
 SETTINGS: dict = {}   # what was switched in a window: name -> bool
 NOTES: dict = {}      # version -> what is new in it, a line each
 NOTES_MAX = 5

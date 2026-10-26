@@ -476,7 +476,7 @@ and knocks twice when Figma stops answering in its own file.
 
 Everything works without settings.
 
-**In the plugin's window**, ⚙ on its last line shows three switches. They hold
+**In the plugin's window**, ⚙ on its last line shows four switches. They hold
 in every window and across restarts: the bridge keeps them in
 `~/.figaro/settings.json`.
 
@@ -484,6 +484,7 @@ in every window and across restarts: the bridge keeps them in
 | :-- | :-- | :-- |
 | Sounds | on | The window's sounds for what you press, and its knock when Figma stops answering. The tone you can't hear, which keeps a background Figma quick, plays either way |
 | Show other files | on | Off: each window shows its own file's island, and other files only where Figma isn't answering |
+| Show recent changes | on | Off: an island lists its agents only, without what they changed lately |
 | Save versions as agents work | on | Off: no version before an agent's first change in a file, and none hourly. An agent's `--checkpoint "label"` still saves one |
 
 Under them is the version: what is new in it, ↻ to look for a new release now,

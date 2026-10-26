@@ -813,6 +813,8 @@ const alarm = (f) => (f.stuck || f.lost ? 1 : 0);
 // With the other files off in the settings, only those where Figma stopped
 // answering: they need the user's hand all the same.
 const othersShown = () => !(board && board.settings && board.settings.others === false);
+// Each island's Recent list; off in the settings, it is gone from all of them.
+const recentShown = () => !(board && board.settings && board.settings.recent === false);
 function filesNow() {
   const here = { id: "here", doc: null, name: identity.name || "This file", here: true, agents: [], recent: [] };
   if (conn !== "ok" || !board) {
@@ -1018,7 +1020,7 @@ function event(e, here) {
 function panel(f) {
   const on = conn === "ok";
   const list = on ? agentsOf(f) : [];
-  const feed = on ? f.recent.slice(0, 5) : [];
+  const feed = on && recentShown() ? f.recent.slice(0, 5) : [];
   const note = callout(f);
   // No agent at work: the Agents section is there all the same, with a ghost of
   // an agent's row. Changes left from agents who went are no reason to drop it.
@@ -1241,12 +1243,15 @@ function footer() {
 const SETS = [
   ["sounds", "Sounds", "Buttons, minimize, Stop; a knock when Figma stops answering"],
   ["others", "Show other files", "Islands of your other Figma files where agents work. A file where Figma isn't answering shows anyway"],
+  ["recent", "Show recent changes", "What agents changed lately, under each file's agents. A layer there selects it in Figma"],
   ["versions", "Save versions as agents work", "Before an agent first changes a file, then hourly. Everyone with access sees them in its version history"],
 ];
 function settingsView() {
   const can = conn === "ok" && !!(board && board.settings);
   const value = (k) => (board && board.settings ? board.settings[k] !== false : k === "sounds" ? !(board && !board.sounds) : true);
-  const sets = SETS.map(([k, title, sub]) => {
+  // A bridge before the Recent switch doesn't know it: no switch, the list stays.
+  const known = ([k]) => k !== "recent" || !board || !!(board.settings && "recent" in board.settings);
+  const sets = SETS.filter(known).map(([k, title, sub]) => {
     const on = value(k);
     return `<div class="set"><span class="t"><b>${title}</b><span>${sub}</span></span>`
       + `<button type="button" class="sw${on ? " on" : ""}" role="switch" aria-checked="${on}" aria-label="${title}" data-act="set" data-name="${k}"${can ? "" : " disabled"}></button></div>`;

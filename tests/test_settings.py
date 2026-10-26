@@ -31,11 +31,11 @@ def test_a_switch_in_one_window_switches_it_in_all_and_holds_across_restarts():
         c = await make_client()
         async with FakePlugin(c, name="A", key="KEY1", caps=CAPS) as a, \
                 FakePlugin(c, name="B", key="KEY2", caps=CAPS) as b:
-            assert boards(b)[-1]["settings"] == {"sounds": True, "others": True, "versions": True}
+            assert boards(b)[-1]["settings"] == {"sounds": True, "others": True, "recent": True, "versions": True}
             await switch(a, "others", False)
             await settle()
             for p in (a, b):
-                assert boards(p)[-1]["settings"] == {"sounds": True, "others": False, "versions": True}
+                assert boards(p)[-1]["settings"] == {"sounds": True, "others": False, "recent": True, "versions": True}
             assert json.loads(kept().read_text(encoding="utf-8")) == {"others": False}
             assert [f.name for f in kept().parent.glob("settings.json*")] == ["settings.json"]  # no .part left
             status = await (await c.get("/status")).json()
@@ -46,6 +46,33 @@ def test_a_switch_in_one_window_switches_it_in_all_and_holds_across_restarts():
         c = await make_client()
         assert bridge_settings.current()["others"] is False
         await c.close()
+    run(go())
+
+
+def test_recent_changes_are_on_until_switched_and_the_switch_reaches_every_window():
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, name="A", key="KEY1", caps=CAPS) as a, \
+                FakePlugin(c, name="B", key="KEY2", caps=CAPS) as b:
+            assert boards(a)[-1]["settings"]["recent"] is True  # an old settings.json has no such field
+            await switch(a, "recent", False)
+            await settle()
+            for p in (a, b):
+                assert boards(p)[-1]["settings"]["recent"] is False
+            assert json.loads(kept().read_text(encoding="utf-8")) == {"recent": False}
+            status = await (await c.get("/status")).json()
+            assert status["settings"]["recent"] is False
+            await switch(b, "recent", True)
+            await settle()
+            assert boards(a)[-1]["settings"]["recent"] is True
+        await c.close()
+
+        kept().write_text('{"others": false}', encoding="utf-8")  # a file from before the switch
+        bridge_settings.load()
+        assert bridge_settings.current()["recent"] is True
+        kept().write_text('{"recent": false}', encoding="utf-8")
+        bridge_settings.load()
+        assert bridge_settings.current()["recent"] is False
     run(go())
 
 
@@ -65,7 +92,7 @@ def test_a_switch_it_doesnt_know_changes_nothing():
             for name, on in (("tone", False), ("sounds", "off"), ("sounds", 0), (None, False)):
                 await switch(p, name, on)
             await settle()
-            assert boards(p)[-1]["settings"] == {"sounds": True, "others": True, "versions": True}
+            assert boards(p)[-1]["settings"] == {"sounds": True, "others": True, "recent": True, "versions": True}
             assert not kept().exists()
         await c.close()
     run(go())
@@ -75,10 +102,10 @@ def test_a_settings_file_it_cant_read_leaves_them_as_they_start(monkeypatch):
     monkeypatch.setenv("FIGARO_SOUNDS", "off")
     kept().write_text('{"others": "no", "versions": false, "tone": false', encoding="utf-8")
     bridge_settings.load()
-    assert bridge_settings.current() == {"sounds": False, "others": True, "versions": True}
+    assert bridge_settings.current() == {"sounds": False, "others": True, "recent": True, "versions": True}
     kept().write_text('{"others": "no", "versions": false, "tone": false}', encoding="utf-8")
     bridge_settings.load()
-    assert bridge_settings.current() == {"sounds": False, "others": True, "versions": False}
+    assert bridge_settings.current() == {"sounds": False, "others": True, "recent": True, "versions": False}
 
 
 def test_with_versions_off_agents_save_none_unless_they_name_one():

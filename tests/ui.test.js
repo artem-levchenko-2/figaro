@@ -938,6 +938,51 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("…and say nothing to it", env.sent("set"), []);
   }
 
+  // ─── Show recent changes ────────────────────────────────────────────────
+  {
+    const env = load();
+    const ago = (sec) => 1000 + env.clock.now() / 1000 - sec;
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    const change = { agent: "designer", at: ago(120), kind: "ok", summary: "Created KPI card" };
+    const files = [file("KEY1", "Dashboard", { agents: [agent("designer", { since: ago(900), last: ago(700), done: { at: ago(600), text: "" } })], recent: [change] }),
+                   file("KEY2", "Kit", { recent: [change] })];
+    const settings = { sounds: true, others: true, recent: true, versions: true };
+    env.board(files, { settings });
+    await env.clock.advance(400);
+    env.click("toggle", "here");
+    env.click("toggle", "doc:KEY2");
+    const recent = () => (env.html().match(/<div class="sect">Recent<\/div>/g) || []).length;
+    check("Recent on: each open island lists what agents changed, under its agents", [recent(), /Created KPI card/.test(env.html())], [2, true]);
+    env.click("gear");
+    check("Settings: Show recent changes is a switch, after Show other files, on",
+          [(env.app().match(/role="switch"/g) || []).length,
+           /<b>Show other files<\/b>.*?<b>Show recent changes<\/b><span>What agents changed lately, under each file's agents\. A layer there selects it in Figma<\/span>.*?<b>Save versions as agents work<\/b>/.test(env.app()),
+           /aria-checked="true" aria-label="Show recent changes"/.test(env.app())], [4, true, true]);
+    env.click("set", null, { name: "recent" });
+    check("a switch tells the bridge", env.sent("set"), [{ type: "set", name: "recent", on: false }]);
+    env.board(files, { settings: Object.assign({}, settings, { recent: false }) });
+    await env.clock.advance(400);
+    env.click("back");
+    await env.clock.advance(400);
+    check("Recent off: the islands list their agents only, in every file",
+          [recent(), /Created KPI card/.test(env.html()), /<div class="sect">Agents<\/div>/.test(env.html()), /data-fid="doc:KEY2".*No agents at work/.test(env.html())],
+          [0, false, true, true]);
+    env.click("toggle", "doc:KEY2");
+    await env.clock.advance(400);
+    check("…and a folded island keeps its line", /<span class="sub">designer · /.test(env.html()), true);
+    env.click("toggle", "doc:KEY2");
+    await env.clock.advance(400);
+    env.board(files, { settings });
+    await env.clock.advance(400);
+    check("…and on again, the lists are back", recent(), 2);
+    env.board(files, { settings: { sounds: true, others: true, versions: true } });
+    await env.clock.advance(400);
+    check("a bridge before the switch: the lists stay, as they were", recent(), 2);
+    env.click("gear");
+    check("…and the settings have no such switch", [(env.app().match(/role="switch"/g) || []).length, /Show recent changes/.test(env.app())], [3, false]);
+  }
+
   // ─── minimized ──────────────────────────────────────────────────────────
   {
     const env = load();

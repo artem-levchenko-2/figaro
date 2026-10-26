@@ -16,6 +16,10 @@ file; the release notes say when it has to be imported again.
   checks the format by its bytes and the size (Figma takes up to 4096 px wide and high) and says what is wrong
   before it asks Figma. The helper behind it is `h.image(node, source, mode)`; `figaro exec --image NAME=FILE`
   hands a file to a script of your own. A layer with no fills, such as a group, gets an error that says so.
+- **Show recent changes**, a switch in the window's settings, after Show other files: off, an island lists its
+  agents only, without what they changed lately, in every file. On by default; a folded island's line is the
+  same. The bridge keeps it with the other switches. A window with a bridge from before it shows no such
+  switch, and the lists stay.
 
 ### Changed
 
