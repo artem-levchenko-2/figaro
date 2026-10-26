@@ -58,6 +58,8 @@ names, ids and keys. Library variables can also be listed through `figma.teamLib
 - Take them from `inspect` of the layers around: the same background, the same text — by the id it prints. A
   key only for what the file doesn't have yet.
 - A hex only where there really is no token, and say so in the report. Not "hex first, bind later".
+- A text style replaces the text's own font, size, spacing and in-line formatting: attach it only when they
+  all match already (`pitfalls.md`, "Text and fonts").
 - A theme (light, dark) is variable modes: `frame.setExplicitVariableModeForCollection(collection, modeId)`,
   not component variants.
 

@@ -106,7 +106,9 @@ JS
   doesn't. PowerShell has no heredoc, and its pipe loses letters outside ASCII: there, always use `-f`.
 - One script is one transaction: read and change in the same call. Between two calls the user or another
   agent may change the file.
-- Keep a script under ~10 s: it holds the file, and everyone else waits. Bulk edits go in batches of ~25
+- Keep a script under ~10 s: it holds the file, and everyone else waits — Figma itself doesn't repaint
+  or answer the user until it ends. Search inside a node, never `figma.root.findAll`
+  (`pitfalls.md`, "Scripts"). Bulk edits go in batches of ~25
   layers, with `h.ck()` on every step of a long `for … of` loop (`helpers.md`, "Environment"). Don't wait
   inside a script with `setTimeout`.
 - `-R` — the script only reads: if it changed anything, the change is rolled back and the call fails. Run

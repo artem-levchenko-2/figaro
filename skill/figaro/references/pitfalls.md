@@ -38,12 +38,16 @@ Read the `hint:` in the answer first: the bridge knows most of the cases below.
 The helpers `h.frame`, `h.fill`, `h.hug`, `h.fixed` and `h.wrapText` already do everything in the right
 order. If you write it by hand:
 
-- **The order**: into the tree (`parent.appendChild`) → `layoutMode` → `resize()` → sizing modes → padding.
-  Figma silently ignores what was set before `layoutMode`.
+- **The order**: `layoutMode` → `resize()` → sizing modes. Padding, spacing and alignment can be set at any
+  point, and so can `appendChild` — before `layoutMode` or after, with children already inside (checked live:
+  none of it was lost). What is lost is a size: turning `layoutMode` on makes the main axis HUG, so a frame
+  resized to 200×100 first ends up 200 wide and as tall as its children. `resize()` after the mode, then HUG
+  or FIXED.
 - **`resize()` makes both axes FIXED** and resets `layoutGrow`, HUG and `textAutoResize`. Size first, modes
   after; or `h.fixed(node, w, null)`.
-- **FILL** — only for a child of an auto-layout frame, and only after `appendChild`. A FILL child of a HUG
-  parent collapses: give the parent FIXED or FILL.
+- **FILL** — only for a child of an auto-layout frame, and only after `appendChild`: before it, Figma throws
+  "node must be an auto-layout frame or a child of an auto-layout frame". A FILL child of a HUG parent
+  collapses: give the parent FIXED or FILL.
 - **HUG** — only for an auto-layout frame or a text.
 - **`counterAxisAlignItems` has no `STRETCH`**: to stretch a child across, `h.fill(child, "x")`.
 - **The text turned into a column one character wide** — its width is 0: `h.wrapText(text)` in auto-layout or
@@ -72,6 +76,26 @@ order. If you write it by hand:
   (`h.fonts(root)`).
 - A text style's font must be loaded too before you set the style: `h.fonts([text.fontName,
   style.fontName])`.
+- **A text style overwrites the text.** `setTextStyleIdAsync` replaces the font, size, line height, letter
+  spacing, case and decoration with the style's, and flattens formatting inside the line (a bold word turns
+  regular). Attach a style only when every one of those already matches it, or when changing them is the
+  point. Compare first:
+  `["fontName", "fontSize", "lineHeight", "letterSpacing", "textCase", "textDecoration", "paragraphSpacing"]
+  .every((k) => JSON.stringify(text[k]) === JSON.stringify(style[k]))` — and not at all on a text with
+  mixed ranges (`getStyledTextSegments` returns more than one segment): keep it as it is and say that no
+  style fits.
+- **`textTruncation` and `maxLines` work only on a text that wraps** (`textAutoResize = "HEIGHT"`: fixed width,
+  height follows). On `WIDTH_AND_HEIGHT` they read back as set and do nothing: the text just grows. Changing
+  `textAutoResize` afterwards resets both (`DISABLED`, `null`), and a text that grew to 700 px keeps that
+  width. Set truncation before `maxLines`: `"ENDING"` makes `maxLines` 1, and a `maxLines` set while
+  truncation is off is dropped without an error. On `NONE` truncation turns the mode into the legacy
+  `TRUNCATE`, and `maxLines` stays `null`. So:
+
+  ```js
+  await h.wrapText(title, 240);      // HEIGHT, 240 px wide (in auto-layout: no width, it fills the parent)
+  title.textTruncation = "ENDING";   // first: it sets maxLines to 1
+  title.maxLines = 2;                // then the number of lines — checked: two lines, 30 px tall
+  ```
 
 ## Fills, variables, styles
 
@@ -122,9 +146,63 @@ order. If you write it by hand:
 - **Building needs no `figma.setCurrentPageAsync`**: `figma.create*()` puts a node on the current page, and
   `page.appendChild(node)` or `h.frame(page, …)` moves it where it belongs; to read another page,
   `await page.loadAsync()`. A switched page jumps on the user's screen — don't switch it unless they ask.
+- **While a script runs, Figma is busy with it**: it doesn't repaint and doesn't answer the user, and nothing
+  else gets in (a second `--parallel` read waited until a 10 s script was over). `h.ck()` or `--timeout` ends
+  your script, but nothing makes Figma responsive before that. So a long script is not "in the background":
+  split it into batches of a few seconds.
+- **Search inside a node, never `figma.root.findAll` or `figma.currentPage.findAll`** on a file you don't know
+  the size of. In a large design file (hundreds of thousands of layers) one such call freezes Figma for tens
+  of seconds. Start from the frame you work on (`(await h.node(id)).findAll(…)`, `h.find(root, {…})`,
+  `figaro find <layer> …`) and narrow by `type` (`findAllWithCriteria`).
 - **A big `return`** (thousands of nodes) is slow: return only what you need.
 - **An error in a `--lib` library** prints as `file.js, line N`; `libMissing` — the plugin restarted, and the
   CLI sends the library again by itself.
+
+## Groups, sections, bounds
+
+- **An empty group deletes itself.** Remove the last child of a group and the group is gone (`group.removed`
+  is `true`); a later `group.remove()` or `group.children` throws `The node with id "…" does not exist`. To
+  delete a group, remove the group, not its children. To empty it on purpose, check first:
+  `if (!group.removed) group.remove();`.
+- **A section never wraps its children.** It keeps its size however much you put in (a 900 px frame in a
+  400×300 section sticks out), and a new one is 496×496. A child's `x` and `y` are relative to the section:
+  `appendChild` keeps the numbers, not the place on the canvas. Size the section yourself after filling it —
+  `resize` and `resizeWithoutConstraints` both work on it:
+
+  ```js
+  const pad = 80, kids = sec.children;
+  const minX = Math.min(...kids.map((c) => c.x)), minY = Math.min(...kids.map((c) => c.y));
+  const maxX = Math.max(...kids.map((c) => c.x + c.width)), maxY = Math.max(...kids.map((c) => c.y + c.height));
+  for (const c of kids) { c.x += pad - minX; c.y += pad - minY; }
+  sec.resizeWithoutConstraints(maxX - minX + 2 * pad, maxY - minY + 2 * pad);
+  ```
+
+  Sections sit on a page only, and have no auto-layout, constraints or `clipsContent`.
+- **`absoluteRenderBounds` is cut by every parent that clips.** A 200×200 rectangle in a 100×100 frame with
+  `clipsContent` has an `absoluteBoundingBox` of 200×200 and a render box of 100×100; fully cut off or hidden,
+  it is `null`. It includes a shadow, though (a 100×100 frame with a drop shadow: 148×148) and a text comes
+  out as its letters. For a layer's own box use `absoluteBoundingBox` or `width`/`height`. (A render box that
+  lags behind the change inside one script wasn't reproduced for rectangles, text, effects and auto-layout:
+  all were current at once.)
+
+## Prototypes
+
+- **Reactions go through `await node.setReactionsAsync([...])`.** Write `actions: [...]`: the old single
+  `action` field is refused ("update the `actions` field instead of the `action` field"). A NAVIGATE needs
+  another **top-level frame of the same page** as the destination; a frame nested in the source is rejected
+  with "destination … was rejected".
+
+  ```js
+  await a.setReactionsAsync([{ trigger: { type: "ON_CLICK" }, actions: [{
+    type: "NODE", destinationId: b.id, navigation: "NAVIGATE", resetVideoPosition: false,
+    transition: { type: "SMART_ANIMATE", easing: { type: "EASE_IN_AND_OUT" }, duration: 0.4 },
+  }] }]);
+  ```
+- **Smart Animate pairs layers by name and type**, so the two states need the same layer names and the same
+  properties on both sides. Make the second state a clone of the first (`a.clone()`: same names and types)
+  and change only what moves. A property that exists in one state only doesn't animate: use opacity 0 instead
+  of a missing fill, and a fixed size instead of HUG. (Only the API side of this was checked live: play the
+  prototype to see the animation.)
 
 ## Annotations
 

@@ -9,6 +9,16 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+### Changed
+
+- **The skill knows more traps of Figma, each checked in a draft:** a text style overwrites the text's font, size
+  and in-line formatting; `textTruncation` and `maxLines` work only on a wrapping text, in that order; the
+  auto-layout order is `layoutMode`, `resize()`, sizing modes (the parent and the padding can come at any point,
+  the old rule was stricter than Figma); an empty group deletes itself; a section keeps its size and its
+  children's coordinates are relative to it; `absoluteRenderBounds` is cut by clipping parents; prototype
+  reactions go through `setReactionsAsync`; and while a script runs Figma doesn't repaint, so search inside a
+  node and never `figma.root.findAll`.
+
 ## [1.5.2] — 2026-10-20
 
 ### Changed
