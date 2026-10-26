@@ -1001,12 +1001,13 @@ function callout(f) {
     return `<div class="callout alarm"><div class="h"><span class="ind">${h.ind}</span>Figma isn't answering</div><p>${why}</p>`
       + `<p>Reload ${f.here ? "this file" : "the file"} in Figma: close its tab and open it again, or quit Figma if the tab won't close. Then run Figaro in it.</p></div>`;
   }
-  // An agent asked for comments, and the designer hasn't given Figaro a token: add one, or not now.
+  // An agent asked for comments, and the designer hasn't given Figaro a token: not now, or add one
+  // (the main button goes last, on the right, as in Figma's own dialogs).
   if (f.ask && board && board.figma && (!board.figma.token || board.figma.rejected)) {
     return `<div class="callout ask"><div class="h"><span class="ind"><span class="dot" style="--c: var(--run)"></span></span>${esc(f.ask.agent)} wants to read comments</div>`
       + "<p>Figma shows comments only to an app with your token. Add one in the settings, and your agent can go on.</p>"
-      + '<div class="acts"><button type="button" class="go" data-act="ask-add">Add a Figma token</button>'
-      + '<button type="button" class="go2" data-act="ask-hide">Not now</button></div></div>';
+      + '<div class="acts"><button type="button" class="go2" data-act="ask-hide">Not now</button>'
+      + '<button type="button" class="go" data-act="ask-add">Add a Figma token</button></div></div>';
   }
   return "";
 }

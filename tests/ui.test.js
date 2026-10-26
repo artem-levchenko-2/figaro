@@ -1123,7 +1123,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("opened, it has the ask: the agent, why, and two buttons, above the agents",
           [/<div class="callout ask"><div class="h">.*designer wants to read comments<\/div>/.test(env.html()),
            /<p>Figma shows comments only to an app with your token\. Add one in the settings, and your agent can go on\.<\/p>/.test(env.html()),
-           /<button type="button" class="go" data-act="ask-add">Add a Figma token<\/button><button type="button" class="go2" data-act="ask-hide">Not now<\/button>/.test(env.html()),
+           /<button type="button" class="go2" data-act="ask-hide">Not now<\/button><button type="button" class="go" data-act="ask-add">Add a Figma token<\/button>/.test(env.html()),
            env.html().indexOf("callout ask") < env.html().indexOf('<div class="sect">Agents</div>')], [true, true, true, true]);
     env.click("ask-add", "here");
     await env.clock.advance(1000);

@@ -26,7 +26,7 @@ file; the release notes say when it has to be imported again.
   by you alone; it is not in the settings file, the board, the logs or any reply, and the window shows just its
   last four characters. Remove forgets it.
 - **An agent that wants comments and finds no token asks the designer on the file's island**: "designer wants
-  to read comments", with Add a Figma token (opens the settings) and Not now. The agent's reply says the
+  to read comments", with Not now and Add a Figma token (opens the settings). The agent's reply says the
   designer was asked and how to go on. After Not now, `figaro comments` in that file answers at once that the
   designer chose not to add a token, and the window isn't asked again for that file until the bridge restarts.
   A window with a bridge from before it shows no token block and no ask, and `figaro comments` with such a
