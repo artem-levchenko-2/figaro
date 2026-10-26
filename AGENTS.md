@@ -123,8 +123,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   during the pull or the restart get a 503 and run nothing; while it waits, they run, and it waits on. It
   refuses an update with the button off or no newer release known.
 - `bridge_settings.py` — the window's settings, the bridge's for every window and kept in `settings.json` next
-  to the token: Sounds (until switched, `FIGARO_SOUNDS`), Show other files, Save versions as agents work (off:
-  no automatic checkpoint, a label still saves one). And what the settings show about the version: what is
+  to the token: Sounds (until switched, `FIGARO_SOUNDS`), Show other files, Show recent changes (`recent`; off:
+  the islands show no Recent list), Save versions as agents work (off: no automatic checkpoint, a label still
+  saves one). And what the settings show about the version: what is
   new (the newest release's notes from GitHub, else this version's from `CHANGELOG.md`, each item's first
   clause), the folder, when GitHub last answered (`bridge.CHECKED`; ↻ is `bridge.look_now`).
 - `bridge_exec.py` — the bridge's side of exec: the fields it sends (`readOnly`, `checkpoint`, `quick`,
@@ -181,7 +182,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   the plugin or a restart of the bridge). Builds from before 1.0.0 need nothing, but the 1.0.0 window and
   bridge have no `board`: keep the bridge's `update`, `outdated` and `peers` messages, the window's view
   without a board, and `figaro done`'s answer to a 404. A window before 1.5.0 reads the board's `sounds`, not
-  `settings`; a 1.5.0 window with an older bridge has no `settings` and can't switch them.
+  `settings`; a 1.5.0 window with an older bridge has no `settings` and can't switch them. A window with the Show recent
+  changes switch and a bridge without `settings.recent` shows no such switch, and Recent stays; an older window
+  ignores the field.
 - **`plugin/ui.html` passes the exec fields to the sandbox by name.** A new field in
   `bridge_exec.exec_fields` must be added there too, or it never arrives; `tests/test_exec.py` catches it.
 - **The plugin never writes to the document.** The document id is `figma.fileKey`, which a development

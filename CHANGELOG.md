@@ -33,8 +33,8 @@ file; the release notes say when it has to be imported again.
 
 ### Fixed
 
-- **An open island always has its Agents section.** When the agents had gone (done, or quiet for five minutes)
-  and only their changes were left, the island showed Recent alone, as if no agent had ever worked there. Now
+- **An open island always has its Agents section.** An hour after its last work an agent's row goes, and
+  when none was left but their changes, the island showed Recent alone, as if no agent had ever worked there. Now
   Agents stays above it with a dashed row: "No agents at work", and "No agents yet" when there are no changes
   either.
 

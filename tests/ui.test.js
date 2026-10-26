@@ -929,11 +929,13 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     const env = load();
     env.identity("Dashboard", "KEY1");
     env.ws().open();
-    env.board([file("KEY1", "Dashboard")]);
+    env.board([file("KEY1", "Dashboard", { recent: [{ agent: "designer", at: 1000 - 120, kind: "ok", summary: "Created KPI card" }] })]);
     await env.clock.advance(400);
+    env.click("toggle", "here");
+    check("a bridge too old for settings: Recent stays on show", /Created KPI card/.test(env.html()), true);
     env.click("gear");
-    check("a bridge too old for settings: they show, but can't change",
-          [(env.app().match(/role="switch"[^>]*disabled/g) || []).length, /Restart the bridge to change them/.test(env.app())], [3, true]);
+    check("…the settings show, but can't change, and none is for recent changes",
+          [(env.app().match(/role="switch"[^>]*disabled/g) || []).length, /Restart the bridge to change them/.test(env.app()), /Show recent changes/.test(env.app())], [3, true, false]);
     env.click("set", null, { name: "sounds" });
     check("…and say nothing to it", env.sent("set"), []);
   }
