@@ -141,9 +141,10 @@ button { font: inherit; }
 .px i:nth-child(3), .px i:nth-child(5), .px i:nth-child(7) { animation-delay: 225ms; }
 .px i:nth-child(6), .px i:nth-child(8) { animation-delay: 337.5ms; }
 .px i:nth-child(9) { animation-delay: 450ms; }
-/* A click on an agent's grid turns every grid in the window into a rainbow along the wave, and
-   another click back (`rainbow` on <html>): only the colours change, the animation is the same. */
-.agent .px { padding: 3px; margin: -3px; }
+/* A click on a grid, in an agent's row or an island's own, turns every grid in the window into a
+   rainbow along the wave, and another click back (`rainbow` on <html>): only the colours change, the
+   animation is the same. Minimized, the grid is the card's restore. */
+.agent .px, .island .tg .px { padding: 3px; margin: -3px; }
 html.rainbow .px i:nth-child(1) { --c: hsl(0 85% 58%); }
 html.rainbow .px i:nth-child(2), html.rainbow .px i:nth-child(4) { --c: hsl(35 95% 55%); }
 html.rainbow .px i:nth-child(3), html.rainbow .px i:nth-child(5), html.rainbow .px i:nth-child(7) { --c: hsl(130 60% 48%); }
@@ -1952,8 +1953,8 @@ const calm = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-m
 
 document.addEventListener("click", (e) => {
   if (eatClick) { eatClick = false; return; }  // the press that ended a hold
-  const grid = e.target && e.target.closest ? e.target.closest(".agent .px") : null;
-  if (grid) {  // the rainbow (see .px): the window's own, nothing goes to the bridge
+  const grid = e.target && e.target.closest ? e.target.closest(".px") : null;
+  if (grid && !grid.closest(".mini")) {  // the rainbow (see .px), not the island's toggle: the window's own, nothing goes to the bridge
     if (document.documentElement) document.documentElement.classList.toggle("rainbow");
     return;
   }

@@ -161,10 +161,17 @@ function load({ calm = false, layout = null, figma = null } = {}) {
                    closest: (sel) => (sel === "[data-fid]" ? slot : null) };
       for (const fn of listeners.click || []) fn({ detail, target: { closest: (sel) => (sel === "[data-act]" ? el : null) } });
     },
-    // A click on the grid in an agent's row (an element that `closest(".agent .px")` finds).
-    tapGrid() {
-      const grid = {};
-      for (const fn of listeners.click || []) fn({ detail: 1, target: { closest: (sel) => (sel === ".agent .px" ? grid : null) } });
+    // A click on a grid of the wave: in an agent's row, in an island's own row (inside its toggle),
+    // or in the minimized card (inside its restore).
+    tapGrid(where = "agent") {
+      const holder = where === "agent" ? null : {
+        dataset: { act: where === "mini" ? "restore" : "toggle" }, disabled: false,
+        classList: { toggle() {}, add() {}, remove() {} }, setAttribute() {},
+        closest: (sel) => (sel === "[data-fid]" && where === "row" ? { dataset: { fid: "here" } } : null) };
+      const grid = { closest: (sel) => (sel === ".mini" && where === "mini" ? {} : null) };
+      for (const fn of listeners.click || []) {
+        fn({ detail: 1, target: { closest: (sel) => (sel === ".px" ? grid : sel === "[data-act]" ? holder : null) } });
+      }
     },
     rainbow: () => htmlClasses.has("rainbow"),
     // The pointer pressed on Minimize; let go on it, or off it.
@@ -378,6 +385,11 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
           [env.rainbow(), env.ws().sent.length - sentBefore, env.posted.length - postedBefore], [true, 0, 0]);
     env.tapGrid();
     check("…and another click turns it back", env.rainbow(), false);
+    env.tapGrid("row");
+    check("a click on the grid in the island's own row: the rainbow too, and the island stays open",
+          [env.rainbow(), /class="island open/.test(env.html())], [true, true]);
+    env.tapGrid("row");
+    check("…and back", [env.rainbow(), /class="island open/.test(env.html())], [false, true]);
     env.click("stop", "here", { agent: "designer" });
     check("Stop asks the bridge to stop that agent", env.sent("stop"), [{ type: "stop", doc: "doc:KEY1", agent: "designer" }]);
     check("…and the button waits for it", /disabled/.test(env.html()), true);
@@ -1198,9 +1210,10 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
           [/<b>Dashboard<\/b>/.test(env.app()), /class="island alarm"/.test(env.app()),
            /<span class="mc alarm" title="Figma isn't answering in Kit"><span class="ind"><span class="warn">/.test(env.app()), /\+\d/.test(env.app())],
           [true, false, true, false]);
-    env.click("restore");
+    env.tapGrid("mini");  // the card's grid is its restore, not the rainbow
     await env.clock.advance(50);
-    check("restore: the files, and the swoosh up", [/data-fid="here"/.test(env.app()), env.heard()], [true, ["noise", "sine 280"]]);
+    check("restore, from the card's grid: the files, and the swoosh up, and no rainbow",
+          [/data-fid="here"/.test(env.app()), env.heard(), env.rainbow()], [true, ["noise", "sine 280"], false]);
     await env.clock.advance(400);
 
     const hold = env.press();
