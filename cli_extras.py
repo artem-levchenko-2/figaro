@@ -659,7 +659,8 @@ def read_images(specs):
 
 
 def cmd_image(args):
-    images = read_images([f"image={args.file}"])
+    data, _ = read_image(args.file, "image")  # its errors say "figaro: image: …", not "--image image"
+    images = [{"name": "image", "data": base64.b64encode(data).decode("ascii")}]
     code = (f"const n = {CLI.node_expr(args.node_id)};"
             f"if (!n) throw new Error('node not found: ' + {json.dumps(args.node_id)});"
             f"return h.image(n, 'image', {json.dumps(args.mode)});")

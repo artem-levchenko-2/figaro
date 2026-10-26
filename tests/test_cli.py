@@ -1079,6 +1079,13 @@ def test_image_sends_the_file_in_the_body_not_in_the_command_line(monkeypatch, c
     assert str(pic) in sys.argv and len(" ".join(sys.argv)) < 300  # the command line holds a path only
 
 
+
+def test_image_errors_name_the_command(monkeypatch, capsys, tmp_path):
+    note = tmp_path / "notes.txt"
+    note.write_bytes(b"not a picture")
+    rc, out, err, calls = cli(monkeypatch, capsys, "image", URL, str(note))
+    assert str(rc).startswith("figaro: image: notes.txt is not a PNG, JPEG or GIF") and not calls
+
 def test_image_modes_and_the_default():
     args, _ = args_of("image", "1:2", "a.png")
     assert args.mode == "fill"
