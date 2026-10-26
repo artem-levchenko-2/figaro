@@ -262,9 +262,9 @@ def foreign_answer(host, port, why):
     return {"ok": False, "foreign": True,
             "error": (f"port {port} on {host} is held by another program, not the Figaro bridge "
                       f"({why}); nothing was sent to it and no bridge was started"),
-            "hint": (f"free the port (`lsof -nP -iTCP:{port} -sTCP:LISTEN` shows who listens; on "
-                     f"Windows `netstat -ano | findstr :{port}`), or set FIGARO_PORT to another free "
-                     "port (the Figma plugin itself connects to 8788 only)")}
+            "hint": (f"free the port: `lsof -nP -iTCP:{port} -sTCP:LISTEN` shows who listens (on "
+                     f"Windows `netstat -ano | findstr :{port}`). Another port is no way out: the Figma "
+                     "plugin connects to 8788 only")}
 
 
 def _answers(host, port):

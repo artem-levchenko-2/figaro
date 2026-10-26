@@ -1212,7 +1212,7 @@ def test_a_port_held_by_another_program_gets_no_token(monkeypatch, capsys, root)
         status, body = figaro._request("POST", "/exec", {"code": "1"})
         assert status == 0 and body["ok"] is False and body["foreign"] is True
         assert f"port {port} on 127.0.0.1 is held by another program" in body["error"]
-        assert "not the Figaro bridge" in body["error"] and "FIGARO_PORT" in body["hint"]
+        assert "not the Figaro bridge" in body["error"] and "lsof" in body["hint"]
         assert figaro._request("GET", "/status")[0] == 0
         assert [m for m, p, t in handler.seen] == ["GET"]  # one look, then nothing
         assert all(t is None for m, p, t in handler.seen)

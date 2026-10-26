@@ -103,8 +103,10 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   `--no-checkpoint`, `--lib`, `--shot`), `figaro wait` (polls `/status`, so it works with older bridges;
   `_pick_file` mirrors the bridge's `resolve_target`).
 - `cli_extras.py` — links in arguments, starting the bridge on demand, `inspect`, `shot`, `link`, `image`,
-  `--lib`, `exec --shot`, `exec --image` (a file is checked here: format by its bytes, 4096 px, 30 MB);
-  `inspect_text.py` — the text `inspect` prints.
+  `--lib`, `exec --shot`, `exec --image` (a file is checked here: format by its bytes, 4096 px, 30 MB), and
+  `probe`: before the token goes anywhere, `GET /` must answer as the bridge (`"service": "figaro-bridge"`).
+  Only a sure verdict is kept (`_verdicts`, which `tests/conftest.py` clears for every test): a port that
+  hangs up or stays silent is asked again. `inspect_text.py` — the text `inspect` prints.
 - `bridge.py` — HTTP and WebSocket, routing to files (a file's scripts go to its first live window, and a
   later window of the same file waits until that one closes), the queue and lock per file, Origin/Host
   checks, the API token and the plugin socket's User-Agent (`_guard`; `figaro_token.py` is the path and the
@@ -123,11 +125,11 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   during the pull or the restart get a 503 and run nothing; while it waits, they run, and it waits on. It
   refuses an update with the button off or no newer release known.
 - `bridge_settings.py` — the window's settings, the bridge's for every window and kept in `settings.json` next
-  to the token: Sounds (until switched, `FIGARO_SOUNDS`), Show other files, Show recent changes (`recent`; off:
-  the islands show no Recent list), Save versions as agents work (off: no automatic checkpoint, a label still
-  saves one). And what the settings show about the version: what is
-  new (the newest release's notes from GitHub, else this version's from `CHANGELOG.md`, each item's first
-  clause), the folder, when GitHub last answered (`bridge.CHECKED`; ↻ is `bridge.look_now`).
+  to the token: Sounds (until switched, `FIGARO_SOUNDS`), Show other files, Show recent changes (`recent`;
+  off: the islands show no Recent list), Save versions as agents work (off: no automatic checkpoint, a label
+  still saves one). And what the settings show about the version: what is new (the newest release's notes
+  from GitHub, else this version's from `CHANGELOG.md`, each item's first clause), the folder, when GitHub
+  last answered (`bridge.CHECKED`; ↻ is `bridge.look_now`).
 - `bridge_exec.py` — the bridge's side of exec: the fields it sends (`readOnly`, `checkpoint`, `quick`,
   `libs` — a library's code goes once, then its hash; `images` — base64 of the files `h.image` fills a layer
   with, in the body and the socket, never in an argument), when checkpoints are due, links as targets,
@@ -182,9 +184,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   the plugin or a restart of the bridge). Builds from before 1.0.0 need nothing, but the 1.0.0 window and
   bridge have no `board`: keep the bridge's `update`, `outdated` and `peers` messages, the window's view
   without a board, and `figaro done`'s answer to a 404. A window before 1.5.0 reads the board's `sounds`, not
-  `settings`; a 1.5.0 window with an older bridge has no `settings` and can't switch them. A window with the Show recent
-  changes switch and a bridge without `settings.recent` shows no such switch, and Recent stays; an older window
-  ignores the field.
+  `settings`; a 1.5.0 window with an older bridge has no `settings` and can't switch them. A window with the
+  Show recent changes switch and a bridge without `settings.recent` shows no such switch, and Recent stays; an
+  older window ignores the field.
 - **`plugin/ui.html` passes the exec fields to the sandbox by name.** A new field in
   `bridge_exec.exec_fields` must be added there too, or it never arrives; `tests/test_exec.py` catches it.
 - **The plugin never writes to the document.** The document id is `figma.fileKey`, which a development
@@ -321,7 +323,7 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   per file is kept in `~/.cache/figaro/checkpoints.json`; the tests use a temporary folder
   (`tests/conftest.py`).
 - **The CLI starts the bridge** when nothing listens on 8788 (`cli_extras.autostart`) and waits up to 6 s for
-  the plugin. A background Figma window can take a minute to connect — then the first call says "run it
+  the plugin; another program on the port gets no token and no bridge on top of it. A background Figma window can take a minute to connect — then the first call says "run it
   again". `FIGARO_AUTOSTART=0` keeps the bridge stopped. The bridge exits after 3 idle hours.
 - **`shot` captures what Figma shows:** a layer that sticks out of a frame with `clipsContent` comes out cut.
   An export also takes in what sticks out of the layer (a shadow, an outside stroke, the children of a frame
