@@ -61,7 +61,7 @@ the recipes below).
 | `h.frame(parent, opts)` | an auto-layout frame, set up in the order Figma needs (`pitfalls.md`, "Auto-layout"). `opts`: `layout` (`"V"`, `"H"`), `w`, `h`, `spacing`, `padding` (a number; as in CSS, `[vertical, horizontal]`, `[top, horizontal, bottom]` or `[top, right, bottom, left]`; or `{top, right, bottom, left}`), `align: {primary, counter}`, `fill` (a hex or `false`), `radius`, `name`. An axis with a number is FIXED, one without HUGs |
 | `await h.fill(node, "x" \| "y" \| "xy")` | FILL; only for a child of an auto-layout frame, so `parent.appendChild(node)` first. Warns if the parent HUGs on that axis |
 | `await h.hug(node, "x" \| "y" \| "xy")` | HUG; only an auto-layout frame or a text |
-| `await h.fixed(node, w, h)` | a fixed size; `null` leaves that axis as it was (a bare `resize()` makes both axes FIXED) |
+| `await h.fixed(node, w, h)` | a fixed size; `null` leaves that axis as it was (`resize()` fixes the axes whose size it changes) |
 | `await h.wrapText(text, width?)` | text that wraps: in auto-layout to the parent's width, otherwise to `width` px. Warns if the text turned into a column |
 
 The auto-layout helpers load the text's fonts themselves and explain what Figma won't allow.

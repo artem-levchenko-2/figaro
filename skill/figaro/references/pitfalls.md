@@ -41,10 +41,12 @@ order. If you write it by hand:
 - **The order**: `layoutMode` → `resize()` → sizing modes. Padding, spacing and alignment can be set at any
   point, and so can `appendChild` — before `layoutMode` or after, with children already inside (checked live:
   none of it was lost). What is lost is a size: turning `layoutMode` on makes the main axis HUG, so a frame
-  resized to 200×100 first ends up 200 wide and as tall as its children. `resize()` after the mode, then HUG
-  or FIXED.
-- **`resize()` makes both axes FIXED** and resets `layoutGrow`, HUG and `textAutoResize`. Size first, modes
-  after; or `h.fixed(node, w, null)`.
+  resized to 200×100 first ends up 200 wide and as tall as its children with `"VERTICAL"`, and 100 tall and
+  as wide as its children with `"HORIZONTAL"`. `resize()` after the mode, then HUG or FIXED.
+- **`resize()` fixes the axes whose size it changes.** `resize(200, 100)` on a hugging frame fixes both;
+  `resize(200, node.height)` fixes the width and leaves the height hugging. Same for a text: a new width alone
+  gives `textAutoResize = "HEIGHT"`, a new height alone `"NONE"`. On a FILL child, the axis it changes turns
+  FIXED and the other keeps FILL. Size first, modes after; or `h.fixed(node, w, null)`.
 - **FILL** — only for a child of an auto-layout frame, and only after `appendChild`: before it, Figma throws
   "node must be an auto-layout frame or a child of an auto-layout frame". A FILL child of a HUG parent
   collapses: give the parent FIXED or FILL.
@@ -76,20 +78,24 @@ order. If you write it by hand:
   (`h.fonts(root)`).
 - A text style's font must be loaded too before you set the style: `h.fonts([text.fontName,
   style.fontName])`.
-- **A text style overwrites the text.** `setTextStyleIdAsync` replaces the font, size, line height, letter
-  spacing, case and decoration with the style's, and flattens formatting inside the line (a bold word turns
-  regular). Attach a style only when every one of those already matches it, or when changing them is the
-  point. Compare first:
-  `["fontName", "fontSize", "lineHeight", "letterSpacing", "textCase", "textDecoration", "paragraphSpacing"]
-  .every((k) => JSON.stringify(text[k]) === JSON.stringify(style[k]))` — and not at all on a text with
-  mixed ranges (`getStyledTextSegments` returns more than one segment): keep it as it is and say that no
-  style fits.
-- **`textTruncation` and `maxLines` work only on a text that wraps** (`textAutoResize = "HEIGHT"`: fixed width,
-  height follows). On `WIDTH_AND_HEIGHT` they read back as set and do nothing: the text just grows. Changing
-  `textAutoResize` afterwards resets both (`DISABLED`, `null`), and a text that grew to 700 px keeps that
-  width. Set truncation before `maxLines`: `"ENDING"` makes `maxLines` 1, and a `maxLines` set while
-  truncation is off is dropped without an error. On `NONE` truncation turns the mode into the legacy
-  `TRUNCATE`, and `maxLines` stays `null`. So:
+- **A text style replaces what a text already has.** On a text with its own look, `setTextStyleIdAsync`
+  swaps the font, size, line height, letter spacing, case and decoration for the style's, and flattens
+  formatting inside the line (a bold word turns regular); a new text just takes the style whole. So on an
+  existing text attach a style when its properties already match, or when changing them is the point.
+  Compare the main ones first:
+  `["fontName", "fontSize", "lineHeight", "letterSpacing", "textCase", "textDecoration", "paragraphSpacing",
+  "paragraphIndent", "listSpacing", "leadingTrim"].every((k) => JSON.stringify(text[k]) ===
+  JSON.stringify(style[k]))`. A text with mixed ranges (`getStyledTextSegments` returns more than one
+  segment) keeps its formatting only without the style: leave it and say that no style fits.
+- **`textTruncation` and `maxLines` cut a text that has more lines than the limit, and the box follows.**
+  Checked on `WIDTH_AND_HEIGHT`: a text of three `\n` lines, 45 px tall, with `"ENDING"` and `maxLines = 2`
+  came out 30 px; a one-line text has nothing to cut, so nothing seems to happen. `maxHeight` cuts the same
+  way (and switches truncation to `ENDING` itself, leaving `maxLines` `null`), but only on a text inside an
+  auto-layout frame: elsewhere it throws "Can only set maxHeight on auto layout nodes and their children".
+  Changing `textAutoResize` afterwards resets truncation and `maxLines` (`DISABLED`, `null`), and a text
+  that grew to 700 px keeps that width. Set truncation before `maxLines`: `"ENDING"` makes `maxLines` 1,
+  and a `maxLines` set while truncation is off is dropped without an error. On `NONE` truncation turns the
+  mode into the legacy `TRUNCATE`, and `maxLines` stays `null`. For a paragraph that wraps:
 
   ```js
   await h.wrapText(title, 240);      // HEIGHT, 240 px wide (in auto-layout: no width, it fills the parent)
@@ -146,10 +152,9 @@ order. If you write it by hand:
 - **Building needs no `figma.setCurrentPageAsync`**: `figma.create*()` puts a node on the current page, and
   `page.appendChild(node)` or `h.frame(page, …)` moves it where it belongs; to read another page,
   `await page.loadAsync()`. A switched page jumps on the user's screen — don't switch it unless they ask.
-- **While a script runs, Figma is busy with it**: it doesn't repaint and doesn't answer the user, and nothing
-  else gets in (a second `--parallel` read waited until a 10 s script was over). `h.ck()` or `--timeout` ends
-  your script, but nothing makes Figma responsive before that. So a long script is not "in the background":
-  split it into batches of a few seconds.
+- **While a script runs, Figma is busy with it**: it doesn't repaint, and nothing else gets in — even a
+  `--parallel` read waited until a 10 s script was over. `h.ck()` or `--timeout` ends your script, but
+  nothing makes Figma responsive before that: batches of a few seconds.
 - **Search inside a node, never `figma.root.findAll` or `figma.currentPage.findAll`** on a file you don't know
   the size of. In a large design file (hundreds of thousands of layers) one such call freezes Figma for tens
   of seconds. Start from the frame you work on (`(await h.node(id)).findAll(…)`, `h.find(root, {…})`,
@@ -189,8 +194,9 @@ order. If you write it by hand:
 
 - **Reactions go through `await node.setReactionsAsync([...])`.** Write `actions: [...]`: the old single
   `action` field is refused ("update the `actions` field instead of the `action` field"). A NAVIGATE needs
-  another **top-level frame of the same page** as the destination; a frame nested in the source is rejected
-  with "destination … was rejected".
+  another frame that sits straight on the page **or in a section** as the destination (checked: section to
+  section, page to section and section to page all work); a frame nested in another frame is rejected with
+  "destination … was rejected".
 
   ```js
   await a.setReactionsAsync([{ trigger: { type: "ON_CLICK" }, actions: [{
