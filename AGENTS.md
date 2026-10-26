@@ -203,6 +203,11 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 
 ## Releasing
 
+Which number grows: a release with something new is a minor (1.6.0), one with fixes only a patch (1.6.1).
+The major stays 1 for as long as scripts, agents and the bridge's API written for 1.x keep working, however
+many releases that takes: after 1.9.0 comes 1.10.0 (the bridge compares the numbers, not the text,
+`parse_version`). A 2.0.0 would mean that something agents rely on stops working.
+
 1. Move the notes under `## [Unreleased]` in `CHANGELOG.md` to a new `## [X.Y.Z] — YYYY-MM-DD` section.
 2. Set `VERSION` in `bridge.py` and `version` in `pyproject.toml` to `X.Y.Z` (`tests/test_bridge.py` checks
    both against the changelog).
