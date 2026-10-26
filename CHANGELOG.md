@@ -9,6 +9,8 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-10-26
+
 ### Added
 
 - **`figaro image <layer> <file> [--mode fill|fit|crop|tile]`** fills a layer with a PNG, JPEG or GIF from a
