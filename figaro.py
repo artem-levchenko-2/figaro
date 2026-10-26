@@ -22,6 +22,7 @@ Commands:
     figaro inspect <id> [--json | -o f.json]   # layout, styles, text, keys of what it uses
     figaro shot <id> ...            # picture(s) saved to files; tall ones cut in parts
     figaro link <id|sel> ...        # clickable links to layers, for reports
+    figaro image <id> <file> [--mode fill|fit|crop|tile]   # fill a layer with a PNG, JPEG or GIF
     figaro "<js>"                   # shorthand for `exec`
 
 -R / --read-only: the script must not change the file; if it does, the plugin
@@ -41,6 +42,7 @@ bridge (start-bridge.sh) and waits for the plugin — FIGARO_AUTOSTART=0 stops i
 exec --lib f.js (repeatable, or FIGARO_LIB): the file's top-level functions
 and consts reach the script as lib.<name>; the plugin keeps it compiled, so
 later calls send only its hash. exec --shot [id]: a picture after the script.
+exec --image NAME=FILE (repeatable): a PNG, JPEG or GIF for h.image(node, "NAME").
 
 Helpers available inside exec'd code (as `h.*`):
     h.bF(node, idx, varOrId)    h.bS(node, idx, varOrId)   h.bN(node, prop, varOrId)
@@ -55,6 +57,7 @@ Helpers available inside exec'd code (as `h.*`):
     h.node(id)                  h.var_(idOrKey)
     h.importComp(key)           h.importVar(key)
     h.inspect(node, {depth})    h.shot(node, {format, scale, width, absolute})   h.link(node)
+    h.image(node, source, mode) fill with a picture: a file name from exec --image, or bytes
     h.fonts(node)  h.fa()       h.fill(node, axis)  h.hug(node, axis)  h.fixed(node, w, h)
     h.wrapText(node, w?)        h.find(root, {name, nameHas, type, text, textHas, hidden})
     h.annotations(scope?)       Dev Mode notes: [{frame, node, name, visible, labels, properties?}]

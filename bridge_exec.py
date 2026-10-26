@@ -52,7 +52,7 @@ class Options(NamedTuple):
     checkpoint: str | bool | None  # a label forces one, False skips it, None: hourly rule
     quick: bool                    # the CLI's own readers: no change report, ~150 ms less
     libs: list                     # [{"name", "code"}] — the agent's --lib files
-    images: list = []              # [{"name", "data"}] — files for `figaro image`, `exec --image`
+    images: tuple = ()             # [{"name", "data"}] — files for `figaro image`, `exec --image`
 
 
 IMAGES_MAX = 20            # files in one request
@@ -97,7 +97,7 @@ def _libs(value):
 
 def _images(value):
     if value is None:
-        return []
+        return ()
     if not isinstance(value, list) or not all(
             isinstance(x, dict) and isinstance(x.get("name"), str) and x["name"]
             and isinstance(x.get("data"), str) for x in value):
@@ -106,7 +106,7 @@ def _images(value):
         raise ValueError(f"'images' has more than {IMAGES_MAX} files")
     if sum(len(x["data"]) for x in value) > IMAGES_SIZE:
         raise ValueError(f"'images' are over {IMAGES_SIZE * 3 // 4 // (1024 * 1024)} MB together")
-    return [{"name": x["name"][:80], "data": x["data"]} for x in value]
+    return tuple({"name": x["name"][:80], "data": x["data"]} for x in value)
 
 
 def exec_fields(conn_id, agent, opts, parallel=False):
@@ -125,7 +125,7 @@ def exec_fields(conn_id, agent, opts, parallel=False):
     if opts.libs:
         fields["libs"] = _lib_fields(conn_id, opts.libs)
     if opts.images:
-        fields["images"] = opts.images
+        fields["images"] = list(opts.images)
     return fields
 
 

@@ -491,7 +491,8 @@ def read_libs(paths):
 # ─── image ───────────────────────────────────────────────────────────────
 
 IMAGE_MAX_PX = 4096                  # Figma's createImage: at most 4096 px in width and in height
-IMAGE_MAX_BYTES = 30 * 1024 * 1024   # all files of a call; they travel as base64, and the bridge takes 64 MB
+IMAGE_MAX_BYTES = 30 * 1024 * 1024   # one file; as base64 that is exactly IMAGE_MAX_BASE64
+IMAGE_MAX_BASE64 = 40 * 1024 * 1024  # all files of a call, counted as the bridge does (bridge_exec.IMAGES_SIZE)
 IMAGE_MODES = ("fill", "fit", "crop", "tile")
 IMAGE_NAME = re.compile(r"[A-Za-z0-9_.-]{1,80}$")
 
@@ -545,7 +546,7 @@ def read_image(path_text, label):
 def read_images(specs):
     """--image NAME=FILE (repeatable) as [{name, data}], data in base64; the
     bytes go in the request's body, never in a command line."""
-    images, total = [], 0
+    images, total = [], 0  # total: base64 characters, which round each file up
     for spec in specs or []:
         name, eq, file = spec.partition("=")
         if not eq or not file or not IMAGE_NAME.match(name):
@@ -553,10 +554,11 @@ def read_images(specs):
         if any(i["name"] == name for i in images):
             sys.exit(f"figaro: --image: the name {name} is used twice")
         data, _ = read_image(file, f"--image {name}")
-        total += len(data)
-        if total > IMAGE_MAX_BYTES:
+        encoded = base64.b64encode(data).decode("ascii")
+        total += len(encoded)
+        if total > IMAGE_MAX_BASE64:
             sys.exit(f"figaro: --image: the files are over {IMAGE_MAX_BYTES // 1048576} MB together")
-        images.append({"name": name, "data": base64.b64encode(data).decode("ascii")})
+        images.append({"name": name, "data": encoded})
     return images
 
 

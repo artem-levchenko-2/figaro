@@ -129,6 +129,14 @@ function figmaOf(h) {
 // image`): name -> base64, so h.image(node, "name") finds its bytes.
 const SCRIPT_IMAGES = Symbol("images");
 
+function scriptImages(list) {
+  const files = new Map();
+  if (Array.isArray(list)) {
+    for (const f of list) if (f && typeof f.name === "string" && typeof f.data === "string") files.set(f.name, f.data);
+  }
+  return files;
+}
+
 // The script's deadline or the bridge's abort, not an answer from Figma.
 function stopped(e) {
   return !!e && typeof e.message === "string" && e.message.indexOf("aborted: ") === 0;
@@ -753,14 +761,6 @@ const NOT_THE_FILE = /^figma\.(?:currentPage|skipInvisibleInstanceChildren|viewp
 const OWN_CALL = /^\s*(?:new\s+(?:Map|Set|WeakMap|WeakSet|Array|Object)\b|(?:Object\s*\.\s*(?:create|fromEntries)|Array\s*\.\s*from|JSON\s*\.\s*parse|structuredClone)(?=\s*\())/;
 const KEYWORD_BEFORE = /(?:^|[^\w$])(?:const|let|var|return|typeof|void|delete|await|yield|in|of|new|case|throw|else|do)$/;
 const MEMBER = /[\w$)\]]\s*(?:\??\.\s*[A-Za-z_$]|\[)/;  // x.y or x[k] inside a pattern
-
-function scriptImages(list) {
-  const files = new Map();
-  if (Array.isArray(list)) {
-    for (const f of list) if (f && typeof f.name === "string" && typeof f.data === "string") files.set(f.name, f.data);
-  }
-  return files;
-}
 
 function codeMayWrite(code, libs) {
   if (Array.isArray(libs) && libs.length) return true;
@@ -2241,7 +2241,8 @@ function imageFill(node, source, mode, h) {
     if (!files.has(source)) {
       throw new Error("h.image: no file named " + JSON.stringify(source) + " came with the script" +
         (files.size ? " (it has: " + Array.from(files.keys()).join(", ") + ")" : "") +
-        " — figaro exec --image " + source + "=FILE");
+        " — figaro exec --image " + source + "=FILE; if the CLI did send one, the bridge is older than " +
+        "the CLI and dropped it: restart the bridge (bash start-bridge.sh, or Update in the window)");
     }
     bytes = figma.base64Decode(files.get(source));
   }

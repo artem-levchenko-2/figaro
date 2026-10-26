@@ -709,6 +709,9 @@ function check(label, actual, expected) {
     check("a group has no fills, and the error says what to do instead",
       /GROUP .* has no fills.*frame, a rectangle or a shape/.test(
         await fails("h.image(await h.resolve('1:3'), 'image');", { images: files })), true);
+    check("…and a bridge that dropped the file is named as a second cause",
+      /bridge is older than the CLI.*start-bridge\.sh/.test(
+        await fails("h.image(await h.resolve('1:2'), 'photo');")), true);
     check("a name that did not come lists those that did",
       /no file named "photo" came with the script \(it has: image, logo\)/.test(
         await fails("h.image(await h.resolve('1:2'), 'photo');", { images: files })), true);

@@ -319,8 +319,8 @@ def test_an_error_inside_a_lib_names_its_line():
 # ─── images ───────────────────────────────────────────────────────────────
 
 def test_images_are_options_and_malformed_ones_are_refused():
-    assert bridge_exec.exec_options({}).images == []
-    assert bridge_exec.exec_options({"images": [IMAGE]}).images == [IMAGE]
+    assert bridge_exec.exec_options({}).images == ()
+    assert bridge_exec.exec_options({"images": [IMAGE]}).images == (IMAGE,)
     for bad in ("data", [{"name": "a"}], [{"data": "AAAA"}], [{"name": "", "data": "AAAA"}],
                 [{"name": "a", "data": 5}], ["AAAA"],
                 [{"name": f"i{n}", "data": "AAAA"} for n in range(bridge_exec.IMAGES_MAX + 1)],

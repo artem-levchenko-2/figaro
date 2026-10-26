@@ -1128,3 +1128,24 @@ def test_exec_image_attaches_named_files(monkeypatch, capsys, tmp_path):
     for specs in (["nofile"], ["=x.png"], ["bad name=x.png"], [f"logo={a}", f"logo={b}"]):
         with pytest.raises(SystemExit, match="--image"):
             cli_extras.read_images(specs)
+
+
+def test_the_cli_and_the_bridge_count_the_files_the_same_way(tmp_path):
+    """Several files that pass the CLI must pass the bridge: both count base64
+    characters, which round each file up (15 MiB + 1 and 15 MiB - 1 are
+    41,943,044 of them, four over)."""
+    import bridge_exec
+    assert cli_extras.IMAGE_MAX_BASE64 == bridge_exec.IMAGES_SIZE
+    assert cli_extras.IMAGE_MAX_BYTES * 4 // 3 == bridge_exec.IMAGES_SIZE
+    half = 15 * 1024 * 1024
+    a, b = tmp_path / "a.png", tmp_path / "b.png"
+    a.write_bytes(png_header(10, 10) + bytes(half + 1 - 24))
+    b.write_bytes(png_header(10, 10) + bytes(half - 1 - 24))
+    with pytest.raises(SystemExit, match="over 30 MB together"):
+        cli_extras.read_images([f"a={a}", f"b={b}"])
+    b.write_bytes(png_header(10, 10) + bytes(half - 4 - 24))
+    images = cli_extras.read_images([f"a={a}", f"b={b}"])  # what the CLI lets through, the bridge takes
+    assert len(bridge_exec.exec_options({"images": images}).images) == 2
+    big = tmp_path / "big.png"
+    big.write_bytes(png_header(10, 10) + bytes(cli_extras.IMAGE_MAX_BYTES - 24))
+    assert len(bridge_exec.exec_options({"images": cli_extras.read_images([f"big={big}"])}).images) == 1
