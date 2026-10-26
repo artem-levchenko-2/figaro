@@ -103,7 +103,9 @@ function load({ calm = false, layout = null, figma = null } = {}) {
   }
   const elements = {};
   const listeners = {};
+  const htmlClasses = new Set();  // <html>'s own classes: the rainbow's
   const document = {
+    documentElement: { classList: { toggle: (c) => (htmlClasses.has(c) ? htmlClasses.delete(c) : htmlClasses.add(c)), contains: (c) => htmlClasses.has(c) } },
     getElementById: (id) => (elements[id] = elements[id] || {
       textContent: "", innerHTML: "", querySelectorAll: () => [],
     }),
@@ -159,6 +161,12 @@ function load({ calm = false, layout = null, figma = null } = {}) {
                    closest: (sel) => (sel === "[data-fid]" ? slot : null) };
       for (const fn of listeners.click || []) fn({ detail, target: { closest: (sel) => (sel === "[data-act]" ? el : null) } });
     },
+    // A click on the grid in an agent's row (an element that `closest(".agent .px")` finds).
+    tapGrid() {
+      const grid = {};
+      for (const fn of listeners.click || []) fn({ detail: 1, target: { closest: (sel) => (sel === ".agent .px" ? grid : null) } });
+    },
+    rainbow: () => htmlClasses.has("rainbow"),
     // The pointer pressed on Minimize; let go on it, or off it.
     press() {
       const cls = new Set();
@@ -337,6 +345,8 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
   // ─── this file's island ─────────────────────────────────────────────────
   // (The stubs have no layout: what keeps an island as narrow as the window,
   // whatever its names, is in the CSS.)
+  check("the rainbow colours each diagonal of the wave, all nine cells",
+        (html.match(/html\.rainbow \.px i:nth-child\(\d\)/g) || []).length, 9);
   check("an island is never wider than the window, however long the names in its row",
         /\n\.island \{[^}]*\bmin-width: 0;[^}]*overflow: clip;/.test(html), true);
   {
@@ -362,6 +372,12 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     check("the pointer on the row shows its Stop, through the redraw after the opening",
           [/class="agent hot" data-agent="designer"/.test(env.html()), /opening/.test(env.html())], [true, false]);
+    const sentBefore = env.ws().sent.length, postedBefore = env.posted.length;
+    env.tapGrid();
+    check("a click on the agent's grid turns every grid into a rainbow, and sends nothing to the bridge or Figma",
+          [env.rainbow(), env.ws().sent.length - sentBefore, env.posted.length - postedBefore], [true, 0, 0]);
+    env.tapGrid();
+    check("…and another click turns it back", env.rainbow(), false);
     env.click("stop", "here", { agent: "designer" });
     check("Stop asks the bridge to stop that agent", env.sent("stop"), [{ type: "stop", doc: "doc:KEY1", agent: "designer" }]);
     check("…and the button waits for it", /disabled/.test(env.html()), true);
