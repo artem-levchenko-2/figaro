@@ -107,6 +107,13 @@ def free_port():
 class Recorder(http.server.BaseHTTPRequestHandler):
     bodies = []
 
+    def do_GET(self):  # the CLI's look at the port: it sends nothing to what isn't the bridge
+        body = json.dumps({"service": "figaro-bridge"}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_POST(self):
         Recorder.bodies.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
         body = json.dumps({"ok": True, "result": "done"}).encode()

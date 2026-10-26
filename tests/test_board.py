@@ -624,6 +624,7 @@ def test_skip_hides_a_release_from_every_window_and_the_agents_until_a_newer_one
         c = await make_client()
         assert bridge.SKIPPED == NEWER
         async with FakePlugin(c, caps=CAPS) as p:
+            await settle()  # its first board: on a slow runner it isn't there yet
             assert boards(p)[-1]["update"] is None
             await bridge.set_update("10.0.0")  # a newer release is offered again
             await settle()
