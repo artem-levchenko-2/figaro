@@ -9,6 +9,8 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-10-26
+
 ### Added
 
 - **`figaro comments [<link>]`** lets an agent read the file's open Figma comments, which the Plugin API can't
