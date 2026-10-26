@@ -850,6 +850,13 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     const want = {};
     for (let n = 1; n <= 9; n++) want[n] = ((Math.floor((n - 1) / 3) + (n - 1) % 3) / 4) * 0.5 * 900;
     check("the grid's delays follow the diagonal, 0 to 450 ms", cell, want);
+    const back = Object.assign({}, cell);  // the rainbow's: the middle diagonal keeps its delay
+    for (const m of html.matchAll(/((?:html\.rainbow \.px i:nth-child\(\d\)(?:, )?)+) \{ --c: [^;]+;(?: animation-delay: ([\d.]+)ms;)? \}/g)) {
+      if (m[2] !== undefined) for (const n of m[1].matchAll(/nth-child\((\d)\)/g)) back[n[1]] = Number(m[2]);
+    }
+    const wantBack = {};
+    for (let n = 1; n <= 9; n++) wantBack[n] = 450 - want[n];
+    check("the rainbow's wave runs back, from the bottom right cell, 450 to 0 ms", back, wantBack);
     check("the grid's cycle is 0.9 s, on the beat of the 1.8 s shimmer",
           [/animation: px 900ms ease-in-out infinite/.test(html), /animation: shim 1\.8s /.test(html)], [true, true]);
     check("the grid's keyframes", /@keyframes px \{ 0%, 100% \{ opacity: \.18; \} 20% \{ opacity: 1; \} 50% \{ opacity: \.18; \} \}/.test(html), true);

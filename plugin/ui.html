@@ -142,14 +142,15 @@ button { font: inherit; }
 .px i:nth-child(6), .px i:nth-child(8) { animation-delay: 337.5ms; }
 .px i:nth-child(9) { animation-delay: 450ms; }
 /* A click on a grid, in an agent's row or an island's own, turns every grid in the window into a
-   rainbow along the wave, and another click back (`rainbow` on <html>): only the colours change, the
-   animation is the same. Minimized, the grid is the card's restore. */
+   rainbow whose wave runs back, from the bottom right cell to the top left one, and another click
+   back (`rainbow` on <html>): only the colours and the delays change, the animation is the same.
+   Minimized, the grid is the card's restore. */
 .agent .px, .island .tg .px { padding: 3px; margin: -3px; }
-html.rainbow .px i:nth-child(1) { --c: hsl(0 85% 58%); }
-html.rainbow .px i:nth-child(2), html.rainbow .px i:nth-child(4) { --c: hsl(35 95% 55%); }
+html.rainbow .px i:nth-child(1) { --c: hsl(0 85% 58%); animation-delay: 450ms; }
+html.rainbow .px i:nth-child(2), html.rainbow .px i:nth-child(4) { --c: hsl(35 95% 55%); animation-delay: 337.5ms; }
 html.rainbow .px i:nth-child(3), html.rainbow .px i:nth-child(5), html.rainbow .px i:nth-child(7) { --c: hsl(130 60% 48%); }
-html.rainbow .px i:nth-child(6), html.rainbow .px i:nth-child(8) { --c: hsl(210 90% 58%); }
-html.rainbow .px i:nth-child(9) { --c: hsl(275 75% 62%); }
+html.rainbow .px i:nth-child(6), html.rainbow .px i:nth-child(8) { --c: hsl(210 90% 58%); animation-delay: 112.5ms; }
+html.rainbow .px i:nth-child(9) { --c: hsl(275 75% 62%); animation-delay: 0ms; }
 @keyframes px { 0%, 100% { opacity: .18; } 20% { opacity: 1; } 50% { opacity: .18; } }
 .shim { background: linear-gradient(90deg, var(--is-dim) 35%, var(--is-text) 50%, var(--is-dim) 65%) 0 0 / 200% 100%;
   -webkit-background-clip: text; background-clip: text; color: transparent; animation: shim 1.8s linear infinite; }
