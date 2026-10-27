@@ -9,7 +9,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-27.2";
+const PLUGIN_VERSION = "2026-10-27.3";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -751,7 +751,7 @@ const VARIABLE_WRITES = /\b(setValueForMode|createVariable|createVariableCollect
 // Read wrong one way, a script keeps the rollback; the other way, a change it
 // did make stays, reported — so whatever is unclear counts as a write.
 const FIGMA_READS = /^(?:get\w*|load\w*|import\w*ByKeyAsync|listAvailableFontsAsync|notify|on|once|off|base64Encode|base64Decode|setCurrentPageAsync|saveVersionHistoryAsync|commitUndo)$/;
-const HELPER_READS = /^(?:node|resolve|sel|find|findByName|findAllByName|dumpTree|link|inspect|shot|hex|solid|fonts|withFonts|fa|variantsOf|var_|importComp|importVar|annotations|ck|aborted)$/;
+const HELPER_READS = /^(?:node|resolve|sel|find|findByName|findAllByName|dumpTree|link|inspect|shot|hex|solid|fonts|withFonts|fa|variantsOf|var_|importComp|importVar|annotations|audit|ck|aborted)$/;
 // Methods that change the file, called or bound on anything; a call by a
 // computed name; code that runs code.
 const WRITE_CALLS = /\.\s*(?:set(?!CurrentPageAsync\b|Timeout\b|Interval\b)[A-Z]\w*|create[A-Z]\w*|(?:add|edit|delete|remove|reset|clear)[A-Z]\w*|remove|appendChild|insertChild|resize|resizeWithoutConstraints|rescale|clone|detachInstance|swapComponent|outlineStroke|insertCharacters|(?:lock|unlock)AspectRatio|group|ungroup|flatten|union|subtract|intersect|exclude|combineAsVariants|moveLocal\w*|triggerUndo|renameMode)\s*(?:\?\.\s*)?(?:\(|\.\s*(?:call|apply|bind)\b)|\]\s*\(|\b(?:eval|Function|import)\s*\(|(?:^|[;{}\n])\s*with\s*\(|\bReflect\s*\.|\bObject\s*\.\s*(?:defineProperty|defineProperties|setPrototypeOf)\b/;
@@ -2676,6 +2676,581 @@ Object.assign(HELPERS, {
       if (kids) for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
     }
     return out;
+  },
+});
+
+// ─── h.audit: a check of one's own work ─────────────────────────────────
+// h.audit(root, opts) walks a layer (or a page) and returns notes: what looks
+// wrong, on which layer, and what to do. It only hints. The walk is iterative
+// and bounded (layers, time), asks the script's h.ck() as it goes and gives
+// the plugin a breath now and then: it must never freeze Figma on a big page
+// (a recursive walk would: guardLoops doesn't see recursion). The block
+// between the two markers reads `figma` only through `env`, so a --lib file can
+// carry it as it is, to check a branch live before the plugin runs it.
+// audit:begin
+// In order of importance: the first rule is the loudest.
+const AUDIT_RULES = [
+  "missing-font", "text-clipped", "zero-size", "low-contrast", "low-contrast-ui", "placeholder-text",
+  "small-target", "no-auto-layout", "empty-frame", "detached-instance", "unbound-color",
+  "no-text-style", "default-name", "uneven-siblings", "heading-order", "absolute-in-layout",
+];
+const AUDIT_SHOWN = 50;     // notes in the answer
+const AUDIT_IDS = 30;      // layer ids listed in a note that covers several
+const AUDIT_KEPT = 2000;    // notes held while walking; the rest are only counted
+const AUDIT_NODES = 8000;   // layers visited before the walk stops (partial)
+const AUDIT_MS = 8000;      // time before the walk stops (partial)
+const AUDIT_TARGET = 24;    // WCAG 2.2, SC 2.5.8 (AA): a target of at least 24 x 24 px
+const AUDIT_BUTTON = new Set(["button", "btn", "cta", "chip", "tab", "toggle", "checkbox", "radio", "switch", "link"]);
+const AUDIT_COLORED = new Set(["FRAME", "COMPONENT", "RECTANGLE", "ELLIPSE", "TEXT"]);  // where a raw colour is a note
+const AUDIT_BEHIND = new Set(["FRAME", "COMPONENT", "INSTANCE", "RECTANGLE", "ELLIPSE", "SECTION", "VECTOR", "BOOLEAN_OPERATION", "STAR", "POLYGON"]);  // can be a backdrop
+const AUDIT_SHAPES = new Set(["VECTOR", "BOOLEAN_OPERATION", "ELLIPSE", "STAR", "POLYGON", "LINE", "RECTANGLE"]);
+const AUDIT_ICON = new Set(["VECTOR", "BOOLEAN_OPERATION", "STAR", "POLYGON"]);
+const AUDIT_HOLDS = new Set(["FRAME", "COMPONENT", "COMPONENT_SET", "GROUP", "SECTION", "PAGE"]);
+const AUDIT_DEFAULT_NAME = /^(?:Frame|Group|Component|Section|Auto layout)(?: \d+)?$/;
+const AUDIT_PLACEHOLDER = [
+  /\b(?:tbc|tbd)\b/i,
+  /lorem ipsum|dolor sit amet/i,
+  /^\s*(?:todo|xxx+|placeholder|text|your text(?: here)?|text here|\?{2,}|\.{3}|…)\s*$/i,
+];
+const AUDIT_HEADING_NAME = /^\s*(?:h|heading\s*)([1-6])(?![0-9a-z])/i;
+const AUDIT_HEADING_STYLE = /(?:^|[\s/_-])(?:h|heading\s?)([1-6])(?:$|[\s/_-])/i;
+
+function auditSafe(fn, otherwise) {
+  try { return fn(); } catch (e) { return otherwise; }
+}
+
+function auditHex(c) {
+  const p = (v) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, "0");
+  return ("#" + p(c.r) + p(c.g) + p(c.b)).toUpperCase();
+}
+
+// WCAG 2: relative luminance, and the contrast ratio of two colours (1 to 21).
+function auditLum(c) {
+  const f = (v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+}
+
+function auditRatio(a, b) {
+  const x = auditLum(a), y = auditLum(b);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
+function auditBlend(fg, a, bg) {
+  return { r: fg.r * a + bg.r * (1 - a), g: fg.g * a + bg.g * (1 - a), b: fg.b * a + bg.b * (1 - a) };
+}
+
+function auditWords(name) {
+  return String(name).replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+function auditShort(s, n) {
+  s = String(s).replace(/\s+/g, " ");
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+function auditNum(v) {
+  return Math.round(v * 10) / 10;
+}
+
+// A ratio as text, rounded down: 2.996 is not "3", which would pass.
+function auditShy(v) {
+  return String(Math.floor(v * 100) / 100);
+}
+
+// The paints that show: visible and not fully transparent.
+function auditShown(paints) {
+  return Array.isArray(paints) ? paints.filter((p) => p && p.visible !== false && (p.opacity === undefined || p.opacity > 0)) : [];
+}
+
+// What a layer paints without a style or a variable: {raw: "#RRGGBB" | null, tokened}.
+function auditPaintState(paints, styleId, mixed) {
+  if (styleId && styleId !== mixed) return { raw: null, tokened: true };
+  let raw = null, tokened = false;
+  for (const p of auditShown(paints)) {
+    if (p.type !== "SOLID") continue;
+    if (p.boundVariables && p.boundVariables.color) tokened = true;
+    else if (raw === null) raw = auditHex(p.color);
+  }
+  return { raw, tokened };
+}
+
+function auditFillState(n, mixed) {
+  if (n.fills === mixed || n.fillStyleId === mixed) {  // a text with several colours or styles
+    let raw = null, tokened = false;
+    const segs = auditSafe(() => n.getStyledTextSegments(["fills", "fillStyleId"]), []);
+    for (const s of segs.slice(0, 20)) {
+      const r = auditPaintState(s.fills, s.fillStyleId, mixed);
+      if (r.tokened) tokened = true;
+      if (raw === null) raw = r.raw;
+    }
+    return { raw, tokened };
+  }
+  return auditPaintState(n.fills, n.fillStyleId, mixed);
+}
+
+// What a layer's own fill does for what is above it: undefined — nothing, so the
+// layer behind or the parent shows through; null — something that isn't one
+// colour (an image, a gradient, a translucent paint, a blend mode); or the colour.
+function auditBackdropOf(n) {
+  const shown = auditShown(n.fills);
+  if (!shown.length) return undefined;
+  const top = shown[shown.length - 1];
+  const plain = n.opacity === undefined || n.opacity === 1;
+  const blend = n.blendMode === undefined || n.blendMode === "NORMAL" || n.blendMode === "PASS_THROUGH";
+  if (top.type === "SOLID" && (top.opacity === undefined || top.opacity === 1) && plain && blend) return top.color;
+  return null;
+}
+
+async function auditRun(root, opts, env) {
+  opts = opts || {};
+  const fig = env.fig, ck = env.ck || null;
+  if (typeof root === "string") root = await env.resolve(root);
+  if (!root || typeof root.type !== "string" || root.type === "DOCUMENT") {
+    throw new Error("h.audit: give it a layer or a page, not " + (root && root.type === "DOCUMENT" ? "the document" : String(root)));
+  }
+  const known = new Set(AUDIT_RULES);
+  for (const key of ["only", "skip"]) {
+    if (opts[key] == null) continue;
+    if (!Array.isArray(opts[key])) throw new Error("h.audit: " + key + " is a list of rule ids");
+    for (const id of opts[key]) {
+      if (!known.has(id)) throw new Error('h.audit: no rule "' + id + '"; there are: ' + AUDIT_RULES.join(", "));
+    }
+  }
+  const on = (id) => (!opts.only || opts.only.indexOf(id) !== -1) && !(opts.skip && opts.skip.indexOf(id) !== -1);
+  const shownMax = Math.max(1, Math.floor(opts.limit || AUDIT_SHOWN));
+  const maxNodes = opts.maxNodes || AUDIT_NODES;
+  const maxMs = opts.maxMs || AUDIT_MS;
+  const minTarget = typeof opts.minTarget === "number" ? opts.minTarget : AUDIT_TARGET;
+  const mixed = fig.mixed;
+
+  const notes = [], counts = {};
+  let seq = 0;
+  const add = (rule, n, text) => {
+    if (!on(rule)) return;
+    counts[rule] = (counts[rule] || 0) + 1;
+    if (notes.length < AUDIT_KEPT) notes.push({ rule, id: n.id, name: auditShort(n.name || n.type, 60), text, seq: seq++ });
+  };
+
+  if (root.type === "PAGE" && typeof root.loadAsync === "function") await root.loadAsync();
+  const was = fig.skipInvisibleInstanceChildren;
+  fig.skipInvisibleInstanceChildren = true;
+  const started = Date.now();
+  let breath = started, visited = 0, partial = null;
+
+  const kidsOf = new Map();  // a layer's children, read once: every read builds an array
+  const kids = (n) => {
+    let k = kidsOf.get(n.id);
+    if (!k) { k = n.children ? n.children.slice() : []; kidsOf.set(n.id, k); }
+    return k;
+  };
+  const backdrops = new Map();
+  const backdrop = (n) => {
+    if (!backdrops.has(n.id)) backdrops.set(n.id, auditBackdropOf(n));
+    return backdrops.get(n.id);
+  };
+  const styleNames = new Map();
+  const styleName = async (id) => {
+    if (!styleNames.has(id)) {
+      let s = null;
+      try { s = await fig.getStyleByIdAsync(id); } catch (e) { s = null; }
+      styleNames.set(id, s ? String(s.name) : "");
+    }
+    return styleNames.get(id);
+  };
+
+  // A stack entry: the layer, its place among its parent's children (-1: not
+  // looked up yet), its parent's entry (undefined: not built yet; above the
+  // root they are built when asked), the opacity of the layers above it, whether
+  // one of them blends, the frames above it that clip, and whether the parent
+  // is an auto-layout.
+  const parentOf = (e) => {
+    if (e.up === undefined) {
+      const p = e.n.parent;
+      e.up = p && p.type !== "PAGE" && p.type !== "DOCUMENT" ? { n: p, at: -1, up: undefined } : null;
+    }
+    return e.up;
+  };
+  const indexOf = (e) => {
+    if (e.at < 0) {
+      const p = e.n.parent;
+      e.at = p ? kids(p).findIndex((k) => k.id === e.n.id) : 0;
+    }
+    return e.at;
+  };
+  // The colour behind a layer: going up, at each level first the layers below it
+  // that cover its middle (a backdrop rectangle of its own), then the parent's
+  // fill. {c, near}: the colour, and whether a layer beside it gave it (not an
+  // ancestor). null: unknown (an image, a gradient, a translucent paint, or
+  // nothing at all up to the page), so there is no note about it.
+  const behind = (e) => {
+    const b = e.n.absoluteBoundingBox;
+    const cx = b ? b.x + b.width / 2 : null, cy = b ? b.y + b.height / 2 : null;
+    for (let cur = e, depth = 0; depth < 80; depth++) {
+      const up = parentOf(cur);
+      if (!up) return null;
+      if (cx !== null) {
+        const sibs = kids(up.n);
+        const at = indexOf(cur);
+        for (let j = at - 1; j >= 0 && j >= at - 40; j--) {
+          const s = sibs[j];
+          if (s.visible === false || !AUDIT_BEHIND.has(s.type)) continue;
+          const sb = s.absoluteBoundingBox;
+          if (!sb || cx < sb.x || cx > sb.x + sb.width || cy < sb.y || cy > sb.y + sb.height) continue;
+          const d = backdrop(s);
+          if (d !== undefined) return d && { c: d, near: true };
+        }
+      }
+      const d = backdrop(up.n);
+      if (d !== undefined) return d && { c: d, near: false };
+      cur = up;
+    }
+    return null;
+  };
+
+  const headings = [];
+  const unstyled = [], raws = [];
+  let styled = false, tokened = false;
+  const iconSeen = new Set();
+
+  // What is wrong with a text wherever it is, in an instance too.
+  const textBasics = (n) => {
+    const chars = typeof n.characters === "string" ? n.characters : "";
+    if (n.hasMissingFont) add("missing-font", n, "uses a font that is not installed here, so it shows in a stand-in; switch it to an installed font");
+    for (const re of AUDIT_PLACEHOLDER) {
+      if (re.test(chars)) { add("placeholder-text", n, 'placeholder text "' + auditShort(chars, 40) + '"; write the real text, or ask'); break; }
+    }
+  };
+
+  const textBody = async (e, n) => {
+    const chars = n.characters;
+    // Cut: by a frame that clips, or past its own fixed box.
+    const rb = n.absoluteRenderBounds, bb = n.absoluteBoundingBox;
+    if (rb && bb && n.textTruncation !== "ENDING") {
+      const size = typeof n.fontSize === "number" ? n.fontSize : 16;
+      const slack = Math.max(2, size * 0.4);
+      const auto = n.textAutoResize;
+      let cut = null;
+      if (auto === "NONE" && rb.height > bb.height + slack) cut = "runs out of its own box (" + auditNum(bb.height) + " px high, the text needs " + auditNum(rb.height) + "); make the box taller or the text shorter";
+      else if (auto !== "WIDTH_AND_HEIGHT" && rb.width > bb.width + slack) cut = "runs out of its own box on the side; make the box wider or the text shorter";
+      // Figma's render bounds are the part that shows, already cut by the frame: the
+      // text's box sticks out of the frame and its drawn part reaches the frame's edge.
+      for (let c = e.clip; !cut && c; c = c.up) {
+        const o = c.box;
+        const right = bb.x + bb.width > o.x + o.width + 2 && rb.x + rb.width >= o.x + o.width - 1;
+        const left = bb.x < o.x - 2 && rb.x <= o.x + 1;
+        const bottom = bb.y + bb.height > o.y + o.height + 2 && rb.y + rb.height >= o.y + o.height - 1;
+        const top = bb.y < o.y - 2 && rb.y <= o.y + 1;
+        if (right || left || bottom || top) {
+          cut = 'is cut off by the frame "' + auditShort(c.name, 30) + '", which clips its content; make room for the text or turn the clipping off';
+        }
+      }
+      if (cut) add("text-clipped", n, cut);
+    }
+    // Contrast, per run of one colour and size.
+    if (on("low-contrast")) {
+      const back = behind(e);
+      if (back) {
+        const bg = back.c;
+        const one = n.fills !== mixed && n.fontSize !== mixed && n.fontWeight !== mixed;
+        const segs = one ? [{ characters: chars, fills: n.fills, fontSize: n.fontSize, fontWeight: n.fontWeight }]
+          : auditSafe(() => n.getStyledTextSegments(["fills", "fontSize", "fontWeight"]), []).slice(0, 20);
+        let worst = null;
+        for (const s of segs) {
+          if (!s.characters.trim()) continue;
+          const paints = auditShown(s.fills);
+          const top = paints[paints.length - 1];
+          if (!top || top.type !== "SOLID") continue;
+          const a = (top.opacity === undefined ? 1 : top.opacity) * (n.opacity === undefined ? 1 : n.opacity) * e.alpha;
+          const fg = auditBlend(top.color, a, bg);
+          const ratio = auditRatio(fg, bg);
+          const large = s.fontSize >= 24 || (s.fontSize >= 18.66 && s.fontWeight >= 700);
+          const need = large ? 3 : 4.5;
+          if (ratio < need && (!worst || ratio < worst.ratio)) worst = { ratio, need, fg, large };
+        }
+        if (worst) {
+          add("low-contrast", n, "contrast " + auditShy(worst.ratio) + ":1 of " + auditHex(worst.fg) + " on " + auditHex(bg) + ", needs " +
+            worst.need + ":1" + (worst.large ? " for large text" : "") + "; use a stronger colour");
+        }
+      }
+    }
+    // The text style: only counts where the file uses styles at all (resolved below).
+    const sid = n.textStyleId;
+    if (sid === mixed) {
+      const segs = auditSafe(() => n.getStyledTextSegments(["textStyleId"]), []);
+      if (segs.some((s) => s.textStyleId)) styled = true;
+      if (segs.some((s) => !s.textStyleId)) unstyled.push(n);
+    } else if (sid) styled = true;
+    else unstyled.push(n);
+    // A heading's level, from its text style or its name.
+    let level = null;
+    const named = AUDIT_HEADING_NAME.exec(n.name);
+    if (named) level = +named[1];
+    else if (sid && sid !== mixed) {
+      const m = AUDIT_HEADING_STYLE.exec(await styleName(sid));
+      if (m) level = +m[1];
+    }
+    if (level !== null && bb) headings.push({ n, level, y: bb.y, x: bb.x });
+  };
+
+  const small = async (n) => {
+    if (!on("small-target") || (n.width >= minTarget && n.height >= minTarget)) return;
+    let why = null;
+    const clicks = auditSafe(() => n.reactions, null);
+    if (Array.isArray(clicks) && clicks.some((r) => r && r.trigger && (r.trigger.type === "ON_CLICK" || r.trigger.type === "ON_PRESS"))) {
+      why = "it has a click in the prototype";
+    } else if (auditWords(n.name).some((x) => AUDIT_BUTTON.has(x))) {
+      why = 'it is named "' + auditShort(n.name, 30) + '"';
+    } else if (n.type === "INSTANCE") {
+      let main = null;
+      try { main = await n.getMainComponentAsync(); } catch (e) { main = null; }
+      const names = main ? [main.name, main.parent && main.parent.type === "COMPONENT_SET" ? main.parent.name : ""] : [];
+      if (names.some((s) => auditWords(s).some((x) => AUDIT_BUTTON.has(x)))) why = 'its component is "' + auditShort(names[1] || names[0], 30) + '"';
+    }
+    if (why) {
+      add("small-target", n, "looks like a button (" + why + ") but is " + auditNum(n.width) + " × " + auditNum(n.height) +
+        " px, under " + minTarget + " × " + minTarget + "; make it at least that big");
+    }
+  };
+
+  // What is wrong with a frame in its own right, and with the way its children sit.
+  const frameBody = (e, n, list) => {
+    const type = n.type;
+    if (n.detachedInfo) add("detached-instance", n, "was an instance and is detached: fine as a one-off state, otherwise use the component again");
+    const flow = list.filter((k) => k.visible !== false && k.layoutPositioning !== "ABSOLUTE");
+    if (!list.length) {
+      const bare = !auditShown(n.fills).length && !(auditShown(n.strokes).length && n.strokeWeight !== 0) &&
+        !(Array.isArray(n.effects) && n.effects.some((x) => x && x.visible !== false)) && !n.isMask;
+      if (bare && !(n.width < 1 || n.height < 1)) add("empty-frame", n, "empty and shows nothing; delete it (for a gap use the parent's spacing) or fill it");
+      return;
+    }
+    if (type === "COMPONENT_SET") return;
+    if (n.layoutMode === "NONE") {
+      const onPage = n.parent && (n.parent.type === "PAGE" || n.parent.type === "SECTION");
+      const screen = onPage && n.width >= 320 && n.height >= 480;  // a screen or a board: placed by hand on purpose
+      const drawing = flow.every((k) => AUDIT_SHAPES.has(k.type));
+      if (flow.length >= 2 && !screen && !drawing) {
+        let overlaps = false;
+        const some = flow.slice(0, 16);
+        for (let i = 0; i < some.length && !overlaps; i++) {
+          for (let j = i + 1; j < some.length && !overlaps; j++) {
+            const a = some[i], b = some[j];
+            const dx = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+            const dy = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+            const least = Math.min(a.width * a.height, b.width * b.height);
+            if (dx > 0 && dy > 0 && least > 0 && dx * dy > 0.25 * least) overlaps = true;  // a stack, not a row
+          }
+        }
+        if (!overlaps) add("no-auto-layout", n, flow.length + " children placed by hand with no auto-layout; add auto-layout so spacing follows the content");
+      }
+      return;
+    }
+    // Same kind of siblings of a fixed size that are a few px apart.
+    const groups = new Map();
+    for (const k of flow) {
+      const key = k.type + "|" + String(k.name).replace(/[\s_-]*\d+$/, "").toLowerCase();
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(k);
+    }
+    for (const g of groups.values()) {
+      if (g.length < 2) continue;
+      for (const axis of ["Horizontal", "Vertical"]) {
+        const fixed = g.filter((k) => k["layoutSizing" + axis] === "FIXED");
+        if (fixed.length < 2) continue;
+        const of = (k) => auditNum(axis === "Horizontal" ? k.width : k.height);
+        const sizes = fixed.map(of);
+        const spread = Math.max.apply(null, sizes) - Math.min.apply(null, sizes);
+        if (spread <= 0.5 || spread > 8) continue;  // equal, or too different to be a slip
+        const tally = new Map();
+        for (const s of sizes) tally.set(s, (tally.get(s) || 0) + 1);
+        let mode = sizes[0];
+        for (const [s, c] of tally) if (c > tally.get(mode)) mode = s;
+        const odd = fixed.find((k) => Math.abs(of(k) - mode) > 0.5);
+        add("uneven-siblings", odd, "is " + of(odd) + " px " + (axis === "Horizontal" ? "wide" : "high") + ", its same-named siblings are " +
+          auditShort(Array.from(new Set(sizes)).join(", "), 40) + "; make them equal");
+      }
+    }
+  };
+
+  try {
+    const stack = [{ n: root, at: -1, up: undefined, alpha: 1, clip: null, inLayout: false }];
+    // One layer: its own notes, then its children onto the stack.
+    const visit = async (e) => {
+      const n = e.n;
+      if (n.visible === false) return;
+      const type = n.type;
+      const w = n.width, h = n.height;
+      let hollow = false;
+      if (type === "TEXT" || type === "FRAME" || type === "COMPONENT" || type === "INSTANCE" || type === "RECTANGLE" || type === "ELLIPSE") {
+        if (w < 1 || h < 1) { hollow = true; add("zero-size", n, "is " + auditNum(w) + " × " + auditNum(h) + " px, so nothing shows; give it a size or delete it"); }
+      }
+      if (!hollow && type === "TEXT" && typeof n.characters === "string" && !n.characters.trim()) {
+        hollow = true;
+        add("zero-size", n, "text with no visible characters; write the text or delete the layer");
+      }
+      if (AUDIT_DEFAULT_NAME.test(n.name) && (type === "FRAME" || type === "GROUP" || type === "COMPONENT" || type === "SECTION")) {
+        add("default-name", n, 'named "' + n.name + '", Figma\'s own default; name it for what it is');
+      }
+      // A dot, a ring or a backdrop shape is made to sit over its neighbours; content is not.
+      if (e.inLayout && n.layoutPositioning === "ABSOLUTE" && !AUDIT_SHAPES.has(type)) {
+        const pe = parentOf(e);
+        add("absolute-in-layout", n, 'positioned by hand inside the auto-layout "' + auditShort(pe ? pe.n.name : "", 30) +
+          '"; fine for a badge or an overlay, otherwise put it in the flow');
+      }
+
+      if (type === "TEXT") {
+        textBasics(n);
+        if (!hollow) await textBody(e, n);
+        const f = auditFillState(n, mixed);
+        if (f.tokened) tokened = true;
+        if (f.raw) raws.push({ n, fill: f.raw, stroke: null });
+        return;
+      }
+
+      if (AUDIT_COLORED.has(type)) {
+        const f = auditFillState(n, mixed);
+        const s = n.strokeWeight === 0 ? { raw: null, tokened: false } : auditPaintState(n.strokes, n.strokeStyleId, mixed);
+        if (f.tokened || s.tokened) tokened = true;
+        if (f.raw || s.raw) raws.push({ n, fill: f.raw, stroke: s.raw });
+      }
+
+      if (type === "INSTANCE") {
+        await small(n);
+        // What is inside belongs to the component; only the texts people fill in are looked at.
+        const texts = auditSafe(() => n.findAllWithCriteria({ types: ["TEXT"] }), []);
+        for (const t of texts.slice(0, 200)) if (t.visible !== false) textBasics(t);
+        visited += Math.min(texts.length, 200);
+        return;
+      }
+
+      if (AUDIT_ICON.has(type) && on("low-contrast-ui") && w <= 64 && h <= 64) {
+        const key = n.parent ? n.parent.id : "";
+        const back = iconSeen.has(key) ? null : behind(e);
+        const bg = back && back.c;
+        const paints = auditShown(n.fills).length ? auditShown(n.fills) : n.strokeWeight === 0 ? [] : auditShown(n.strokes);
+        const top = paints[paints.length - 1];
+        if (bg && top && top.type === "SOLID") {
+          const a = (top.opacity === undefined ? 1 : top.opacity) * (n.opacity === undefined ? 1 : n.opacity) * e.alpha;
+          const fg = auditBlend(top.color, a, bg);
+          const ratio = auditRatio(fg, bg);
+          // The same colour as a layer beside it: parts of one drawing, not an invisible icon.
+          if (ratio < 3 && !(back.near && ratio < 1.15)) {
+            iconSeen.add(key);
+            add("low-contrast-ui", n, "icon contrast " + auditShy(ratio) + ":1 of " + auditHex(fg) + " on " + auditHex(bg) + ", needs 3:1; use a stronger colour");
+          }
+        }
+        return;
+      }
+
+      if (!AUDIT_HOLDS.has(type)) return;
+      const list = kids(n);
+      if (type === "FRAME" || type === "COMPONENT" || type === "COMPONENT_SET") {
+        if (type !== "COMPONENT_SET") await small(n);
+        frameBody(e, n, list);
+      }
+      let clip = e.clip;
+      if ((type === "FRAME" || type === "COMPONENT") && n.clipsContent === true && n.absoluteBoundingBox) {
+        clip = { box: n.absoluteBoundingBox, name: n.name, up: e.clip };
+      }
+      const alpha = e.alpha * (typeof n.opacity === "number" ? n.opacity : 1);
+      const lay = (type === "FRAME" || type === "COMPONENT") && n.layoutMode !== "NONE";
+      for (let i = list.length - 1; i >= 0; i--) stack.push({ n: list[i], at: i, up: e, alpha, clip, inLayout: lay });
+    };
+    while (stack.length) {
+      const e = stack.pop();
+      if (++visited > maxNodes) { partial = "stopped after " + maxNodes + " layers"; break; }
+      if ((visited & 31) === 0) {
+        if (ck) ck();
+        const t = Date.now();
+        if (t - started > maxMs) { partial = "stopped after " + Math.round(maxMs / 1000) + " s"; break; }
+        if (t - breath > 40) { await env.wait(0); breath = Date.now(); }
+      }
+      try { await visit(e); } catch (err) { /* the layer was removed while the walk ran */ }
+    }
+
+    // Judged on the whole: a style or a variable counts as missing only where the
+    // file works with them (its own styles or variables, or ones used in what was walked).
+    if (unstyled.length && on("no-text-style")) {
+      let any = styled;
+      if (!any) {
+        const list = await auditSafe(() => fig.getLocalTextStylesAsync(), []);
+        any = list.length > 0;
+      }
+      if (any) for (const n of unstyled) add("no-text-style", n, "has no text style; apply one of the file's text styles");
+    }
+    if (raws.length && on("unbound-color")) {
+      let any = tokened;
+      if (!any) {
+        const paintStyles = await auditSafe(() => fig.getLocalPaintStylesAsync(), []);
+        any = paintStyles.length > 0;
+      }
+      if (!any && fig.variables) {
+        const vars = await auditSafe(() => fig.variables.getLocalVariablesAsync("COLOR"), []);
+        any = vars.length > 0;
+      }
+      if (any) {
+        for (const r of raws) {
+          const parts = [];
+          if (r.fill) parts.push("fill " + r.fill);
+          if (r.stroke) parts.push("stroke " + r.stroke);
+          add("unbound-color", r.n, parts.join(" and ") + " has no style or variable; bind it to one of the file's");
+        }
+      }
+    }
+    // Headings, top to bottom: one that jumps down more than a level.
+    if (headings.length > 1 && on("heading-order")) {
+      headings.sort((a, b) => a.y - b.y || a.x - b.x);
+      for (let i = 1; i < headings.length; i++) {
+        const prev = headings[i - 1].level, cur = headings[i].level;
+        if (cur > prev + 1) add("heading-order", headings[i].n, "is a level " + cur + " heading right after a level " + prev + "; do not skip a level");
+      }
+    }
+  } finally {
+    fig.skipInvisibleInstanceChildren = was;
+  }
+
+  if (ck) ck();  // past the deadline, the answers of the calls above were thrown away
+  const rank = (id) => AUDIT_RULES.indexOf(id);
+  notes.sort((a, b) => rank(a.rule) - rank(b.rule) || a.seq - b.seq);
+  const total = Object.keys(counts).reduce((s, k) => s + counts[k], 0);
+  // Layers with the same note (the same colours, the same size…) come as one: a
+  // dozen texts of one grey are one thing to fix. group: false lists each layer.
+  const groups = new Map();
+  for (const x of notes) {
+    const key = opts.group === false ? String(x.seq) : x.rule + "\n" + x.text;
+    const g = groups.get(key);
+    if (!g) groups.set(key, { x, ids: [x.id], count: 1 });
+    else { g.count++; if (g.ids.length < AUDIT_IDS) g.ids.push(x.id); }
+  }
+  let shown = 0;
+  const out = [];
+  for (const g of groups.values()) {
+    if (out.length >= shownMax) break;
+    const o = { rule: g.x.rule, id: g.x.id, name: g.x.name, text: g.x.text };
+    if (g.count > 1) { o.count = g.count; o.ids = g.ids; }
+    if (opts.links && env.link) o.url = env.link(g.x.id);
+    out.push(o);
+    shown += g.count;
+  }
+  const byRule = {};
+  for (const id of AUDIT_RULES) if (counts[id]) byRule[id] = counts[id];
+  const res = { notes: out, total, more: total - shown, counts: byRule, visited };
+  if (partial) res.partial = partial + "; audit a smaller layer for the rest";
+  return res;
+}
+// audit:end
+
+Object.assign(HELPERS, {
+  // h.audit(layer | page | id, {only, skip, limit, minTarget, links}): what looks wrong in the layers
+  // below, with what to do about it; see references/helpers.md.
+  async audit(root, opts) {
+    const h = this;
+    return await auditRun(root, opts, {
+      fig: figmaOf(h),
+      ck: h && typeof h.ck === "function" ? h.ck : null,
+      wait,
+      resolve: (x) => HELPERS.resolve(x),
+      link: (id) => HELPERS.link(id),
+    });
   },
 });
 

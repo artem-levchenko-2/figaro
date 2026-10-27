@@ -304,6 +304,7 @@ function check(label, actual, expected) {
       "const [a, b] = [1, 2]; let x = 0; x += a; return x + b;",
       'const n = await h.node("1:1"); const data = await h.inspect(n); return [h.link(n), h.sel(), data];',
       'const notes = await h.annotations("page"); return notes.filter((r) => !r.visible);',
+      'const r = await h.audit(await h.node("1:1"), { only: ["low-contrast"] }); return r.notes;',
       "return figma.currentPage.children.map((n) => n.name.replace(/\"/g, \"'\"));",
       "const half = figma.root.children.length / 2; const n = 10 / half; return n;",
       "const { width: w, height: h } = figma.currentPage.children[0]; return [{ w, h }];",
