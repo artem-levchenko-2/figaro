@@ -142,6 +142,30 @@ return { id: set.id };
 - A tag in 12 colours with an optional icon is 12 variants and an `Icon` property, not 36 variants.
 - Size × style × state beyond ~30 combinations — split it into a base component and wrappers.
 
+## Reading a component set
+
+`figaro inspect <set>` does the comparison of the variants for you, so you needn't read 20 variants and compare
+them by hand (`--json` has the same as data, under `variants`):
+
+- **The axes** are the `prop … VARIANT` lines under the set. **The base** is the variant that has every
+  property's default (the set's default; the first one if the set names none). It is printed in full; hidden
+  layers are in it, marked `hidden`.
+- **The differences** come after it, by layer, then by property: `fill: #111111 → #ffffff · State=hover` is the
+  base's value, the other value, and the variants that have it. `Size=S` means every variant with that value
+  (but not the base) has it; a variant that fits no condition is named in full. `same as the base:` lists the
+  variants that differ in nothing. Each line is a prop for the code: `Size=S` changes the padding, `State=hover`
+  the fill.
+- **What counts:** size (only a fixed side: a hugging or filling one follows its content), position (only where
+  the parent has no auto-layout), visibility, auto-layout and padding, radius, opacity, fills, strokes, effects
+  and their styles and variables, text, font and text style, an instance's component (a swap) and properties,
+  and the component properties that drive a layer (`ref.…`). A layer that only some variants have is
+  `layer: absent → […]`. A vector's own path is not compared, only its size and paints.
+- **Layers are matched by their path of names.** Same-named layers under one parent are matched in order, and
+  the second one is written `Icon[2]`. Layers of a different type with one name count as different layers. The
+  order of layers is not compared.
+- `--depth 1` compares only the variants themselves, without their layers. A set over the layer limit (5000
+  layers) says how many variants were left out.
+
 ## Moving a design over from code or a live page
 
 - When the code's tokens mirror the file's variables, take the variable with the same name.

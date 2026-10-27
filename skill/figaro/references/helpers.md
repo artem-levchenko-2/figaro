@@ -41,7 +41,7 @@ A `figaro exec` script runs as the body of an async function with the parameters
 
 | Helper | What it does |
 |---|---|
-| `await h.inspect(node, {depth, hidden})` | the data behind `figaro inspect`: layout, fills with style and variable names, texts, instances, keys |
+| `await h.inspect(node, {depth, hidden})` | the data behind `figaro inspect`: layout, fills with style and variable names, texts, instances, keys (the comparison of a set's variants is made by the CLI from this data, not by the helper) |
 | `await h.shot(node, {format, scale, width, absolute})` | a picture in base64; `absolute: true` exports exactly the layer's size even if children or effects stick out of it (for a picture reused inside another mockup). The CLI is handier: `figaro shot` or `exec --shot` write a file |
 
 ## Pictures

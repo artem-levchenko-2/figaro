@@ -13,13 +13,19 @@ ARROWS = {"HORIZONTAL": "→", "VERTICAL": "↓", "GRID": "▦"}
 MAX_LINES = 400
 
 
-def render(value, max_lines=MAX_LINES):
+def header(value):
     node = value.get("node") or {}
     out = [f'"{node.get("name")}" {node.get("type")} {node.get("id")} in "{value.get("file")}"'
            f" · {_count(value.get('nodes'), 'layer')}"
            + (" (cut)" if value.get("cut") else "")]
     if value.get("url"):
         out.append(value["url"])
+    return out
+
+
+def render(value, max_lines=MAX_LINES):
+    node = value.get("node") or {}
+    out = header(value)
     tree = []
     _walk(node, 0, None, tree)
     if len(tree) > max_lines:

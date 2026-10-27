@@ -32,6 +32,7 @@ from pathlib import Path
 import comments_text
 import inspect_text
 import figma_links
+import variant_diff
 
 HERE = Path(__file__).resolve().parent
 START = HERE / "start-bridge.sh"
@@ -367,6 +368,32 @@ def created_line(changes):
 
 # ─── inspect ─────────────────────────────────────────────────────────────
 
+VARIANTS_MAX_NODES = 5000  # layers read for the variants of a set: a big set has many
+
+
+def _has_hidden(node):
+    return bool(node.get("hiddenKids")) or any(_has_hidden(c) for c in node.get("children") or [])
+
+
+def _variants(args, value):
+    """For a component set: what differs between its variants, from a read that
+    includes the hidden layers (a layer shown in one variant and hidden in
+    another is a difference), or None. Returns (analysis, base, error reply)."""
+    node = value.get("node") or {}
+    if node.get("type") != "COMPONENT_SET" or not node.get("children"):
+        return None, None, None
+    data = value
+    if not args.hidden and (value.get("cut") or _has_hidden(node)):
+        opts = {"depth": args.depth, "hidden": True, "maxNodes": VARIANTS_MAX_NODES}
+        code = f"return await h.inspect({CLI.node_expr(args.node_id)}, {json.dumps(opts)});"
+        status, resp = CLI._exec(code, args.timeout, quick=True)
+        if not resp.get("ok"):
+            return None, None, resp
+        data = resp.get("value") or {}
+    analysis, base = variant_diff.analyze(data.get("node") or {})
+    return analysis, base, None
+
+
 def cmd_inspect(args):
     opts = {"depth": args.depth, "hidden": args.hidden}
     code = f"return await h.inspect({CLI.node_expr(args.node_id)}, {json.dumps(opts)});"
@@ -375,6 +402,11 @@ def cmd_inspect(args):
         return CLI._emit(resp, raw=args.raw)
     report(resp)
     value = resp.get("value") or {}
+    analysis, base, failed = _variants(args, value)
+    if failed:
+        return CLI._emit(failed)
+    if analysis:
+        value["variants"] = analysis
     if args.out:
         text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
         path = Path(args.out).expanduser()
@@ -384,11 +416,15 @@ def cmd_inspect(args):
         except OSError as e:
             sys.exit(f"figaro: can't write {path}: {e.strerror or e}")
         node = value.get("node") or {}
-        print(json.dumps({"file": value.get("file"), "node": node.get("id"), "name": node.get("name"),
-                          "out": str(path.resolve()), "nodes": value.get("nodes"), "chars": len(text)},
-                         ensure_ascii=False))
+        summary = {"file": value.get("file"), "node": node.get("id"), "name": node.get("name"),
+                   "out": str(path.resolve()), "nodes": value.get("nodes"), "chars": len(text)}
+        if analysis:
+            summary["variants"] = len(analysis["variants"])
+        print(json.dumps(summary, ensure_ascii=False))
     elif args.json:
         print(json.dumps(value, ensure_ascii=False))
+    elif analysis:
+        print(variant_diff.render(value, analysis, base))
     else:
         print(inspect_text.render(value))
     return 0

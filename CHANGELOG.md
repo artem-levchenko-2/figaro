@@ -9,6 +9,16 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+### Added
+
+- **`figaro inspect` of a component set shows what differs between its variants.** It prints the variant axes,
+  one variant in full (the base: the one that has every property's default, else the first) and, for the
+  others, only what is different from it: sizes, padding, auto-layout, radius, opacity, fills, strokes and
+  effects with their style and variable names, text and font, layers shown, hidden or missing, swapped
+  instances and their properties. Each change comes with the variants that have it, written as conditions
+  (`Size=S`) when every variant with that value has it, so a set of 50 stays short. `--json` and `-o` keep all
+  their keys and add `variants` (the base, the axes and the differences). Other layers print as before.
+
 ### Changed
 
 - **The window's indicators follow one rule.** A dot means calm: the file is ready (green), or there is no
