@@ -27,6 +27,32 @@ def run(coro):
     return asyncio.run(coro)
 
 
+async def until(test, seconds=5.0):
+    """Wait for `test()` to come true and return True, or False after `seconds`.
+
+    Tests wait for the event they check, not for a fixed pause: a pause that
+    is long enough on a quick machine is too short on a slow one. The limit
+    costs nothing unless the event never comes. A board, a name or a message
+    that isn't there yet (IndexError, KeyError, StopIteration) is no answer
+    yet. Keep a plain pause only where a test checks that something did NOT
+    happen."""
+    end = asyncio.get_running_loop().time() + seconds
+    while True:
+        try:
+            if test():
+                return True
+        except (IndexError, KeyError, StopIteration):
+            pass
+        if asyncio.get_running_loop().time() >= end:
+            return False
+        await asyncio.sleep(0.01)
+
+
+def names():
+    """The file names the bridge knows its windows by (None: no name said yet)."""
+    return sorted((i.get("name") for i in bridge.PLUGINS.values()), key=str)
+
+
 # Every test starts from a clean bridge: see clean_state in conftest.py.
 
 
@@ -47,7 +73,8 @@ class FakePlugin:
         self.ws = await self.client.ws_connect("/plugin", headers={"Origin": "null"})
         await self.ws.send_str(json.dumps({"type": "hello", "version": "test"}))
         self._task = asyncio.create_task(self._pump())
-        await asyncio.sleep(0.1)
+        # `peers` goes to every window once its hello is taken
+        assert await until(lambda: any(m["type"] == "peers" for m in self.received)), "no peers after hello"
         return self
 
     async def __aexit__(self, *exc):
@@ -202,8 +229,7 @@ def test_timed_out_script_interlocks_the_file_until_it_finishes():
 
             await plugin.ws.send_str(json.dumps(
                 {"type": "result", "id": orphan, "text": "late"}))
-            await asyncio.sleep(0.1)
-            assert bridge.ABANDONED == {}
+            assert await until(lambda: bridge.ABANDONED == {})
             plugin.reply = lambda code: {"text": "ok", "value": 1}
             r = await c.post("/exec", json={"code": "after", "timeout": 2})
             assert r.status == 200
@@ -227,7 +253,8 @@ def test_outdated_plugin_is_told_to_rerun():
                 {"type": "hello", "name": "Old", "plugin": "2000-01-01.1"}))
             await new.ws.send_str(json.dumps(
                 {"type": "hello", "name": "New", "plugin": current}))
-            await asyncio.sleep(0.1)
+            peers = lambda p: any(m["type"] == "peers" for m in p.received)  # noqa: E731
+            assert await until(lambda: peers(old) and peers(new))  # both hellos taken
 
             assert any(m["type"] == "outdated" and m["expected"] == current
                        for m in old.received)
@@ -285,7 +312,7 @@ def test_new_release_is_offered_to_plugins():
         newer = f"{major}.{minor + 1}.0"
         async with FakePlugin(c) as early:
             await bridge.set_update(newer)
-            await asyncio.sleep(0.05)
+            assert await until(lambda: any(m["type"] == "update" for m in early.received))
             msg = [m for m in early.received if m["type"] == "update"][-1]
             assert msg["latest"] == newer and msg["current"] == bridge.VERSION
             assert msg["url"].endswith(f"/releases/tag/v{newer}")
@@ -337,11 +364,11 @@ def test_peers_counts_only_files_that_said_hello():
     async def go():
         c = await make_client()
         async with FakePlugin(c) as a, FakePlugin(c) as b:
-            await asyncio.sleep(0.1)
             silent = await c.ws_connect("/plugin", headers={"Origin": "null"})
             await a.ws.send_str(json.dumps({"type": "hello", "name": "FileA"}))
-            await asyncio.sleep(0.1)
+            assert await until(lambda: "FileA" in names())
             last = lambda p: [m for m in p.received if m["type"] == "peers"][-1]
+            assert await until(lambda: last(b) == {"type": "peers", "index": 2, "total": 2})
             assert last(a) == {"type": "peers", "index": 1, "total": 2}
             assert last(b) == {"type": "peers", "index": 2, "total": 2}
             await silent.close()
@@ -356,7 +383,7 @@ def test_disconnect_fails_inflight_requests():
         await plugin.__aenter__()
         task = asyncio.create_task(
             c.post("/exec", json={"code": "slow", "timeout": 10}))
-        await asyncio.sleep(0.2)
+        assert await until(lambda: plugin.exec_ids)  # the script is out there
         await plugin.__aexit__()
         r = await asyncio.wait_for(task, timeout=5)
         body = await r.json()
@@ -378,7 +405,7 @@ def test_two_files_coexist_and_need_a_target():
                 {"type": "hello", "version": "test", "name": "FileA"}))
             await b.ws.send_str(json.dumps(
                 {"type": "hello", "version": "test", "name": "FileB"}))
-            await asyncio.sleep(0.1)
+            assert await until(lambda: names() == ["FileA", "FileB"])
 
             r = await c.get("/targets")
             files = (await r.json())["files"]
@@ -405,7 +432,7 @@ def test_same_file_reconnect_replaces_unresponsive():
         await first.__aenter__()
         await first.ws.send_str(json.dumps(
             {"type": "hello", "version": "test", "name": "FileA"}))
-        await asyncio.sleep(0.1)
+        assert await until(lambda: names() == ["FileA"])
         first.go_silent()
 
         async with FakePlugin(c) as second:
@@ -413,7 +440,7 @@ def test_same_file_reconnect_replaces_unresponsive():
                 {"type": "hello", "version": "test", "name": "FileA"}))
             # The incumbent is probed before it is dropped; its socket is still
             # open, so the handover costs one probe timeout.
-            await asyncio.sleep(bridge.SLOT_PROBE_TIMEOUT + 0.4)
+            assert await until(lambda: names() == ["FileA"], bridge.SLOT_PROBE_TIMEOUT + 4)
 
             r = await c.get("/targets")
             files = (await r.json())["files"]
@@ -443,7 +470,7 @@ def test_same_document_in_two_windows_coexists():
                 await p.ws.send_str(json.dumps(
                     {"type": "hello", "version": "test",
                      "name": "FileA", "docSig": "abc123", "fileKey": "abc123"}))
-                await asyncio.sleep(0.1)
+                assert await until(lambda: names().count("FileA") == (1 if p is first else 2))
 
             files = (await (await c.get("/targets")).json())["files"]
             assert [f["name"] for f in files] == ["FileA", "FileA"], files
@@ -456,7 +483,7 @@ def test_same_document_in_two_windows_coexists():
             assert not second.seen_codes
 
             await first.ws.close()
-            await asyncio.sleep(0.2)
+            assert await until(lambda: names() == ["FileA"])  # the bridge let go of it
             r = await c.post("/exec", json={"code": "after", "timeout": 5, "target": "FileA"})
             assert r.status == 200 and second.seen_codes == ["after"]
         await c.close()
@@ -517,7 +544,9 @@ def test_odd_fields_in_a_hello_break_nothing():
                 {"type": "hello", "version": "test", "name": 123, "docSig": {"a": 1},
                  "fileKey": [1], "plugin": 5, "caps": ["undo", 7]}))
             await odd.ws.send_str("[1, 2]")  # not an object at all
-            await asyncio.sleep(0.2)
+            assert await until(lambda: names() == ["FileA", None]
+                               and all(i.get("hello") for i in bridge.PLUGINS.values()))
+            await asyncio.sleep(0.1)  # time for the bridge to choke on what came after, if it will
             assert (await c.get("/status")).status == 200
             r = await c.get("/targets")
             assert r.status == 200
@@ -537,7 +566,7 @@ def test_only_the_window_a_script_went_to_answers_it():
         async with FakePlugin(c) as a, FakePlugin(c) as b:
             await a.ws.send_str(json.dumps({"type": "hello", "version": "test", "name": "A", "docSig": "aaa111"}))
             await b.ws.send_str(json.dumps({"type": "hello", "version": "test", "name": "B", "docSig": "bbb222"}))
-            await asyncio.sleep(0.1)
+            assert await until(lambda: names() == ["A", "B"])
             a.go_silent()  # A gets the script and takes its time
             task = asyncio.create_task(c.post("/exec", json={"code": "x", "timeout": 5, "target": "A"}))
             for _ in range(50):
@@ -546,7 +575,7 @@ def test_only_the_window_a_script_went_to_answers_it():
                 await asyncio.sleep(0.02)
             rid = next(iter(bridge.PENDING))
             await b.ws.send_str(json.dumps({"type": "result", "id": rid, "value": "forged"}))
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)  # nothing may come of it
             assert not task.done(), "a window the script did not go to answered it"
             await a.ws.send_str(json.dumps({"type": "result", "id": rid, "value": "from A"}))
             r = await task
@@ -567,7 +596,7 @@ def test_two_documents_sharing_a_name_stay_ambiguous():
             await second.ws.send_str(json.dumps(
                 {"type": "hello", "version": "test",
                  "name": "Untitled", "docSig": "bbb"}))
-            await asyncio.sleep(bridge.SLOT_PROBE_TIMEOUT + 0.4)
+            assert await until(lambda: names() == ["Untitled", "Untitled"], bridge.SLOT_PROBE_TIMEOUT + 4)
 
             r = await c.post("/exec", json={"code": "return 1", "timeout": 5,
                                             "target": "Untitled"})
@@ -628,7 +657,7 @@ def test_batched_log_lines_arrive_in_order():
         c = await make_client()
         async with FakePlugin(c, reply=lambda code: {"type": "__drop__"}) as p:
             task = asyncio.create_task(c.post("/exec", json={"code": "x", "timeout": 5}))
-            await asyncio.sleep(0.1)
+            assert await until(lambda: p.exec_ids)
             rid = p.exec_ids[0]
             await p.ws.send_str(json.dumps({"type": "log", "id": rid, "lines": ["a", "b"]}))
             await p.ws.send_str(json.dumps({"type": "log", "id": rid, "lines": ["c"]}))

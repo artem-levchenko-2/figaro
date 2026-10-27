@@ -19,7 +19,7 @@ import pytest
 import bridge
 import bridge_exec
 from bridge_exec import Options
-from test_bridge import make_client, run
+from test_bridge import make_client, run, until
 
 CAPS = ("changes", "readOnly", "undo", "reload", "checkpoint", "quick", "libs", "images")
 KEY = "AbCdEfGhIjKlMnOpQrStUv"  # a file key as Figma makes them: 22 letters and digits
@@ -54,7 +54,10 @@ class FakePlugin:
             "type": "hello", "version": "test", "name": self.name, "fileKey": self.key,
             "docSig": self.key, "plugin": self.plugin, "caps": self.caps}))
         self._task = asyncio.create_task(self._pump())
-        await asyncio.sleep(0.1)
+        # The hello is taken once `peers` is in, and a window that has the board gets
+        # its first one a moment later; tests may count on both.
+        assert await until(lambda: self.of("peers") and (self.of("board") or "board" not in self.caps)), \
+            "no peers or board after hello"
         return self
 
     async def __aexit__(self, *exc):
