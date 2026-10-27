@@ -114,12 +114,10 @@ loops check the deadline themselves). `h.aborted()` is the same without throwing
 ## Checking your work
 
 `await h.audit(layer, opts?)` walks the layers under `layer` (a node, an id, a link, or `"page"`) and says what
-looks wrong, with the layer's id. Run it with `-R` on what you built, before `figaro done`, and fix what is
-real. It only hints: a note about something that is on purpose is not a mistake.
-
-The user can turn the Reviewer (this check) off in the Figaro window's settings. Then `h.audit` returns at
-once, walks nothing, and its answer has an `off` text and no notes: skip the check and don't mention it. Pass
-`{ force: true }` (`await h.audit(layer, { force: true })`) only when the user asks you for a check.
+looks wrong, with the layer's id. It is what the Reviewer runs on the layers you changed when you run
+`figaro done` (`SKILL.md`, `figaro notes`); you don't run it yourself, except when the user asks you for a
+check: then run it with `-R` on what they name and fix what is real. It only hints: a note about something
+that is on purpose is not a mistake.
 
 ```js
 return await h.audit(await h.node("12:34"));

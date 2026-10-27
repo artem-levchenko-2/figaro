@@ -10,9 +10,9 @@ it follows the variable the bridge started with (FIGARO_SOUNDS=off).
               those where Figma stopped answering
     recent    each island's list of what agents changed lately; off: only the
               agents (a window before the switch ignores it)
-    reviewer  the Reviewer, agents' check of their own work (h.audit); off: the
-              bridge tells every script (`review: false`) and h.audit returns
-              at once unless asked with force
+    reviewer  the Reviewer agent (bridge_review); off: no row on any island,
+              no check on `figaro done` in any file; each file's own switch is
+              kept apart, in reviewer.json
     versions  a checkpoint before an agent first changes a file, then hourly
               (bridge_exec); an agent's --checkpoint "label" still saves one
 

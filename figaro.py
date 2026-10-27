@@ -18,6 +18,7 @@ Commands:
     figaro undo                     # undo the file's last script, when that is safe
     figaro reload                   # load plugin/code.js from disk into the open plugin
     figaro done "<note>"            # you are done in the file: the plugin's window says so, with the note
+    figaro notes -A <you> [--wait]  # the designer's answer to the reviewer's notes, once
     figaro wait                     # until the file is ready: connected, nothing stuck in it
     figaro inspect <id> [--json | -o f.json]   # layout, styles, text, keys of what it uses
     figaro shot <id> ...            # picture(s) saved to files; tall ones cut in parts
@@ -412,6 +413,9 @@ def cmd_done(args):
     note = f", with your note: {resp['text']}" if resp.get("text") else ""
     print(f"the Figaro window in \"{resp.get('file')}\" shows you done{note}")
     print("  until your next script in this file that can change it", file=sys.stderr)
+    review = resp.get("review")
+    if isinstance(review, dict) and review.get("text"):  # the Reviewer checked what you changed
+        print(review["text"])
     return 0
 
 
@@ -965,6 +969,7 @@ DISPATCH = {
     "reload": cmd_reload,
     "done": cmd_done,
     "wait": cmd_wait,
+    "notes": cli_extras.cmd_notes,
     "inspect": cli_extras.cmd_inspect,
     "shot": cli_extras.cmd_shot,
     "link": cli_extras.cmd_link,

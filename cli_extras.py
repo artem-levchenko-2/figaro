@@ -31,6 +31,7 @@ from pathlib import Path
 
 import comments_text
 import inspect_text
+import review_text
 import figma_links
 import variant_diff
 
@@ -651,6 +652,40 @@ def cmd_comments(args):
     return 0
 
 
+# ─── notes ───────────────────────────────────────────────────────────────
+
+NOTES_WAIT = 600   # s: --wait asks again for this long; the bridge stops the notes at 10 minutes too
+
+
+def cmd_notes(args):
+    """The designer's answer to the reviewer's notes on what this agent changed: once, then it is
+    gone. --wait holds until they answer; one call to the bridge holds up to a minute."""
+    agent = CLI.AGENT or "agent"
+    payload = {k: v for k, v in (("target", CLI.TARGET), ("agent", CLI.AGENT)) if v}
+    payload["wait"] = bool(args.wait)
+    end = time.monotonic() + NOTES_WAIT
+    while True:
+        status, resp = CLI._request("POST", "/notes", payload, timeout=75)
+        if status == 404:  # an older bridge has no such route
+            resp = {"ok": False, "error": "the bridge runs code older than `figaro notes`",
+                    "hint": "restart it when no other agent is using it:  " + start_hint(restart=True)}
+        if resp.get("ok") and resp.get("state") == "pending" and args.wait and time.monotonic() < end:
+            continue
+        break
+    if args.raw:
+        return CLI._emit(resp, raw=True)
+    if not resp.get("ok"):
+        print(f"figaro: {resp.get('error', 'notes failed')}", file=sys.stderr)
+        if resp.get("hint"):
+            print(f"   hint: {resp['hint']}", file=sys.stderr)
+        return 1
+    if resp.get("state") == "pending" and args.wait:  # the minutes ran out before the bridge's did
+        resp["state"] = "expired"
+    for line in review_text.render(resp, agent):
+        print(line)
+    return 0
+
+
 # ─── --lib ───────────────────────────────────────────────────────────────
 
 def read_libs(paths):
@@ -803,6 +838,12 @@ def add_parsers(sub, common):
     common(p)
     p.add_argument("file", nargs="?", default=None,
                    help="a Figma link or file key; default: the connected file, or -T")
+
+    p = sub.add_parser("notes", help="the designer's answer to the reviewer's notes on what you changed "
+                                     "(after figaro done says the reviewer is on); read once")
+    common(p)
+    p.add_argument("--wait", action="store_true",
+                   help="wait for their answer, up to 10 minutes")
 
     p = sub.add_parser("link", help="clickable links to layers, for reports")
     common(p)

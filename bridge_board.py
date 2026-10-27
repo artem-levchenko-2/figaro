@@ -39,6 +39,7 @@ from aiohttp import web
 import bridge
 import bridge_comments
 import bridge_exec
+import bridge_review
 import bridge_settings
 import bridge_update
 
@@ -185,6 +186,9 @@ def payload():
             "stuck": stuck(key),
             "ask": {"agent": asking[key]} if key in asking else None,
         })
+        part = bridge_review.board_part(key, info)  # none with the global switch off: no row
+        if part is not None:
+            files[-1]["reviewer"] = part
     lost = [{"doc": key, "sig": l["sig"], "name": l["name"], "agents": [],
              "recent": (FILES.get(key) or {}).get("recent", []),
              "lost": {"agent": l["agent"], "at": l["at"]}}
@@ -321,6 +325,7 @@ def finished(entry, mtype, fields, result):
             made = summary(result.get("changes"))
             if made:
                 _add(f, dict(made, agent=name, at=now, kind="ok"))
+            bridge_review.track(key, name, result.get("changes"))
     changed()
 
 
@@ -424,8 +429,11 @@ async def handle(conn_id, m):
     doc = m.get("doc") if isinstance(m.get("doc"), str) else None
     if mtype == "stop":
         agent = m.get("agent")
-        if doc:
-            stop(doc, agent.strip()[:40] or None if isinstance(agent, str) else None)
+        agent = agent.strip()[:40] or None if isinstance(agent, str) else None
+        if doc and agent == bridge_review.AGENT:
+            bridge_review.stop(doc)
+        elif doc:
+            stop(doc, agent)
     elif mtype == "update-now":
         bridge_update.start(pull=True)
     elif mtype == "reload-all":
@@ -437,6 +445,8 @@ async def handle(conn_id, m):
         bridge_settings.switch(m.get("name"), m.get("on"))
     elif mtype == "check-update":
         bridge.look_now()
+    elif bridge_review.window_message(m):
+        pass
     elif not await bridge_comments.window_message(m):
         return False
     return True
@@ -470,7 +480,11 @@ async def done_handler(request: web.Request) -> web.Response:
     a = _agent(_file(bridge._doc_key(conn_id)), _who(agent))
     a.update(done={"text": note, "at": time.time()}, stopped=None, error=None, hold=None)
     changed()
-    return web.json_response({"ok": True, "file": info.get("name"), "text": note})
+    reply = {"ok": True, "file": info.get("name"), "text": note}
+    review = await bridge_review.on_done(request, conn_id, info, bridge._doc_key(conn_id), _who(agent))
+    if review:
+        reply["review"] = review
+    return web.json_response(reply)
 
 
 # ─── POST /forget ─────────────────────────────────────────────────────────
@@ -524,3 +538,4 @@ async def forget_handler(request: web.Request) -> web.Response:
 def install(app: web.Application):
     app.router.add_post("/done", done_handler)
     app.router.add_post("/forget", forget_handler)
+    bridge_review.install(app)  # /notes

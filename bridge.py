@@ -42,6 +42,7 @@ import bridge_board  # noqa: E402
 import bridge_comments  # noqa: E402
 import bridge_exec  # noqa: E402
 import bridge_idle  # noqa: E402
+import bridge_review  # noqa: E402
 import bridge_settings  # noqa: E402
 import bridge_update  # noqa: E402
 import figaro_token  # noqa: E402
@@ -88,7 +89,8 @@ def _file_digest(path: Path):
 
 # The bridge runs its helper modules too — a changed bridge_exec.py is old code just the same.
 _BRIDGE_CODE = [Path(__file__).resolve()] + [
-    HERE / n for n in ("bridge_board.py", "bridge_comments.py", "bridge_exec.py", "bridge_idle.py", "bridge_settings.py",
+    HERE / n for n in ("bridge_board.py", "bridge_comments.py", "bridge_exec.py", "bridge_idle.py", "bridge_review.py",
+                       "bridge_settings.py",
                        "bridge_update.py", "figma_links.py", "figaro_token.py")]
 BRIDGE_DIGEST = [_file_digest(p) for p in _BRIDGE_CODE]
 
@@ -1300,6 +1302,7 @@ def build_app() -> web.Application:
     load_skipped()
     bridge_settings.load()
     bridge_comments.load()
+    bridge_review.load()
     app = web.Application(client_max_size=64 * 1024 * 1024,  # 16 → 64 MB, like the WebSocket
                           middlewares=[guard])
     app.router.add_get("/", root_handler)
@@ -1309,7 +1312,7 @@ def build_app() -> web.Application:
     app.router.add_post("/clear", clear_handler)
     app.router.add_get("/plugin", plugin_ws_handler)
     bridge_exec.install(app)  # /undo, /reload
-    bridge_board.install(app)  # /done, /forget
+    bridge_board.install(app)  # /done, /forget, /notes
     bridge_comments.install(app)  # /comments
     return app
 

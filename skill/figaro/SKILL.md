@@ -46,15 +46,12 @@ The references next to this file — read each one when you reach its step:
 4. **Look at the picture.** `figaro shot <layer>` after building and after every fix, then open the PNG it
    prints: spacing, alignment, cut-off text and fonts show only in a picture. Numbers (sizes, spacing) come
    from `inspect` or an `-R` script. If you can't open images, say so and ask the user to look.
-5. **Check your own work** before you stop: `h.audit` on what you built (`helpers.md`, "Checking your work")
-   lists what looks wrong, with layer ids, such as a raw colour, weak contrast, a frame with no auto-layout
-   or a "TBC". It only hints: fix what is real, leave what is on purpose. An answer with `off` means the user
-   turned the Reviewer off in the window's settings: skip the check and don't mention it (pass
-   `{ force: true }` only when the user asks for a check).
-6. **Fix in place.** Don't rebuild what is already right.
-7. **Stop for review** after the first component or block, not after the whole screen: a link, a shot, what
+5. **Fix in place.** Don't rebuild what is already right.
+6. **Stop for review** after the first component or block, not after the whole screen: a link, a shot, what
    was done. Say it in Figma too, `figaro done "Check the card, then answer in the chat"`: the user may be
-   looking at Figma, not at the chat. Go on once the user answers. Smaller steps need no permission.
+   looking at Figma, not at the chat. If `figaro done` says the reviewer is on, wait for the designer's answer
+   with `figaro notes -A <you> --wait`, fix what it brings and run `figaro done` again (section 3). Go on once
+   the user answers. Smaller steps need no permission.
 
 ## 3. Commands
 
@@ -77,6 +74,7 @@ The references next to this file — read each one when you reach its step:
 | `figaro undo` | undo the file's last script, when that is safe (section 5) |
 | `figaro reload` | restart the plugin in a file with the code on disk, after an update |
 | `figaro done "<what to check>"` | you are done in this file, for now. The plugin's window shows you at work from your first script, and done, with the note, from this command until your next script there that can change the file: the readers and `-R` scripts leave it. It doesn't wait for an answer: ask in the chat too, then end your turn |
+| `figaro notes -A <you> [--wait]` | the designer's answer to the reviewer's notes on what you changed. The Reviewer is a built-in agent in the Figaro window: when the designer has switched it on for the file, `figaro done` makes it check the layers you changed since your last `done`, and it says so in its reply. Its notes go to the designer, not to you; the designer ticks the ones you should fix and sends them. After a `done` that says the reviewer is on, run `figaro notes -A <you> --wait`: it holds until they answer, up to 10 minutes, and prints what they sent, with layer names, ids and links. Fix exactly those, then run `figaro done` again. A note the designer did not send is on purpose: leave it alone and don't redo it. "All fine" means nothing to fix. After 10 minutes with no answer it says so: finish your work, and run `figaro notes` again later if you want to know whether they sent notes. Without `--wait` it answers at once. It prints each answer once. A `done` that says nothing about the reviewer needs no `notes` |
 | `figaro wait` | waits until the file is ready: connected, and no script that ran out of time still runs in it. Other agents' scripts within their time don't count: the file's queue runs yours after them. Up to 90 s (`--timeout`); not ready by then, it fails with a line to pass on to the user. Use it instead of retries in a loop |
 | `figaro targets` · `doctor` · `status` | the connected files · a connection check with advice · the bridge's raw state |
 | `figaro clear` | unblock a file after a 504 (`pitfalls.md`) |

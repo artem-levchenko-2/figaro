@@ -19,6 +19,7 @@ import bridge  # noqa: E402
 import bridge_board  # noqa: E402
 import bridge_comments  # noqa: E402
 import bridge_exec  # noqa: E402
+import bridge_review  # noqa: E402
 import bridge_settings  # noqa: E402
 import bridge_update  # noqa: E402
 import cli_extras  # noqa: E402
@@ -58,6 +59,7 @@ def clean_state(tmp_path, tmp_path_factory, monkeypatch):
                          bridge_settings.NOTES):
             registry.clear()
         bridge_comments.reset()
+        bridge_review.reset()
         bridge.CHECKED = 0.0
         bridge.ALLOWED_HOSTS = set()
         bridge.UPDATE = None

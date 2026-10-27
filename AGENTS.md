@@ -133,8 +133,7 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   refuses an update with the button off or no newer release known.
 - `bridge_settings.py` — the window's settings, the bridge's for every window and kept in `settings.json` next
   to the token: Sounds (until switched, `FIGARO_SOUNDS`), Show other files, Show recent changes (`recent`;
-  off: the islands show no Recent list), Reviewer (`reviewer`; off: the bridge adds `review: false` to the exec
-  fields and `h.audit` returns at once, `force: true` runs it), Save versions as agents work (off: no automatic
+  off: the islands show no Recent list), Reviewer (`reviewer`; off: no Reviewer row, no check on `figaro done` in any file), Save versions as agents work (off: no automatic
   checkpoint, a label still saves one). And what the settings show about the version: what is new (the newest
   release's notes from GitHub, else this version's from `CHANGELOG.md`, each item's first clause), the folder,
   when GitHub last answered (`bridge.CHECKED`; ↻ is `bridge.look_now`).
@@ -154,6 +153,16 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   link's before it goes in a REST path. `comments_text.py` is the CLI's side: the quick script that finds each
   pin's layer in the plugin, and the text it prints. A new route or field of the board needs the older
   window/bridge cases of "Rules" kept.
+- `bridge_review.py` — the Reviewer, a built-in agent in each file's Agents (`board.files[].reviewer`, only
+  with the settings' Reviewer on). Its switch is per file, kept by file key in `reviewer.json` next to the token,
+  off by default. `bridge_board.finished` hands it the layers a script changed (`track`: the ids of `changes.top`
+  and the `+` and `~` items, per agent); `figaro done` (`POST /done`) then runs `h.audit` on the top-most ones
+  that still exist in a read-only built-in script through the file's queue (`board: False`, `quick`; the code is
+  ours and only the layer ids are put in it), and answers with `review`. Its notes wait for the designer; the
+  window's `reviewer`, `review-answer` and the row's Stop (`stop` with agent `reviewer`) come through
+  `bridge_board.handle`. `POST /notes` hands the designer's answer to the agent once (long-poll, `HOLD` per
+  call); after `EXPIRE` the notes show `expired`, and a later answer still reaches `figaro notes`.
+  `review_text.py` is the CLI's side: the text `figaro notes` prints.
 - `bridge_idle.py` — the bridge exits after `--idle-exit` with no plugins and no requests; on any exit it
   closes the plugins' connections at once.
 - `figma_links.py` — Figma links: the file key and node id in a link, links to layers for reports.
@@ -207,7 +216,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   `settings`; a 1.5.0 window with an older bridge has no `settings` and can't switch them. A window with the
   Show recent changes switch and a bridge without `settings.recent` shows no such switch, and Recent stays; an
   older window ignores the field. The Reviewer works alike: a window sees no row when `settings` has no
-  `reviewer`, and a bridge or window before it sends or passes no `review`, so the check runs.
+  `reviewer`. The Reviewer agent (`board.files[].reviewer`, the window's `reviewer` and `review-answer`) works
+  alike: an older window ignores the key, so it shows no row and nobody turns the Reviewer on; a new window with
+  an older bridge gets no key and shows no row. `figaro done`'s `review` is optional.
 - **`plugin/ui.html` passes the exec fields to the sandbox by name.** A new field in
   `bridge_exec.exec_fields` must be added there too, or it never arrives; `tests/test_exec.py` catches it.
 - **The plugin never writes to the document.** The document id is `figma.fileKey`, which a development
