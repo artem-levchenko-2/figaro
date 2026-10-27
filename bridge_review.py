@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shlex
 import time
 
@@ -255,28 +256,78 @@ return { layers: nodes.length, roots: roots.length, skipped: top.length - roots.
 """
 
 
+DETAILS_MAX = 10       # original lines kept per note, for the agent
+VALUES_MAX = 6         # distinct values a summary lists
+VALUE_LEN = 40         # characters of one value; longer ones make the summary generic
+_PAINT = re.compile(r"\b(fill|stroke) (#[0-9A-Fa-f]{3,8})\b")
+
+
+def _list(items):
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _summary(rule, texts):
+    """One line for the window from the texts of one rule: the text itself when they are all
+    the same, else what they have in common with the values that differ listed once each."""
+    if len(texts) == 1:
+        return texts[0]
+    if rule == "unbound-color":
+        paints = [m for t in texts for m in _PAINT.findall(t)]
+        kinds = list(dict.fromkeys(k for k, _ in paints))
+        values = list(dict.fromkeys(v for _, v in paints))
+        if values and len(values) <= VALUES_MAX:
+            what = {"fill": "fills", "stroke": "strokes"}.get(kinds[0]) if len(kinds) == 1 \
+                else "fills and strokes"
+            return (f"{what} {_list(values)} have no style or variable; bind them to the file's"
+                    if len(values) > 1 else texts[0])
+    words = [t.split() for t in texts]
+    head = 0
+    while all(len(w) > head for w in words) and len({w[head] for w in words}) == 1:
+        head += 1
+    tail = 0
+    while all(len(w) > head + tail for w in words) and len({w[-1 - tail] for w in words}) == 1:
+        tail += 1
+    mids = list(dict.fromkeys(" ".join(w[head:len(w) - tail]).rstrip(",;") for w in words))
+    if (head + tail >= 3 and "" not in mids and max(map(len, mids)) <= VALUE_LEN
+            and len(mids) <= VALUES_MAX):
+        parts = words[0][:head] + [_list(mids)] + (words[0][len(words[0]) - tail:] if tail else [])
+        return " ".join(parts)
+    return f"{texts[0]} (and {len(texts) - 1} more like it)"
+
+
 def _merge(found):
-    """One note per rule and text, in the order of the rules; ids n1, n2…"""
+    """One note per rule, in the order of the rules; ids n1, n2… Its text sums up the texts of
+    the rule's layers (`_summary`); `details`, when they differ, keep each original line with
+    its layers: [{text, layers: [ids]}], at most DETAILS_MAX, `detailsMore` the lines left out."""
     groups = {}
     for n in found.get("notes") or []:
         if not (isinstance(n, dict) and n.get("rule") in TITLES and isinstance(n.get("text"), str)):
             continue
-        g = groups.setdefault((n["rule"], n["text"]), {"count": 0, "ids": []})
-        g["count"] += int(n.get("count") or 1)
-        g["ids"] += [i for i in n.get("ids") or [] if isinstance(i, str) and i not in g["ids"]]
+        g = groups.setdefault(n["rule"], {})
+        t = g.setdefault(n["text"], {"count": 0, "ids": []})
+        t["count"] += int(n.get("count") or 1)
+        t["ids"] += [i for i in n.get("ids") or [] if isinstance(i, str) and i not in t["ids"]]
     info = found.get("info") if isinstance(found.get("info"), dict) else {}
-    order = sorted(groups, key=lambda k: RULES.index(k[0]))
     notes = []
-    for rule, text in order[:NOTES_MAX]:
-        g = groups[(rule, text)]
+    for rule in sorted(groups, key=RULES.index)[:NOTES_MAX]:
+        texts = groups[rule]
+        ids = list(dict.fromkeys(i for t in texts.values() for i in t["ids"]))
+        # layers counted, not occurrences: ids a text did not list are added as they were counted
+        total = len(ids) + sum(max(0, t["count"] - len(t["ids"])) for t in texts.values())
         layers = []
-        for i in g["ids"][:LAYERS_MAX]:
+        for i in ids[:LAYERS_MAX]:
             meta = info.get(i) if isinstance(info.get(i), dict) else {}
             layers.append({"id": i, "name": str(meta.get("name") or "Untitled")[:60],
                            "type": str(meta.get("type") or "FRAME")})
-        notes.append({"id": f"n{len(notes) + 1}", "rule": rule, "title": TITLES[rule],
-                      "text": text[:bridge_board.TEXT_MAX], "layers": layers,
-                      "more": max(0, g["count"] - len(layers))})
+        note = {"id": f"n{len(notes) + 1}", "rule": rule, "title": TITLES[rule],
+                "text": _summary(rule, list(texts))[:bridge_board.TEXT_MAX], "layers": layers,
+                "more": max(0, total - len(layers))}
+        if len(texts) > 1:
+            note["details"] = [{"text": t[:bridge_board.TEXT_MAX], "layers": v["ids"][:LAYERS_MAX]}
+                               for t, v in list(texts.items())[:DETAILS_MAX]]
+            if len(texts) > DETAILS_MAX:
+                note["detailsMore"] = len(texts) - DETAILS_MAX
+        notes.append(note)
     return notes
 
 

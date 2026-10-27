@@ -625,3 +625,62 @@ def test_forgetting_an_agent_withdraws_its_notes_and_layers():
             assert (await notes(c))["state"] == "none"
         await c.close()
     run(go())
+
+
+
+# ─── one note per rule ────────────────────────────────────────────────────
+
+def test_four_colours_make_one_note_with_the_values_listed_and_every_line_kept():
+    tail = " has no style or variable; bind it to one of the file's"
+    found = {"notes": [
+        {"rule": "unbound-color", "text": "fill #FFFFFF" + tail, "count": 2, "ids": ["1:1", "1:2"]},
+        {"rule": "unbound-color", "text": "fill #000000" + tail, "count": 1, "ids": ["1:3"]},
+        {"rule": "unbound-color", "text": "stroke #D1D1D6" + tail, "count": 1, "ids": ["1:4"]},
+        {"rule": "unbound-color", "text": "fill #2E6BFF and stroke #FFFFFF" + tail, "count": 2,
+         "ids": ["1:5", "1:6"]},
+        {"rule": "missing-font", "text": "Inter is missing", "count": 1, "ids": ["1:1"]}],
+        "info": {}}
+    font, colour = bridge_review._merge(found)
+    assert (font["rule"], colour["rule"]) == ("missing-font", "unbound-color")
+    assert (font["id"], colour["id"]) == ("n1", "n2") and "details" not in font
+    assert [l["id"] for l in colour["layers"]] == ["1:1", "1:2", "1:3", "1:4", "1:5"]
+    assert colour["more"] == 1
+    assert colour["text"] == ("fills and strokes #FFFFFF, #000000, #D1D1D6 and #2E6BFF have no style or "
+                              "variable; bind them to the file's")
+    assert [d["layers"] for d in colour["details"]] == [["1:1", "1:2"], ["1:3"], ["1:4"], ["1:5", "1:6"]]
+    assert colour["details"][0]["text"] == "fill #FFFFFF" + tail and "detailsMore" not in colour
+
+
+def test_fills_only_say_fills_and_a_single_text_stays_as_it_is():
+    tail = " has no style or variable; bind it to one of the file's"
+    found = {"notes": [{"rule": "unbound-color", "text": "fill #111111" + tail, "ids": ["1:1"]},
+                       {"rule": "unbound-color", "text": "fill #222222" + tail, "ids": ["1:2"]},
+                       {"rule": "default-name", "text": 'named "Frame 1"', "count": 3, "ids": ["1:3"]}]}
+    notes = {n["rule"]: n for n in bridge_review._merge(found)}
+    assert notes["unbound-color"]["text"] == \
+        "fills #111111 and #222222 have no style or variable; bind them to the file's"
+    assert notes["default-name"]["text"] == 'named "Frame 1"' and "details" not in notes["default-name"]
+    assert notes["default-name"]["more"] == 2  # three layers counted, one listed
+
+
+def test_other_rules_list_the_values_that_differ_or_fall_back_to_the_first_text():
+    texts = [f"contrast {r}:1 of #AAAAAA on #FFFFFF, needs 4.5:1; use a stronger colour"
+             for r in ("2.3", "1.9")]
+    found = {"notes": [{"rule": "low-contrast", "text": t, "ids": [f"1:{i}"]} for i, t in enumerate(texts)]}
+    (note,) = bridge_review._merge(found)
+    assert note["text"] == "contrast 2.3:1 and 1.9:1 of #AAAAAA on #FFFFFF, needs 4.5:1; use a stronger colour"
+    odd = [{"rule": "text-clipped", "text": t, "ids": [f"2:{i}"]} for i, t in enumerate(
+        ["is cut", "something else entirely, a long text of another shape"])]
+    (note,) = bridge_review._merge({"notes": odd})
+    assert note["text"] == "is cut (and 1 more like it)"
+
+
+def test_details_are_capped_and_the_text_fits_the_board():
+    notes = [{"rule": "no-auto-layout", "text": f"{n} children placed by hand with no auto-layout",
+              "ids": [f"3:{n}"]} for n in range(40)]
+    (note,) = bridge_review._merge({"notes": notes})
+    assert len(note["details"]) == bridge_review.DETAILS_MAX
+    assert note["detailsMore"] == 40 - bridge_review.DETAILS_MAX
+    assert len(note["text"]) <= bridge_review.bridge_board.TEXT_MAX
+    assert len(note["layers"]) == bridge_review.LAYERS_MAX and note["more"] == 40 - bridge_review.LAYERS_MAX
+    assert len(json.dumps(note)) < 4000
