@@ -443,15 +443,17 @@ def test_every_rule_of_h_audit_has_a_title():
     assert re.findall(r'"([a-z-]+)"', block) == list(bridge_review.TITLES)
 
 
-def test_the_check_script_is_valid_javascript_with_the_ids_in_it():
+def test_the_check_script_is_valid_javascript_with_the_ids_in_it(tmp_path):
     import shutil
     import subprocess
     code = bridge_review._script(['1:2', 'I5:6;7:8', '"quoted"'])
     assert 'const ids = ["1:2", "I5:6;7:8", "\\"quoted\\""];' in code and "__" not in code
     node = shutil.which("node")
     if node:
-        wrapped = "(async function (h, figma) {" + code + "});"
-        r = subprocess.run([node, "--check", "/dev/stdin"], input=wrapped, text=True, capture_output=True)
+        # a file, not /dev/stdin: Linux runners hand node a pipe it can't open by path, Windows has none
+        script = tmp_path / "check.js"
+        script.write_text("(async function (h, figma) {" + code + "});", encoding="utf-8")
+        r = subprocess.run([node, "--check", str(script)], text=True, capture_output=True)
         assert r.returncode == 0, r.stderr
 
 
