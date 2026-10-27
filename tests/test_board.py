@@ -848,22 +848,19 @@ def test_forget_takes_named_agents_off_every_windows_board():
                 await c.post("/exec", json={"code": "x", "target": "Draft", "agent": name})
             await c.post("/exec", json={"code": "x", "target": "Other", "agent": "stress-0"})
             await c.post("/done", json={"target": "Draft", "agent": "stress-1", "text": "done"})
-            await settle()
-            assert set(agents(b, "Draft")) == {"stress-0", "stress-1", "designer"}
+            assert await until(lambda: set(agents(b, "Draft")) == {"stress-0", "stress-1", "designer"})
             r = await c.post("/forget", json={"target": "Draft", "agents": [
                 "stress-0", " stress-1 ", "never-ran", "stress-0", " "]})
             assert r.status == 200
             assert await r.json() == {"ok": True, "file": "Draft", "forgotten": ["stress-0", "stress-1"],
                                       "busy": []}
-            await settle()
             for window in (a, b):  # a window of another file sees it at once, too
-                assert set(agents(window, "Draft")) == {"designer"}
+                assert await until(lambda: set(agents(window, "Draft")) == {"designer"})
                 assert [e["agent"] for e in island(window, "Draft")["recent"]] == ["designer"]
             assert set(agents(a, "Other")) == {"stress-0"}  # the same name in another file stays
             assert len(island(a, "Other")["recent"]) == 1
             await c.post("/exec", json={"code": "x", "target": "Draft", "agent": "stress-0"})
-            await settle()
-            assert set(agents(a, "Draft")) == {"designer", "stress-0"}  # back at work: a fresh row
+            assert await until(lambda: set(agents(a, "Draft")) == {"designer", "stress-0"})  # a fresh row
         await c.close()
     run(go())
 
@@ -875,13 +872,13 @@ def test_forget_leaves_an_agent_at_work_or_stopped():
             for name in ("icons", "held"):
                 await c.post("/exec", json={"code": "x", "agent": name})
             await stop(p, "doc:KEY1", "held")  # between its scripts: the Stop waits for its next one
+            assert await until(lambda: bridge_board.FILES["doc:KEY1"]["agents"]["held"]["hold"])
             running = asyncio.ensure_future(c.post("/exec", json={"code": "loop", "agent": "designer"}))
-            await asyncio.sleep(0.2)
+            assert await until(lambda: any(m["code"] == "loop" for m in p.of("exec")))
             r = await c.post("/forget", json={"agents": ["icons", "designer", "held"]})
             assert await r.json() == {"ok": True, "file": "Draft", "forgotten": ["icons"],
                                       "busy": ["designer"]}
-            await settle()
-            assert set(agents(p, "Draft")) == {"designer", "held"}
+            assert await until(lambda: set(agents(p, "Draft")) == {"designer", "held"})
             await stop(p, "doc:KEY1", "designer")
             assert (await running).status == 409
             assert (await c.post("/exec", json={"code": "y", "agent": "held"})).status == 409  # the Stop held
@@ -896,6 +893,7 @@ def test_forget_wants_a_list_of_names_and_a_file():
         assert r.status == 503  # no plugin at all
         async with FakePlugin(c, name="Draft", key="KEY1", caps=CAPS) as p:
             await c.post("/exec", json={"code": "x", "agent": "designer"})
+            assert await until(lambda: set(agents(p, "Draft")) == {"designer"})
             for bad in ({}, {"agents": "designer"}, {"agents": [5]}, {"agents": ["a"] * 201}):
                 r = await c.post("/forget", json=bad)
                 assert r.status == 400, bad
