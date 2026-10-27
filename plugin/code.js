@@ -9,7 +9,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-27.5";
+const PLUGIN_VERSION = "2026-10-27.6";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -660,7 +660,6 @@ figma.ui.onmessage = async (msg) => {
   // run (its timeout passed, or it sent `abort`), so chunked sweeps stop
   // instead of mutating under the next caller.
   const h = Object.create(HELPERS);
-  h.reviewOff = msg.review === false;  // the Reviewer is off in the window's settings: h.audit returns at once
   h.aborted = () => ABORTED.has(id) || Date.now() > deadline;
   h.ck = () => {
     if (h.aborted()) throw new Error(ABORTED_TEXT);
@@ -3338,12 +3337,6 @@ Object.assign(HELPERS, {
   // below, with what to do about it; see references/helpers.md.
   async audit(root, opts) {
     const h = this;
-    if (h && h.reviewOff === true && !(opts && opts.force === true)) {
-      return {
-        notes: [], total: 0, more: 0, counts: {}, visited: 0,
-        off: "the user turned the Reviewer off in the Figaro window's settings: skip this check unless they ask for one",
-      };
-    }
     return await auditRun(root, opts, {
       fig: figmaOf(h),
       ck: h && typeof h.ck === "function" ? h.ck : null,

@@ -2090,12 +2090,12 @@ function connect() {
       local.set(msg.id, { agent: msg.agent || "agent", since: Date.now() });
       if (!board) schedule();
       // timeout rides along: h.ck() in code.js stops a run once it has passed.
-      // So do agent, readOnly, checkpoint, quick, libs, images and review — every field
+      // So do agent, readOnly, checkpoint, quick, libs and images — every field
       // bridge_exec.exec_fields sends (tests/test_exec.py checks the list).
       toSandbox({
         type: "exec", id: msg.id, code: msg.code, timeout: msg.timeout,
         agent: msg.agent, readOnly: msg.readOnly, checkpoint: msg.checkpoint,
-        quick: msg.quick, libs: msg.libs, images: msg.images, review: msg.review });
+        quick: msg.quick, libs: msg.libs, images: msg.images });
     } else if (msg.type === "undo") {
       // Revert the last script — code.js decides whether that is safe.
       toSandbox({ type: "undo", id: msg.id, agent: msg.agent, force: msg.force });

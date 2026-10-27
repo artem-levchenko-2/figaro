@@ -238,17 +238,6 @@ def test_quick_read_has_no_checkpoint_and_says_quick():
     run(go())
 
 
-def test_review_goes_to_the_plugin_only_when_the_reviewer_is_off(monkeypatch):
-    monkeypatch.setitem(bridge.PLUGINS, "conn", {"docSig": "D1"})
-    monkeypatch.setattr(bridge_settings, "SETTINGS", {})
-    assert "review" not in bridge_exec.exec_fields("conn", "anna", Options(True, None, False, []))
-    monkeypatch.setitem(bridge_settings.SETTINGS, "reviewer", True)
-    assert "review" not in bridge_exec.exec_fields("conn", "anna", Options(True, None, False, []))
-    monkeypatch.setitem(bridge_settings.SETTINGS, "reviewer", False)
-    assert bridge_exec.exec_fields("conn", "anna", Options(True, None, False, []))["review"] is False
-    assert bridge_exec.exec_fields("conn", "anna", Options(True, None, True, []))["review"] is False  # quick too
-
-
 def test_the_plugin_window_passes_every_exec_field_on(monkeypatch):
     """plugin/ui.html hands the sandbox a message with its fields listed one by
     one, so a field the bridge sends but the window does not list never
@@ -257,9 +246,9 @@ def test_the_plugin_window_passes_every_exec_field_on(monkeypatch):
     fields = set(bridge_exec.exec_fields("conn", "anna", Options(True, "label", False, [LIB])))
     fields |= set(bridge_exec.exec_fields("conn", "anna", Options(True, None, True, [LIB], [IMAGE])))
     assert fields == {"readOnly", "quick", "agent", "checkpoint", "libs", "images"}
-    monkeypatch.setitem(bridge_settings.SETTINGS, "reviewer", False)
+    monkeypatch.setitem(bridge_settings.SETTINGS, "reviewer", False)  # the switch adds no field
     fields |= set(bridge_exec.exec_fields("conn", "anna", Options(True, None, False, [LIB])))
-    assert fields == {"readOnly", "quick", "agent", "checkpoint", "libs", "images", "review"}
+    assert fields == {"readOnly", "quick", "agent", "checkpoint", "libs", "images"}
     html = (bridge.PLUGIN_CODE.parent / "ui.html").read_text(encoding="utf-8")
     forwarded = re.search(r'toSandbox\(\{\s*type: "exec",(.*?)\}\);', html, re.S).group(1)
     for key in fields:
