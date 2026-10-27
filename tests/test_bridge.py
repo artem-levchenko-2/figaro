@@ -27,8 +27,22 @@ def run(coro):
     return asyncio.run(coro)
 
 
+class Missed:
+    """What `until` gives back when the event never came: false, and in the
+    failure's message what the test raised last."""
+
+    def __init__(self, seconds, error):
+        self.seconds, self.error = seconds, error
+
+    def __bool__(self):
+        return False
+
+    def __repr__(self):
+        return f"<not true within {self.seconds} s; it last raised {self.error!r}>"
+
+
 async def until(test, seconds=5.0):
-    """Wait for `test()` to come true and return True, or False after `seconds`.
+    """Wait for `test()` to come true and return True, or a false `Missed` after `seconds`.
 
     Tests wait for the event they check, not for a fixed pause: a pause that
     is long enough on a quick machine is too short on a slow one. The limit
@@ -37,14 +51,15 @@ async def until(test, seconds=5.0):
     yet. Keep a plain pause only where a test checks that something did NOT
     happen."""
     end = asyncio.get_running_loop().time() + seconds
+    error = None
     while True:
         try:
             if test():
                 return True
-        except (IndexError, KeyError, StopIteration):
-            pass
+        except (IndexError, KeyError, StopIteration) as e:
+            error = e
         if asyncio.get_running_loop().time() >= end:
-            return False
+            return Missed(seconds, error)
         await asyncio.sleep(0.01)
 
 
@@ -369,7 +384,7 @@ def test_peers_counts_only_files_that_said_hello():
             assert await until(lambda: "FileA" in names())
             last = lambda p: [m for m in p.received if m["type"] == "peers"][-1]
             assert await until(lambda: last(b) == {"type": "peers", "index": 2, "total": 2})
-            assert last(a) == {"type": "peers", "index": 1, "total": 2}
+            assert await until(lambda: last(a) == {"type": "peers", "index": 1, "total": 2})
             assert last(b) == {"type": "peers", "index": 2, "total": 2}
             await silent.close()
         await c.close()
