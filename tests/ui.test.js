@@ -945,6 +945,16 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
            /<b>Folder<\/b><span>~\/figaro<\/span>/.test(env.app()), /<b>Plugin<\/b><span>build test<\/span>/.test(env.app())], [true, true, true]);
     await env.clock.advance(50);
     check("…and a click opens them", env.heard(), ["square 1700", "sine 520"]);
+    check("…no Reviewer row from a bridge that has no such setting", /<b>Reviewer<\/b>/.test(env.app()), false);
+    env.board(files, { settings: Object.assign({ reviewer: true }, settings), notes, folder: "~/figaro", checked: 990 });
+    await env.clock.advance(400);
+    check("…and with one, the row, its hint and a switch that is on",
+          [/<b>Reviewer<\/b><span>Agents check their work before they say done: contrast/.test(env.app()),
+           /aria-label="Reviewer" data-act="set" data-name="reviewer"/.test(env.app()),
+           /class="sw on" role="switch" aria-checked="true" aria-label="Reviewer"/.test(env.app())], [true, true, true]);
+    env.board(files, { settings, notes, folder: "~/figaro", checked: 990 });
+    await env.clock.advance(400);
+    env.heard();
     env.click("set", null, { name: "others" });
     check("a switch tells the bridge, with a tick", [env.sent("set"), env.heard()], [[{ type: "set", name: "others", on: false }], ["noise", "noise"]]);
     env.click("set", null, { name: "sounds" });

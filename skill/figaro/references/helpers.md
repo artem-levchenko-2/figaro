@@ -117,6 +117,10 @@ loops check the deadline themselves). `h.aborted()` is the same without throwing
 looks wrong, with the layer's id. Run it with `-R` on what you built, before `figaro done`, and fix what is
 real. It only hints: a note about something that is on purpose is not a mistake.
 
+The user can turn the Reviewer (this check) off in the Figaro window's settings. Then `h.audit` returns at
+once, walks nothing, and its answer has an `off` text and no notes: skip the check and don't mention it. Pass
+`{ force: true }` (`await h.audit(layer, { force: true })`) only when the user asks you for a check.
+
 ```js
 return await h.audit(await h.node("12:34"));
 // {

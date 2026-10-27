@@ -48,7 +48,9 @@ The references next to this file — read each one when you reach its step:
    from `inspect` or an `-R` script. If you can't open images, say so and ask the user to look.
 5. **Check your own work** before you stop: `h.audit` on what you built (`helpers.md`, "Checking your work")
    lists what looks wrong, with layer ids, such as a raw colour, weak contrast, a frame with no auto-layout
-   or a "TBC". It only hints: fix what is real, leave what is on purpose.
+   or a "TBC". It only hints: fix what is real, leave what is on purpose. An answer with `off` means the user
+   turned the Reviewer off in the window's settings: skip the check and don't mention it (pass
+   `{ force: true }` only when the user asks for a check).
 6. **Fix in place.** Don't rebuild what is already right.
 7. **Stop for review** after the first component or block, not after the whole screen: a link, a shot, what
    was done. Say it in Figma too, `figaro done "Check the card, then answer in the chat"`: the user may be

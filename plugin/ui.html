@@ -1316,13 +1316,15 @@ const SETS = [
   ["sounds", "Sounds", "Buttons, minimize, Stop; a knock when Figma stops answering"],
   ["others", "Show other files", "Islands of your other Figma files where agents work. A file where Figma isn't answering shows anyway"],
   ["recent", "Show recent changes", "What agents changed lately, under each file's agents. A layer there selects it in Figma"],
+  ["reviewer", "Reviewer", "Agents check their work before they say done: contrast, small buttons, clipped text, colours and text without styles"],
   ["versions", "Save versions as agents work", "Before an agent first changes a file, then hourly. Everyone with access sees them in its version history"],
 ];
 function settingsView() {
   const can = conn === "ok" && !!(board && board.settings);
   const value = (k) => (board && board.settings ? board.settings[k] !== false : k === "sounds" ? !(board && !board.sounds) : true);
   // A bridge before the Recent switch doesn't know it: no switch, the list stays.
-  const known = ([k]) => k !== "recent" || !board || !!(board.settings && "recent" in board.settings);
+  // Likewise for the Reviewer: an older bridge has none, and no row.
+  const known = ([k]) => (k !== "recent" && k !== "reviewer") || !board || !!(board.settings && k in board.settings);
   const sets = SETS.filter(known).map(([k, title, sub]) => {
     const on = value(k);
     return `<div class="set"><span class="t"><b>${title}</b><span>${sub}</span></span>`
@@ -2087,12 +2089,12 @@ function connect() {
       local.set(msg.id, { agent: msg.agent || "agent", since: Date.now() });
       if (!board) schedule();
       // timeout rides along: h.ck() in code.js stops a run once it has passed.
-      // So do agent, readOnly, checkpoint, quick, libs and images — every field
+      // So do agent, readOnly, checkpoint, quick, libs, images and review — every field
       // bridge_exec.exec_fields sends (tests/test_exec.py checks the list).
       toSandbox({
         type: "exec", id: msg.id, code: msg.code, timeout: msg.timeout,
         agent: msg.agent, readOnly: msg.readOnly, checkpoint: msg.checkpoint,
-        quick: msg.quick, libs: msg.libs, images: msg.images });
+        quick: msg.quick, libs: msg.libs, images: msg.images, review: msg.review });
     } else if (msg.type === "undo") {
       // Revert the last script — code.js decides whether that is safe.
       toSandbox({ type: "undo", id: msg.id, agent: msg.agent, force: msg.force });

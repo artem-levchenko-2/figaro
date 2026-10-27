@@ -630,6 +630,25 @@ const ids = (notes) => notes.map((n) => n.id);
     check("audit: \"page\" is the current page", (await h.audit("page", { only: ["default-name"] })).visited, 202);
   }
 
+  // the Reviewer switched off in the window's settings: the script came with review: false
+  {
+    const page = N("PAGE", { name: "Page" }, [F([TX("TBC")], { name: "Card" })]);
+    const normal = await h.audit(page);
+    const off = Object.create(h);
+    off.reviewOff = true;
+    let walked = 0;
+    off.ck = () => { walked++; return true; };
+    const r = await h.audit.call(off, page);
+    check("reviewer off: no notes, nothing walked, and a text that says why",
+          [r.notes, r.total, r.more, r.visited, walked, /^the user turned the Reviewer off/.test(r.off)], [[], 0, 0, 0, 0, true]);
+    check("reviewer off: the answer keeps the normal answer's keys",
+          Object.keys(normal).filter((k) => !(k in r)), []);
+    check("reviewer off: a layer that is not valid is not even looked at", (await h.audit.call(off, null)).total, 0);
+    const forced = await h.audit.call(off, page, { force: true });
+    check("reviewer off: force runs it anyway", [forced.total, forced.off], [normal.total, undefined]);
+    check("reviewer on: no off text", normal.off, undefined);
+  }
+
   console.log(failed ? `\n${failed} FAILED` : "\nall audit checks passed");
   process.exit(failed ? 1 : 0);
 })();
