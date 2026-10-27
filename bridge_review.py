@@ -549,6 +549,11 @@ def _result(doc, agent, info):
             notes = [dict(n, layers=[dict(l, url=figma_links.node_url(info.get("fileKey"),
                                                                       info.get("name"), l["id"]))
                                      for l in n["layers"]]) for n in got["notes"]]
+            for n in notes:  # a link for every id a detail line names
+                ids = {i for d in n.get("details") or [] for i in d.get("layers") or []}
+                n["links"] = {i: figma_links.node_url(info.get("fileKey"), info.get("name"), i) for i in ids} if ids else {}
+                if not ids:
+                    del n["links"]
             return "sent", {"notes": notes, "total": got["total"], "left": got["left"]}
         return got["kind"], {}
     asking = ASKING.get(doc)

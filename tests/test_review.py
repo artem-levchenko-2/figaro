@@ -476,6 +476,39 @@ def test_notes_layer_lines_follow_the_text_column_of_wide_numbers():
     assert lines[lines.index("9. T9: x") + 1] == '   "Payouts" (TEXT) 1:1'
 
 
+def test_the_answer_links_every_layer_a_detail_names():
+    import bridge_review
+    doc = "doc:links"
+    note = {"id": "n1", "title": "T", "text": "s", "more": 0, "layers": [{"id": "1:1", "name": "A", "type": "FRAME"}],
+            "details": [{"text": "a", "layers": ["1:1", "1:2"]}]}
+    bridge_review.ANSWERS.setdefault(doc, {})["designer"] = {"kind": "sent", "notes": [note], "total": 1, "left": 0}
+    state, extra = bridge_review._result(doc, "designer", {"fileKey": "KEY1", "name": "Dash"})
+    got = extra["notes"][0]
+    assert state == "sent" and set(got["links"]) == {"1:1", "1:2"} and got["links"]["1:2"].endswith("node-id=1-2")
+
+
+def test_notes_with_details_print_each_original_line_with_its_layers():
+    import review_text
+    note = {"title": "Colour isn't a token", "text": "fills #FFFFFF and #000000 have no style", "more": 0,
+            "layers": [{"id": "1:1", "name": "Card", "type": "FRAME", "url": "https://x/1"}],
+            "details": [{"text": "fill #FFFFFF", "layers": ["1:1"]}, {"text": "fill #000000", "layers": ["1:2"]}],
+            "detailsMore": 2, "links": {"1:1": "https://x/1", "1:2": "https://x/2"}}
+    plain = {"title": "Default name", "text": "Frame 1", "more": 0,
+             "layers": [{"id": "3:1", "name": "Frame 1", "type": "FRAME", "url": "https://x/3"}]}
+    lines = review_text.render({"state": "sent", "notes": [note, plain], "total": 2, "left": 0}, "designer")
+    assert lines[2:] == [
+        "1. Colour isn't a token: fills #FFFFFF and #000000 have no style",
+        "   - fill #FFFFFF",
+        '     "Card" (FRAME) 1:1  https://x/1',
+        "   - fill #000000",
+        "     1:2  https://x/2",
+        "     and 2 more lines like these",
+        "2. Default name: Frame 1",
+        '   "Frame 1" (FRAME) 3:1  https://x/3',
+        "",
+        "Fix these two, then run figaro done again."]
+
+
 def test_notes_prints_what_the_designer_sent(monkeypatch, capsys):
     rc, out, err, calls = cli(monkeypatch, capsys, "notes", "-A", "designer", "-T", "KEY1", bridge_reply=SENT)
     assert rc == 0 and calls == [{"target": "KEY1", "agent": "designer", "wait": False}]

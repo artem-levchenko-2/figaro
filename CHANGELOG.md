@@ -23,7 +23,8 @@ file; the release notes say when it has to be imported again.
   designer ticks the notes the agent should fix and sends them; the agent waits for that answer with the new
   `figaro notes -A <agent> --wait` (up to 10 minutes), fixes what was sent and runs `figaro done` again. The
   Reviewer is off in every file until its switch in the row is turned on (kept per file); the Reviewer switch in
-  the settings turns it off for all files, and on by default. Agents no longer check themselves.
+  the settings turns it off for all files, and on by default. Agents no longer check themselves. The designer sees
+  one note per rule, summed up when the rule's lines differ; the agent still gets each original line with its layers.
 - **`h.audit(layer, opts?)`**, what the Reviewer runs, is a helper for when you ask an agent for a check. It
   returns notes (the rule, the
   layer's id and name, one line on what is wrong and what to do) sorted by importance, capped at 50 by rank with a

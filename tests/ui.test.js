@@ -1504,11 +1504,31 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(50);
     const copied = env.copied();
     check("…it copies the ticked notes as `figaro notes` prints them, with a link to each layer",
-          [copied.length, copied[0] && copied[0].split("\n").slice(0, 3), copied[0] && /node-id=I2-1068/.test(copied[0]),
+          [copied.length, copied[0] && copied[0].split("\n").slice(0, 4), copied[0] && /node-id=I2-1068/.test(copied[0]),
            copied[0] && /Frame 12/.test(copied[0]), copied[0] && /and 2 more layers/.test(copied[0])],
           [1, ["The reviewer's notes on designer's work in Dashboard:",
-               "1. Colour isn't a token. \"Get started\" (I2:1068), #2F6BFF, bg/brand matches.",
-               "   https://www.figma.com/design/KEY1/Dashboard?node-id=I2-1068"], true, false, true]);
+               "",
+               "1. Colour isn't a token: #2F6BFF, bg/brand matches",
+               "   \"Get started\" (INSTANCE) I2:1068  https://www.figma.com/design/KEY1/Dashboard?node-id=I2-1068"], true, false, true]);
+
+    // a note that sums up several lines: Copy for chat keeps each line with its layers, like the agent's text
+    const sum = [{ id: "d1", rule: "unbound-color", title: "Colour isn't a token", text: "fills #FFFFFF and #000000 have no style",
+                   layers: [{ id: "1:1", name: "Card", type: "FRAME" }, { id: "1:2", name: "Title", type: "TEXT" }], more: 0,
+                   details: [{ text: "fill #FFFFFF", layers: ["1:1"] }, { text: "fill #000000", layers: ["1:2", "1:9"] }], detailsMore: 3 }];
+    await show(env, rv({ state: "notes", layers: 5, at: 1100, notes: sum, expired: true }), {}, {});
+    env.click("rv-copy", "here");
+    await env.clock.advance(50);
+    check("…with details: the summary, each original line with its layers, and the lines left out",
+          (env.copied()[0] || "").split("\n").slice(2),
+          ["1. Colour isn't a token: fills #FFFFFF and #000000 have no style",
+           "   - fill #FFFFFF",
+           "     \"Card\" (FRAME) 1:1  https://www.figma.com/design/KEY1/Dashboard?node-id=1-1",
+           "   - fill #000000",
+           "     \"Title\" (TEXT) 1:2  https://www.figma.com/design/KEY1/Dashboard?node-id=1-2",
+           "     1:9  https://www.figma.com/design/KEY1/Dashboard?node-id=1-9",
+           "     and 3 more lines like these",
+           "Fix this one, then run figaro done again."]);
+    check("…and the callout itself shows the summary and the chips only", [/fills #FFFFFF and #000000 have no style/.test(env.app()), /fill #000000/.test(env.app())], [true, false]);
 
     // the island's row and the collapsed island
     await show(env, rv({ state: "notes", layers: 24, notes }), {}, {});

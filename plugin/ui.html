@@ -858,6 +858,10 @@ function reviewerOf(r, t) {
       id: String(n.id), rule: String(n.rule || ""), title: String(n.title || ""), text: String(n.text || ""),
       layers: (Array.isArray(n.layers) ? n.layers : []).filter((l) => l && l.id).map((l) => ({ id: String(l.id), name: String(l.name || l.id), type: String(l.type || "FRAME") })),
       more: num(n.more),
+      // when a note sums up several lines: each original line with the ids of its layers
+      details: (Array.isArray(n.details) ? n.details : []).filter((d) => d && typeof d.text === "string").map((d) => ({
+        text: d.text, layers: (Array.isArray(d.layers) ? d.layers : []).map(String) })),
+      detailsMore: num(n.detailsMore),
     })),
     expired: r.expired === true, sent: num(r.sent), left: num(r.left),
   };
@@ -1231,12 +1235,23 @@ function reviewerText(f, r) {
   const picked = rvTicked(f, r), who = r.agent || "the agent";
   const slug = String(f.name || "").replace(/[^A-Za-z0-9]+/g, "-") || "Untitled";
   const link = (id) => (f.sig ? `https://www.figma.com/design/${f.sig}/${slug}?node-id=${encodeURIComponent(String(id).replace(/:/g, "-"))}` : "");
-  const lines = [`The reviewer's notes on ${who}'s work in ${f.name}:`];
+  const lines = [`The reviewer's notes on ${who}'s work in ${f.name}:`, ""];
   picked.forEach((nt, i) => {
-    const at = nt.layers.map((l) => `"${l.name}" (${l.id})`).join(", ");
-    lines.push(`${i + 1}. ${nt.title}.` + (at ? ` ${at}` : "") + (nt.text ? `, ${nt.text}.` : ""));
-    for (const l of nt.layers) if (link(l.id)) lines.push("   " + link(l.id));
-    if (nt.more) lines.push(`   and ${nt.more} more layers`);
+    const head = `${i + 1}. `, pad = " ".repeat(head.length);
+    const known = new Map(nt.layers.map((l) => [l.id, l]));
+    const one = (id) => { const l = known.get(id); return l ? `"${l.name}" (${l.type}) ${id}` : id; };
+    if (nt.details.length) {
+      lines.push(`${head}${nt.title}: ${nt.text}`);
+      for (const d of nt.details) {
+        lines.push(`${pad}- ${d.text}`);
+        for (const id of d.layers) lines.push(`${pad}  ${one(id)}` + (link(id) ? "  " + link(id) : ""));
+      }
+      if (nt.detailsMore) lines.push(`${pad}  and ${plural(nt.detailsMore, "more line", "more lines")} like these`);
+    } else {
+      lines.push(`${head}${nt.title}: ${nt.text}`);
+      for (const l of nt.layers) lines.push(`${pad}${one(l.id)}` + (link(l.id) ? "  " + link(l.id) : ""));
+      if (nt.more) lines.push(`${pad}and ${plural(nt.more, "more layer", "more layers")}`);
+    }
   });
   lines.push(`Fix ${picked.length === 1 ? "this one" : "these"}, then run figaro done again.`);
   return lines.join("\n");
