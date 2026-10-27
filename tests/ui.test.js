@@ -336,7 +336,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
   {
     const env = load();
     check("before the bridge answers: this file's island, connecting, with a spinner",
-          [/connecting…/.test(env.html()), /class="spin"/.test(env.html()), /class="px"/.test(env.html())], [true, true, false]);
+          [/connecting…/.test(env.html()), /class="spin idle"/.test(env.html()), /class="px"/.test(env.html())], [true, true, false]);
     for (let i = 0; i < 5; i++) {
       env.ws().drop();
       await env.clock.advance(2000);
@@ -709,12 +709,12 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.board(files, { update: { latest: "1.2.0" }, failed: { what: "update", error: "local changes", detail: DETAIL, url: RELEASE } });
     await env.clock.advance(400);
     check("a failed update: a yellow ! where the download was, with a short hint, and Skip; nothing under the line",
-          [/<span class="ver"><span class="ver-b">Figaro 1\.1\.0 .*?<span class="nv">1\.2\.0<\/span><\/span><span class="tw"><button[^>]*class="tl warn" data-act="why"[^>]*><svg[^>]*>.*?<\/svg><\/button><span class="tip"[^>]*>Couldn't update<\/span><\/span><span class="tw"><button[^>]*data-act="skip"/.test(env.foot()),
+          [/<span class="ver"><span class="ver-b">Figaro 1\.1\.0 .*?<span class="nv">1\.2\.0<\/span><\/span><span class="tw"><button[^>]*class="tl warn" data-act="why"[^>]*><span class="bdg caution"><svg[^>]*>.*?<\/svg><\/span><\/button><span class="tip"[^>]*>Couldn't update<\/span><\/span><span class="tw"><button[^>]*data-act="skip"/.test(env.foot()),
            /<\/div><\/div>$/.test(env.foot()), /local changes/.test(env.html())], [true, true, false]);
     env.click("why");
     await env.clock.advance(400);
     check("…which opens the settings at a yellow alert: what failed with Update in its corner, why in plain words, and Copy after them",
-          [/<span class="ind"><span class="wn"><svg[^>]*>.*<div class="alert"><div class="al-h"><b>Couldn't update to 1\.2\.0<\/b><button[^>]*class="go" data-act="update"[^>]*>Update<\/button><\/div><p>The Figaro folder has changes of its own, so it can't move to the new release\. <span class="tw"><button[^>]*class="tl cp" data-act="copy"[^>]*>.*?<span class="tip"[^>]*>Copy the error for your agent<\/span><\/span><\/p><\/div>/.test(env.app()),
+          [/<span class="ind"><span class="bdg caution"><svg[^>]*>.*<div class="alert"><div class="al-h"><b>Couldn't update to 1\.2\.0<\/b><button[^>]*class="go" data-act="update"[^>]*>Update<\/button><\/div><p>The Figaro folder has changes of its own, so it can't move to the new release\. <span class="tw"><button[^>]*class="tl cp" data-act="copy"[^>]*>.*?<span class="tip"[^>]*>Copy the error for your agent<\/span><\/span><\/p><\/div>/.test(env.app()),
            (env.app().match(/data-act="update"/g) || []).length], [true, 1]);
     env.click("copy");
     await env.clock.advance(50);
@@ -735,7 +735,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.board(files, { failed: { what: "update", error: "local changes", to: "1.2.0", url: RELEASE }, skipped: "1.2.0" });
     await env.clock.advance(400);
     env.click("gear");
-    check("…and from the settings: the version alone", [/class="alert"|class="wn"/.test(env.app()), /data-act="why"/.test(env.foot())], [false, false]);
+    check("…and from the settings: the version alone", [/class="alert"|class="bdg caution"/.test(env.app()), /data-act="why"/.test(env.foot())], [false, false]);
     env.click("gear");
     env.board(files, { update: { latest: "1.2.1" }, failed: { what: "update", error: "local changes", to: "1.2.0", url: RELEASE }, skipped: "1.2.0" });
     await env.clock.advance(400);
@@ -968,7 +968,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.board(files, { settings, update: { latest: "1.2.0", url: RELEASE }, skipped: "1.2.0" });
     env.click("gear");
     check("a skipped release still shows in the settings: the new version, with Update",
-          [/class="dl".*Figaro 1\.1\.0 .*<span class="nv">1\.2\.0<\/span>.*data-act="update"[^>]*>Update<\/button>/.test(env.app()),
+          [/class="bdg update".*Figaro 1\.1\.0 .*<span class="nv">1\.2\.0<\/span>.*data-act="update"[^>]*>Update<\/button>/.test(env.app()),
            /Skip this release/.test(env.app()), /Report a problem/.test(env.app())], [true, false, true]);
     env.board(files, { settings, release: { latest: "1.2.0", url: RELEASE } });
     await env.clock.advance(400);
@@ -1215,7 +1215,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await env.clock.advance(400);
     check("another file stops answering: this file's card stays, and a red ! by it takes the count's place",
           [/<b>Dashboard<\/b>/.test(env.app()), /class="island alarm"/.test(env.app()),
-           /<span class="mc alarm" title="Figma isn't answering in Kit"><span class="ind"><span class="warn">/.test(env.app()), /\+\d/.test(env.app())],
+           /<span class="mc alarm" title="Figma isn't answering in Kit"><span class="ind"><span class="bdg alarm">/.test(env.app()), /\+\d/.test(env.app())],
           [true, false, true, false]);
     env.tapGrid("mini");  // the card's grid is its restore, not the rainbow
     await env.clock.advance(50);
@@ -1228,7 +1228,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("held on Minimize: a ring runs round it, a sound rises", [hold.holding(), env.heard()], [true, ["sine 180", "triangle 360"]]);
     await env.clock.advance(300);
     check("…and half a second on: nano, this file's state, not the alarm in another one",
-          [/<div class="mini nano enter">/.test(env.app()), /alarm|class="warn"/.test(env.app()), /<b>/.test(env.app()), hold.holding(), env.heard()],
+          [/<div class="mini nano enter">/.test(env.app()), /alarm|class="bdg alarm"/.test(env.app()), /<b>/.test(env.app()), hold.holding(), env.heard()],
           [true, false, false, false, ["sine 1100", "noise", "sine 1320"]]);
     hold.up(true, "restore");
     check("…and the click as it's let go doesn't restore it, though restore is under the pointer by then", /mini nano/.test(env.app()), true);

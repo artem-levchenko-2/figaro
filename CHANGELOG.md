@@ -9,6 +9,19 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+### Changed
+
+- **The window's indicators follow one rule.** A dot means calm: the file is ready (green), or there is no
+  bridge yet (grey). A disc with a mark is an event or a request: done ✓, failed ×, stopped ■, Figma isn't
+  answering !, a new release ⤓, a new build ↻, an agent that asks for comments ?, and the yellow ! of an update
+  that failed. Motion means work under way: the pixel grid for an agent, the spinner for Figaro itself. A failed
+  agent was a red dot, a stopped one a grey square, a new build and an ask were dots; now each is a disc.
+- One size for each kind: discs 11 px, dots 7 px, spinners 10 px with a 1.5 px line, in the islands, the
+  agents' rows, the version and the line under the islands alike. The halos round the dots are gone.
+- Every coloured indicator glows in its colour, a soft light that shows on the dark theme and barely on the
+  light one; a stopped agent's grey disc too, the other grey ones and the buttons don't.
+- Line icons keep a 1.3 px line at any size, and the small arrows by links and buttons are 10 px.
+
 ## [1.7.0] — 2026-10-26
 
 ### Added
