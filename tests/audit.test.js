@@ -137,19 +137,44 @@ const ids = (notes) => notes.map((n) => n.id);
     check("low-contrast: the opacity of a parent counts", (await only("low-contrast", F([dim]))).length, 1);
     const full = F([TX("dim", { fills: [solid("#000000")] })], { fills: [], opacity: 1 });
     check("low-contrast: a parent at full opacity does not", (await only("low-contrast", F([full]))).length, 0);
-    // inactive things are exempt (WCAG 1.4.3): by a layer's name above, an instance's variant, or the text's own name
+    // disabled controls are exempt (WCAG 1.4.3); a tab or item that is only not selected ("inactive") is not
     const weak = (props) => TX("x", Object.assign({ fills: [solid("#AAAAAA")] }, props));
-    const offByParent = F([weak()], { name: "Button / Disabled" });
-    const offByOwn = weak({ name: "Label inactive" });
-    const offByVariant = F([weak()], { name: "State=Disabled" });
-    const inst = N("INSTANCE", { name: "Field", componentProperties: { State: { type: "VARIANT", value: "Disabled" } } });
-    const innerText = weak();
-    inst.children = [innerText]; innerText.parent = inst; F([inst]);
-    const onWord = TX("Disabled", { fills: [solid("#AAAAAA")] });  // its name is just its words
-    for (const [what, node] of [["a parent's name", offByParent], ["the text's own name", offByOwn], ["a variant component's name", offByVariant], ["an instance's variant value", innerText]]) {
-      const root = node === innerText ? innerText : F([node]);
-      check("low-contrast: quiet for " + what, (await only("low-contrast", root)).length, 0);
+    const under1 = async (name) => (await only("low-contrast", F([F([weak()], { name })]))).length;
+    for (const name of ["Button / Disabled", "Disabled=True", "disabled=true", "Size=M, Disabled=True", "Disabled=Yes", "State=Disabled", "Size=M, State=Disabled", "Disabled"]) {
+      check('low-contrast: exempt under "' + name + '"', await under1(name), 0);
     }
+    for (const name of ["Disabled=False", "Size=M, Disabled=False", "Disabled=No", "State=Inactive", "Tab / Inactive", "Inactive projects", "Size=M, State=Default", "Enabled=True", "Button"]) {
+      check('low-contrast: judged under "' + name + '"', await under1(name), 1);
+    }
+    check("low-contrast: exempt by the text's own name", (await only("low-contrast", F([weak({ name: "Label disabled" })]))).length, 0);
+    check("low-contrast: not by the text's own name inactive", (await only("low-contrast", F([weak({ name: "Label inactive" })]))).length, 1);
+    const withProps = async (props) => {
+      const inst = N("INSTANCE", { name: "Field", componentProperties: props });
+      const t = weak();
+      inst.children = [t]; t.parent = inst; F([inst]);
+      return (await only("low-contrast", t)).length;
+    };
+    check("low-contrast: exempt for an instance variant State=Disabled", await withProps({ State: { type: "VARIANT", value: "Disabled" } }), 0);
+    check("low-contrast: exempt for an instance boolean Disabled#1:0 on", await withProps({ "Disabled#1:0": { type: "BOOLEAN", value: true } }), 0);
+    check("low-contrast: exempt for an instance variant Disabled=True", await withProps({ Disabled: { type: "VARIANT", value: "True" } }), 0);
+    check("low-contrast: judged for Disabled off, State=Inactive, State=Default", [
+      await withProps({ "Disabled#1:0": { type: "BOOLEAN", value: false } }),
+      await withProps({ Disabled: { type: "VARIANT", value: "False" } }),
+      await withProps({ State: { type: "VARIANT", value: "Inactive" } }),
+      await withProps({ State: { type: "VARIANT", value: "Default" } })], [1, 1, 1, 1]);
+    // the answer for a layer is remembered for the others below the same parent: two texts, both ways
+    const offTree = F([F([weak(), weak(), weak()], { name: "Button / Disabled" }), F([weak(), weak(), weak()], { name: "Button" })]);
+    check("low-contrast: the remembered answer is the true one for the layers beside it (3 disabled, 3 not)",
+          (await only("low-contrast", offTree, { group: false })).length, 3);
+    // (and it is asked once per parent, not once per text: reads of the parent's name, two for the walk itself)
+    let reads = 0;
+    const counted = F([weak(), weak(), weak()], { name: "Card" });
+    Object.defineProperty(counted, "name", { get() { reads++; return "Card"; } });
+    await only("low-contrast", F([counted]));
+    check("low-contrast: whether a parent is disabled is worked out once for all its texts", reads, 3);
+    const deep = F([F([F([weak(), weak()], { name: "inner" })], { name: "Disabled=True" })]);
+    check("low-contrast: a disabled layer high above exempts what is deep below, every one", (await only("low-contrast", deep)).length, 0);
+    const onWord = TX("Disabled", { fills: [solid("#AAAAAA")] });  // its name is just its words
     check("low-contrast: a text that only says Disabled is still judged", (await only("low-contrast", F([onWord]))).length, 1);
     // mixed runs: one weak run is enough
     const mixed = TX("strong weak", { fills: MIXED, segments: [
@@ -201,6 +226,11 @@ const ids = (notes) => notes.map((n) => n.id);
     check("low-contrast-ui: a control five levels above does not", (await only("low-contrast-ui", far)).length, 0);
     const click = F([VEC("#DDDDDD")], { name: "Thing", reactions: [{ trigger: { type: "ON_CLICK" }, actions: [] }] });
     check("low-contrast-ui: a click in the prototype makes a control", (await only("low-contrast-ui", click)).length, 1);
+    const state = (name) => only("low-contrast-ui", F([VEC("#DDDDDD")], { name })).then((r) => r.length);
+    check("low-contrast-ui: nav, menu, action, chip, badge, status, indicator names make a control, words only",
+          [await state("Nav item"), await state("Menu / Row"), await state("Action bar"), await state("Status"), await state("Badge"), await state("Kind=done, Indicator"),
+           await state("Chip"), await state("Navigation"), await state("Dots"), await state("Illustration"), await state("Menus")], [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0]);
+    check("low-contrast-ui: a mark on a status disc in a badge (white on green, 2.9:1)", ids(await only("low-contrast-ui", F([F([VEC("#14AE5C"), VEC("#FFFFFF")], { name: "Kind=done", layoutMode: "NONE" })], { name: "Status badge" }))).length, 1);
     check("low-contrast-ui: an inactive control is exempt",
           (await only("low-contrast-ui", F([VEC("#DDDDDD")], { name: "Button disabled" }))).length, 0);
     // a mark on a disc of its own: the disc is the backdrop; the same colour as its neighbour is a drawing's part
@@ -265,6 +295,8 @@ const ids = (notes) => notes.map((n) => n.id);
     check("small-target: an instance by its component or its set",
           ids(await only("small-target", F([inst, dot, inSet]))), [inst.id, inSet.id]);
     const clicky = box("Thing", 20, 20, { reactions: [{ trigger: { type: "ON_CLICK" }, actions: [] }] });
+    const pressy = box("Thing", 20, 20, { reactions: [{ trigger: { type: "ON_PRESS" }, actions: [] }] });
+    check("small-target: a press in the prototype too", ids(await only("small-target", F([pressy]))), [pressy.id]);
     const hovery = box("Thing", 20, 20, { reactions: [{ trigger: { type: "ON_HOVER" }, actions: [] }] });
     check("small-target: a click in the prototype", ids(await only("small-target", F([clicky, hovery]))), [clicky.id]);
   }
@@ -511,6 +543,13 @@ const ids = (notes) => notes.map((n) => n.id);
     check("cap by rank: 5 raw colours come first, then no-text-style fills the rest",
           [r.notes.slice(0, 5).map((n) => n.rule), r.notes[5].rule, r.notes.length], [Array(5).fill("unbound-color"), "no-text-style", 50]);
     check("cap by rank: total and more count every layer", [r.total, r.more, r.counts["unbound-color"], r.counts["no-text-style"]], [2105, 2055, 5, 2100]);
+    // a rule never holds more than `limit` groups while walking (memory stays small on a big page)
+    const stats = {};
+    await h.audit(W(texts.concat(rects)), { group: false, limit: 7, stats });
+    check("cap by rank: no rule holds more than limit groups in memory", stats.held, 7);
+    const stats2 = {};
+    await h.audit(W(texts.concat(rects)), { group: false, stats: stats2 });
+    check("cap by rank: and by default 50", stats2.held, 50);
     const g = await h.audit(W(texts.concat(rects)));
     check("cap by rank: grouped, 5 colours and one group of 2100 texts", [g.notes.length, g.notes[5].count, g.more], [6, 2100, 0]);
     LOCAL.text = []; LOCAL.paint = [];

@@ -2712,9 +2712,29 @@ const AUDIT_PLACEHOLDER = [
   /^\s*(?:todo|xxx+|placeholder|text|your text(?: here)?|text here|\?{2,}|\.{3}|…)\s*$/i,
 ];
 const AUDIT_HEADING_NAME = /^\s*(?:h|heading\s*)([1-6])\s*$/i;  // the whole name: "H2 2024 results" is a text, not a heading
-const AUDIT_OFF = new Set(["disabled", "inactive"]);  // WCAG 1.4.3 leaves inactive controls out
+const AUDIT_CONTROL = new Set(Array.from(AUDIT_BUTTON).concat(["nav", "menu", "action", "actions", "badge", "status", "indicator"]));  // where an icon is a UI graphic (WCAG 1.4.11)
 const AUDIT_TYPE_VARS = ["fontSize", "fontFamily", "fontStyle", "fontWeight", "lineHeight", "letterSpacing"];
 const AUDIT_HEADING_STYLE = /(?:^|[\s/_-])(?:h|heading\s?)([1-6])(?:$|[\s/_-])/i;
+
+// Is a property "Disabled" on: true or yes. Only disabled controls are exempt from contrast (WCAG 1.4.3);
+// a tab that is just not selected ("inactive") is not.
+function auditOnValue(prop, value) {
+  if (auditWords(prop).indexOf("disabled") === -1) return false;
+  return value === true || (typeof value === "string" && /^\s*(?:true|yes|on)\s*$/i.test(value));
+}
+
+// A layer name that says it is disabled: "Button / Disabled", or a variant name, "Disabled=True" or
+// "State=Disabled" among "Prop=Value, …" (where "Disabled=False" is the ordinary one).
+function auditNamedOff(name) {
+  name = String(name);
+  if (name.indexOf("=") === -1) return auditWords(name).indexOf("disabled") !== -1;
+  return name.split(",").some((part) => {
+    const at = part.indexOf("=");
+    if (at === -1) return false;
+    const value = part.slice(at + 1);
+    return auditOnValue(part.slice(0, at), value) || value.trim().toLowerCase() === "disabled";
+  });
+}
 
 function auditSafe(fn, otherwise) {
   try { return fn(); } catch (e) { return otherwise; }
@@ -2935,12 +2955,12 @@ async function auditRun(root, opts, env) {
   // says so, on the layer or any layer above it (also above the root).
   const offMemo = new Map();
   const looksOff = (n) => {
-    if (!(n.type === "TEXT" && n.name === n.characters) && auditWords(n.name).some((w) => AUDIT_OFF.has(w))) return true;
+    if (!(n.type === "TEXT" && n.name === n.characters) && auditNamedOff(n.name)) return true;
     if (n.type === "INSTANCE") {
       const props = auditSafe(() => n.componentProperties, null);
       if (props) for (const k of Object.keys(props)) {
         const v = props[k] && props[k].value;
-        if (typeof v === "string" && auditWords(v).some((w) => AUDIT_OFF.has(w))) return true;
+        if (auditOnValue(k.replace(/#\d+:\d+$/, ""), v) || (typeof v === "string" && v.trim().toLowerCase() === "disabled")) return true;
       }
     }
     return false;
@@ -2956,11 +2976,12 @@ async function auditRun(root, opts, env) {
     for (const id of chain) offMemo.set(id, res);
     return res;
   };
-  // A control: a button-like name or a click in the prototype, on a layer within four levels above.
+  // A control: a name with a button-like or state word (AUDIT_CONTROL) or a click in the prototype, on a
+  // layer within four levels above.
   const inControl = (e) => {
     let c = parentOf(e);
     for (let d = 0; c && d < 4; d++, c = parentOf(c)) {
-      if (auditWords(c.n.name).some((w) => AUDIT_BUTTON.has(w)) || auditClicks(c.n)) return true;
+      if (auditWords(c.n.name).some((w) => AUDIT_CONTROL.has(w)) || auditClicks(c.n)) return true;
     }
     return false;
   };
@@ -3302,6 +3323,11 @@ async function auditRun(root, opts, env) {
   const res = { notes: out, total, more: total - shown, counts: byRule, visited };
   if (partial) res.partial = partial + "; audit a smaller layer for the rest";
   if (errors) res.errors = errors;
+  // opts.stats, for tests: the most groups any rule held while walking (never more than limit)
+  if (opts.stats) {
+    opts.stats.held = 0;
+    for (const m of held.values()) opts.stats.held = Math.max(opts.stats.held, m.size);
+  }
   return res;
 }
 // audit:end
