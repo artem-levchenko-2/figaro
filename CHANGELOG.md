@@ -37,7 +37,8 @@ file; the release notes say when it has to be imported again.
   bridge yet (grey). A disc with a mark is an event or a request: done ✓, failed ×, stopped ■, Figma isn't
   answering !, a new release ⤓, a new build ↻, an agent that asks for comments ?, and the yellow ! of an update
   that failed. Motion means work under way: the pixel grid for an agent, the spinner for Figaro itself. A failed
-  agent was a red dot, a stopped one a grey square, a new build and an ask were dots; now each is a disc.
+  agent was a red dot, a stopped one a grey square, a new build and an ask were dots; now each is a disc. The
+  new build's purple is a little lighter in the dark theme.
 - One size for each kind: discs 11 px, dots 7 px, spinners 10 px with a 1.5 px line, in the islands, the
   agents' rows, the version and the line under the islands alike. The halos round the dots are gone.
 - Every coloured indicator glows in its colour, a soft light that shows on the dark theme and barely on the
