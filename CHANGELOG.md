@@ -20,6 +20,8 @@ file; the release notes say when it has to be imported again.
   agents' rows, the version and the line under the islands alike. The halos round the dots are gone.
 - Every coloured indicator glows in its colour, a soft light that shows on the dark theme and barely on the
   light one; a stopped agent's grey disc too, the other grey ones and the buttons don't.
+- The yellow ! of an update that failed is the same bright yellow in the light theme as in the dark one, with a
+  white mark; it was a darker orange there.
 - Line icons keep a 1.3 px line at any size, and the small arrows by links and buttons are 10 px.
 
 ## [1.7.0] — 2026-10-26
