@@ -16,7 +16,7 @@ file; the release notes say when it has to be imported again.
   others, only what is different from it: sizes, padding, auto-layout, radius, opacity, fills, strokes and
   effects with their style and variable names, text and font, layers shown, hidden or missing, swapped
   instances and their properties. Each change comes with the variants that have it, written as conditions
-  (`Size=S`) when every variant with that value has it, so a set of 50 stays short. `--json` and `-o` keep all
+  (`Size=S`) when every variant with that value has it, so a set of 50 stays short. It says what it did not compare: layers below `--depth` or the layer limit, hidden layers it could not read, and a vector's path (only its size and paints are compared). `--json` and `-o` keep all
   their keys and add `variants` (the base, the axes and the differences). Other layers print as before.
 
 ### Changed

@@ -150,7 +150,7 @@ def test_summary_of_a_set_written_to_a_file(monkeypatch, capsys, tmp_path):
     fake = FakeBridge(reply(wrap(button_set(False), 14)), reply(wrap(button_set(True), 15)))
     rc, out, err, calls = cli(monkeypatch, capsys, "inspect", "2:0", "-o", str(dest), bridge_reply=fake)
     assert rc == 0
-    assert json.loads(out)["variants"] == 4
+    assert json.loads(out)["variantCount"] == 4
     assert json.loads(dest.read_text())["variants"]["base"]["name"] == "Size=M, State=default"
 
 
@@ -287,3 +287,152 @@ def test_a_long_set_stays_short():
     assert [v["when"] for v in sizes_d["values"]] == [["Size=12"], ["Size=16"], ["Size=20"], ["Size=24"]]
     text = variant_diff.render(wrap(s, 51), analysis, base)
     assert len(text.splitlines()) < 60
+
+
+# ─── the second read fails, layers that were not read, rounding, notes ───
+
+def test_a_failed_second_read_still_prints_the_variants_without_hidden_layers(monkeypatch, capsys):
+    for failure in ({"ok": False, "error": "timeout: the script took too long"}, {"ok": False}):
+        fake = FakeBridge(reply(wrap(button_set(False), 14)), failure)
+        rc, out, err, calls = cli(monkeypatch, capsys, "inspect", "2:0", bridge_reply=fake)
+        assert rc == 0 and len(calls) == 2
+        assert err.count("figaro: the read of the variants' hidden layers failed") == 1
+        assert "base variant: Size=M, State=default" in out
+        assert "  padding: 8 16 → 4 12 · Size=S" in out.splitlines()
+        assert "not compared: hidden layers (they could not be read)" in out
+        fake = FakeBridge(reply(wrap(button_set(False), 14)), failure)
+        rc, out, err, calls = cli(monkeypatch, capsys, "inspect", "2:0", "--json", bridge_reply=fake)
+        assert rc == 0 and "hidden layers failed" in err
+        data = json.loads(out)  # stdout stays JSON; the warning went to stderr
+        assert data["variants"]["hiddenRead"] is False and data["node"]["id"] == "2:0"
+
+
+def test_variants_cut_by_depth_are_not_called_the_same(monkeypatch, capsys):
+    s = button_set(True)
+    for v in s["children"]:
+        v.pop("children")
+        v["childrenCut"] = 2
+        v["layout"]["pad"] = [8, 16, 8, 16]
+    rc, out, err, calls = cli(monkeypatch, capsys, "inspect", "2:0", "--depth", "1", bridge_reply=reply(wrap(s, 5)))
+    assert rc == 0
+    assert "the same as the base" not in out and "same as the base:" not in out
+    assert "no differences from the base (Size=M, State=default) in the layers that were read" in out
+    assert "not compared: layers below --depth or the layer limit, in Size=S, State=hover; " in out
+    data = json.loads(cli(monkeypatch, capsys, "inspect", "2:0", "--depth", "1", "--json",
+                          bridge_reply=reply(wrap(s, 5)))[1])["variants"]
+    assert data["same"] == [] and len(data["cut"]) == 4
+
+
+def test_a_variant_cut_by_the_layer_limit_is_not_the_same_either():
+    s = button_set(True)
+    for v in s["children"]:
+        v.update(copy.deepcopy(s["children"][2]), id=v["id"], name=v["name"])
+    s["children"][1]["children"][0]["childrenCut"] = 3  # one layer deep inside was not read
+    analysis, base = variant_diff.analyze(s)
+    assert analysis["same"] == ["Size=S, State=hover", "Size=S, State=default"]
+    assert analysis["cut"] == ["Size=M, State=hover"]
+    text = variant_diff.render(wrap(s, 9), analysis, base)
+    assert "same as the base: Size=S, State=hover; Size=S, State=default" in text
+    assert "not compared: layers below --depth or the layer limit, in Size=M, State=hover" in text
+
+
+def comp(vid, name, kids=(), pad=None, **extra):
+    node = {"id": vid, "name": name, "type": "COMPONENT", "w": 40, "h": 40, "x": 0, "y": 0, "children": list(kids)}
+    if pad is not None:
+        node["layout"] = {"mode": "HORIZONTAL", "gap": 2, "main": "MIN", "cross": "MIN", "pad": pad}
+    node.update(extra)
+    return node
+
+
+def box(bid, name, x=0, **extra):
+    return dict({"id": bid, "name": name, "type": "FRAME", "w": 8, "h": 8, "x": x, "y": 0}, **extra)
+
+
+def a_set(*variants, axis="Kind"):
+    names = [v["name"].split("=")[1] for v in variants]
+    return {"id": "7:0", "name": "S", "type": "COMPONENT_SET", "children": list(variants),
+            "propDefs": {axis: {"type": "VARIANT", "default": names[0], "options": names}}}
+
+
+def test_a_condition_never_covers_a_variant_that_does_not_share_the_change():
+    pad = [4, 4, 4, 4]
+    kw = dict(pad=[8, 8, 8, 8])
+    s = {"id": "7:0", "name": "S", "type": "COMPONENT_SET", "propDefs": {
+        "Size": {"type": "VARIANT", "default": "M", "options": ["M", "S", "L"]},
+        "State": {"type": "VARIANT", "default": "q", "options": ["q", "x", "y", "z"]}},
+        "children": [comp("1", "Size=M, State=q", **kw), comp("2", "Size=S, State=x", pad=pad),
+                     comp("3", "Size=S, State=y", pad=pad), comp("4", "Size=S, State=z", **kw),
+                     comp("5", "Size=L, State=x", pad=pad)]}
+    analysis, base = variant_diff.analyze(s)
+    (d,) = [d for d in analysis["differences"] if d["attr"] == "pad"]
+    # Size=S would also name Size=S, State=z, which keeps the base's padding
+    assert d["values"][0]["when"] == ["State=x", "Size=S, State=y"]
+
+
+def test_a_layer_missing_from_a_cut_variant_is_not_reported_absent(monkeypatch, capsys):
+    base = comp("1", "Kind=a", [box("1.1", "x"), box("1.2", "y")])
+    cut = comp("2", "Kind=b", [box("2.1", "x")], childrenCut=1)  # y was not read
+    analysis, _ = variant_diff.analyze(a_set(base, cut))
+    assert analysis["differences"] == [] and analysis["cut"] == ["Kind=b"] and analysis["same"] == []
+    # and the other way: the base was cut, the variant has a layer the base's read lacks
+    analysis, _ = variant_diff.analyze(a_set(comp("1", "Kind=a", [box("1.1", "x")], childrenCut=1),
+                                             comp("2", "Kind=b", [box("2.1", "x"), box("2.2", "y")])))
+    assert analysis["differences"] == []
+    # whole layers missing with nothing cut are reported
+    analysis, _ = variant_diff.analyze(a_set(base, comp("2", "Kind=b", [box("2.1", "x")])))
+    assert [(d["layer"], d["attr"]) for d in analysis["differences"]] == [("y", "layer")]
+
+
+def test_position_counts_only_where_the_parent_has_no_auto_layout():
+    flow_a = comp("1", "Kind=a", [box("1.1", "x", x=0)], pad=[0, 0, 0, 0])
+    flow_b = comp("2", "Kind=b", [box("2.1", "x", x=6)], pad=[0, 0, 0, 0])
+    analysis, _ = variant_diff.analyze(a_set(flow_a, flow_b))
+    assert analysis["differences"] == []  # an auto-layout puts it there
+    free_a = comp("1", "Kind=a", [box("1.1", "x", x=0)])
+    free_b = comp("2", "Kind=b", [box("2.1", "x", x=6)])
+    analysis, _ = variant_diff.analyze(a_set(free_a, free_b))
+    assert [(d["layer"], d["attr"], d["values"][0]["value"]) for d in analysis["differences"]] == [("x", "pos", [6, 0])]
+    # in a flow in one variant and free in the other: no position to compare, the layout differs
+    analysis, _ = variant_diff.analyze(a_set(flow_a, free_b))
+    assert [d["attr"] for d in analysis["differences"]] == ["layout", "gap", "align", "wrap", "pad"]
+    # the variants of a set lie side by side: their own x and y say nothing
+    far = comp("2", "Kind=b", [box("2.1", "x")], x=500, y=90)
+    assert variant_diff.analyze(a_set(free_a, far))[0]["differences"] == []
+
+
+def test_numbers_are_compared_and_shown_with_the_same_rounding():
+    a = comp("1", "Kind=a", [box("1.1", "x", radius=2)], pad=[4, 4, 4, 4])
+    a["layout"]["gap"] = 2
+    b = comp("2", "Kind=b", [box("2.1", "x", radius=2.004)], pad=[4.001, 4, 4, 4])
+    b["layout"]["gap"] = 2.004
+    analysis, base = variant_diff.analyze(a_set(a, b))
+    assert analysis["differences"] == [] and analysis["same"] == ["Kind=b"]
+    b["layout"]["gap"] = 2.5
+    b["layout"]["pad"] = [4.3333, 4, 4, 4]
+    analysis, base = variant_diff.analyze(a_set(a, b))
+    lines = variant_diff.render(wrap(a_set(a, b), 3), analysis, base).splitlines()
+    assert "  gap: 2 → 2.5 · Kind=b" in lines and "  padding: 4 → 4.33 4 4 4 · Kind=b" in lines
+
+
+def test_a_set_with_vectors_says_their_paths_are_not_compared():
+    vec = {"id": "1.1", "name": "mark", "type": "VECTOR", "w": 4, "h": 4, "x": 0, "y": 0}
+    s = a_set(comp("1", "Kind=a", [vec], pad=[1, 1, 1, 1]), comp("2", "Kind=b", [dict(vec, id="2.1")], pad=[2, 2, 2, 2]))
+    analysis, base = variant_diff.analyze(s)
+    assert analysis["vectors"] is True
+    assert "vector paths are not compared, only their size, position and paints" in variant_diff.render(
+        wrap(s, 3), analysis, base)
+    assert "vectors" not in variant_diff.analyze(a_set(comp("1", "Kind=a", [box("1.1", "x")]),
+                                                       comp("2", "Kind=b", [box("2.1", "x")])))[0]
+
+
+def test_names_with_commas_are_separated_by_semicolons():
+    kids = [comp(str(i), f"Size={z}, Color={c}", pad=[i, i, i, i]) for i, (z, c) in
+            enumerate([("8", "ok"), ("8", "idle"), ("6", "err"), ("6", "run")], start=1)]
+    kids[1]["layout"]["pad"] = kids[0]["layout"]["pad"]  # same as the base
+    kids[3]["layout"]["pad"] = kids[0]["layout"]["pad"]
+    s = {"id": "7:0", "name": "S", "type": "COMPONENT_SET", "children": kids, "propDefs": {
+        "Size": {"type": "VARIANT", "default": "8", "options": ["8", "6"]},
+        "Color": {"type": "VARIANT", "default": "ok", "options": ["ok", "idle", "err", "run"]}}}
+    analysis, base = variant_diff.analyze(s)
+    text = variant_diff.render(wrap(s, 5), analysis, base)
+    assert "same as the base: Size=8, Color=idle; Size=6, Color=run" in text

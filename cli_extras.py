@@ -378,20 +378,28 @@ def _has_hidden(node):
 def _variants(args, value):
     """For a component set: what differs between its variants, from a read that
     includes the hidden layers (a layer shown in one variant and hidden in
-    another is a difference), or None. Returns (analysis, base, error reply)."""
+    another is a difference), or None. Returns (analysis, base, warning). A
+    failed second read is not a failure of the command: the first read is
+    compared, without the hidden layers, and the warning says so."""
     node = value.get("node") or {}
     if node.get("type") != "COMPONENT_SET" or not node.get("children"):
         return None, None, None
     data = value
+    warning = None
     if not args.hidden and (value.get("cut") or _has_hidden(node)):
         opts = {"depth": args.depth, "hidden": True, "maxNodes": VARIANTS_MAX_NODES}
         code = f"return await h.inspect({CLI.node_expr(args.node_id)}, {json.dumps(opts)});"
         status, resp = CLI._exec(code, args.timeout, quick=True)
-        if not resp.get("ok"):
-            return None, None, resp
-        data = resp.get("value") or {}
+        if resp.get("ok"):
+            data = resp.get("value") or {}
+        else:
+            why = str(resp.get("error") or "no answer").strip().splitlines()[0][:200]
+            warning = (f"figaro: the read of the variants' hidden layers failed ({why}); the variants "
+                       "are compared without them")
     analysis, base = variant_diff.analyze(data.get("node") or {})
-    return analysis, base, None
+    if analysis and warning:
+        analysis["hiddenRead"] = False
+    return analysis, base, warning
 
 
 def cmd_inspect(args):
@@ -402,9 +410,9 @@ def cmd_inspect(args):
         return CLI._emit(resp, raw=args.raw)
     report(resp)
     value = resp.get("value") or {}
-    analysis, base, failed = _variants(args, value)
-    if failed:
-        return CLI._emit(failed)
+    analysis, base, warning = _variants(args, value)
+    if warning:
+        print(warning, file=sys.stderr)
     if analysis:
         value["variants"] = analysis
     if args.out:
@@ -419,7 +427,7 @@ def cmd_inspect(args):
         summary = {"file": value.get("file"), "node": node.get("id"), "name": node.get("name"),
                    "out": str(path.resolve()), "nodes": value.get("nodes"), "chars": len(text)}
         if analysis:
-            summary["variants"] = len(analysis["variants"])
+            summary["variantCount"] = len(analysis["variants"])
         print(json.dumps(summary, ensure_ascii=False))
     elif args.json:
         print(json.dumps(value, ensure_ascii=False))

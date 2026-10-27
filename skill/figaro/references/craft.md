@@ -151,20 +151,25 @@ them by hand (`--json` has the same as data, under `variants`):
   property's default (the set's default; the first one if the set names none). It is printed in full; hidden
   layers are in it, marked `hidden`.
 - **The differences** come after it, by layer, then by property: `fill: #111111 → #ffffff · State=hover` is the
-  base's value, the other value, and the variants that have it. `Size=S` means every variant with that value
-  (but not the base) has it; a variant that fits no condition is named in full. `same as the base:` lists the
-  variants that differ in nothing. Each line is a prop for the code: `Size=S` changes the padding, `State=hover`
+  base's value, the other value, and the variants that have it, separated by `;` (variant names have commas).
+  `Size=S` means every variant with that value (but not the base) has it; a variant that fits no condition is
+  named in full. `same as the base:` lists the variants that differ in nothing. Each line is a prop for the code: `Size=S` changes the padding, `State=hover`
   the fill.
 - **What counts:** size (only a fixed side: a hugging or filling one follows its content), position (only where
   the parent has no auto-layout), visibility, auto-layout and padding, radius, opacity, fills, strokes, effects
   and their styles and variables, text, font and text style, an instance's component (a swap) and properties,
   and the component properties that drive a layer (`ref.…`). A layer that only some variants have is
-  `layer: absent → […]`. A vector's own path is not compared, only its size and paints.
+  `layer: absent → […]`. **A vector's own path is not compared**, only its size, position and paints: two icons
+  of one size and colour with different shapes look the same here, so look at a `shot` of icon variants.
 - **Layers are matched by their path of names.** Same-named layers under one parent are matched in order, and
   the second one is written `Icon[2]`. Layers of a different type with one name count as different layers. The
   order of layers is not compared.
-- `--depth 1` compares only the variants themselves, without their layers. A set over the layer limit (5000
-  layers) says how many variants were left out.
+- **What was not read is not called the same.** With `--depth 1`, or past the layer limit (5000 layers), the
+  layers below the cut are not compared, and the output says so (`not compared: …`) instead of listing those
+  variants as "same as the base". A set over the limit also says how many variants were left out. If the read
+  of the hidden layers fails, one warning goes to stderr and the variants are compared without them.
+- The text prints only the base variant's ids and keys. The other variants' ids and keys are in `--json`, in
+  `node.children[]` (`variants.variants[]` has their ids and axis values).
 
 ## Moving a design over from code or a live page
 

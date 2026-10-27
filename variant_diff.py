@@ -8,17 +8,22 @@ only what is different from it. This module works that out from the data
 
 - Base: the variant whose name matches the defaults of all variant properties,
   which is the set's default variant; if none does, the first one.
-- A difference is any of what `inspect` reads of a layer: size (only the axes
+- A difference is any of what `inspect` reads of a layer, numbers rounded to two decimals
+  on both sides of the comparison: size (only the axes
   that are fixed: a hugging or filling one follows its content), position
   (only where the parent has no auto-layout), visibility, auto-layout, padding,
   radius, opacity, fills, strokes, effects and the styles and variables bound
   to them, text, its font and text style, and an instance's component,
-  properties and the component properties that drive the layer. The order of
-  layers is not compared.
+  properties and the component properties that drive the layer. A vector's own
+  path is not compared, only its size, position and paints.
 - Layers are matched between variants by their path of names. Layers of the
   same name and type under one parent are matched in order: the second `Icon`
-  of one variant with the second `Icon` of another. A layer that one variant
-  has and another lacks is a difference of its own ("layer").
+  of one variant with the second `Icon` of another, so a reorder of layers of
+  the same name is not seen (a reorder of differently named ones is not seen
+  either: the order is not compared). A layer that one variant has and another
+  lacks is a difference of its own ("layer"). Layers below `--depth` or the
+  layer limit are not read, so a variant that was cut there is not called
+  "the same" as the base.
 - What stays short: each difference is one line with the base's value and the
   other values, each with the variants that have it, written as conditions
   ("Size=S") when every variant with that axis value has it.
@@ -62,6 +67,7 @@ def analyze(set_node):
                 if v not in vals:
                     vals.append(v)
     others = [i for i in range(len(variants)) if i != base_i]
+    cut = {i for i, v in enumerate(variants) if _cut(v)}
 
     base_flat = _flatten(base)
     flats = {i: _flatten(variants[i]) for i in others}
@@ -116,12 +122,26 @@ def analyze(set_node):
         "axes": axes,
         "variants": [{"id": v.get("id"), "name": v.get("name"), "props": p}
                      for v, p in zip(variants, props)],
-        "same": [variants[i].get("name") for i in others if i not in differing],
+        "differing": [variants[i].get("name") for i in others if i in differing],
+        "same": [variants[i].get("name") for i in others if i not in differing and i not in cut],
         "differences": diffs,
     }
+    if cut:
+        analysis["cut"] = [variants[i].get("name") for i in sorted(cut)]
+    if any(_has_vector(v) for v in variants):
+        analysis["vectors"] = True
     if set_node.get("childrenCut"):
         analysis["unread"] = set_node["childrenCut"]
     return analysis, base
+
+
+def _cut(n):
+    """Some layers below this one were not read (--depth, the layer limit)."""
+    return bool(n.get("childrenCut")) or any(_cut(c) for c in n.get("children") or [])
+
+
+def _has_vector(n):
+    return n.get("type") in ("VECTOR", "BOOLEAN_OPERATION") or any(_has_vector(c) for c in n.get("children") or [])
 
 
 def _parse(name):
@@ -166,7 +186,19 @@ def _canon(raw):
 
 
 def _r(v):
-    return round(v, 2) if isinstance(v, float) else v
+    """A number as it is compared and shown: two decimals, a whole one as an int."""
+    if isinstance(v, float):
+        v = round(v, 2)
+        return int(v) if v.is_integer() else v
+    return v
+
+
+def _norm(v):
+    if isinstance(v, dict):
+        return {k: _norm(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_norm(x) for x in v]
+    return _r(v)
 
 
 def _attrs(e, key):
@@ -234,7 +266,7 @@ def _attrs(e, key):
         a["ref." + k] = v
     if root and n.get("description"):
         a["description"] = n["description"]
-    return a
+    return {k: _norm(v) for k, v in a.items()}
 
 
 def _layer_text(n):
@@ -306,10 +338,23 @@ def render(value, analysis, base, max_lines=it.MAX_LINES, max_diff=MAX_LINES):
     out += ["", _summary(analysis)]
     out += _diff_lines(analysis, max_diff)
     same = analysis["same"]
-    if same and analysis["differences"]:
-        out.append("")
-        out.append("same as the base: " + _names(same))
+    if same and (analysis["differences"] or analysis.get("cut")):
+        out += ["", "same as the base: " + _names(same)]
+    notes = _notes(analysis)
+    if notes:
+        out += [""] + notes
     return "\n".join(out + it._keys(value))
+
+
+def _notes(a):
+    notes = []
+    if a.get("cut"):
+        notes.append("not compared: layers below --depth or the layer limit, in " + _names(a["cut"]))
+    if a.get("hiddenRead") is False:
+        notes.append("not compared: hidden layers (they could not be read)")
+    if a.get("vectors"):
+        notes.append("vector paths are not compared, only their size, position and paints")
+    return notes
 
 
 def _summary(a):
@@ -318,9 +363,12 @@ def _summary(a):
         return "this set has one variant: nothing to compare"
     base = a["base"]["name"]
     if not a["differences"]:
+        if a.get("cut"):
+            return (f"no differences from the base ({base}) in the layers that were read; "
+                    "the others were not compared (see below)")
         return (f"the other {it._count(n, 'variant')} {'is' if n == 1 else 'are'} the same as the base "
                 f"({base}) in everything inspect reads, apart from the name")
-    changed = n - len(a["same"])
+    changed = len(a["differing"])
     if n == 1:
         head = f"the other variant differs from the base ({base})"
     elif changed == n:
@@ -359,7 +407,7 @@ def _diff(d):
 
 
 def _names(names):
-    shown = ", ".join(names[:MAX_NAMES])
+    shown = "; ".join(names[:MAX_NAMES])
     return shown + (f" +{len(names) - MAX_NAMES} more" if len(names) > MAX_NAMES else "")
 
 

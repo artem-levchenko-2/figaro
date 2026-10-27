@@ -108,6 +108,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   `probe`: before the token goes anywhere, `GET /` must answer as the bridge (`"service": "figaro-bridge"`).
   Only a sure verdict is kept (`_verdicts`, which `tests/conftest.py` clears for every test): a port that
   hangs up or stays silent is asked again. `inspect_text.py` — the text `inspect` prints.
+  `variant_diff.py` — `inspect` of a component set: from the data `h.inspect` returns, the base variant, the
+  axes and what the other variants change (the `variants` key of `--json`, and the text); the CLI makes a
+  second read with the hidden layers when there are any.
 - `bridge.py` — HTTP and WebSocket, routing to files (a file's scripts go to its first live window, and a
   later window of the same file waits until that one closes), the queue and lock per file, Origin/Host
   checks, the API token and the plugin socket's User-Agent (`_guard`; `figaro_token.py` is the path and the
