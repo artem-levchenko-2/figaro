@@ -677,6 +677,28 @@ function check(label, actual, expected) {
     check("a broken reload says so", err && err.text, "reload: broken");
   }
 
+  // ─── the window's Show all: several layers selected at once ──────────────
+  {
+    const env = load();
+    const pageA = { id: "0:1", type: "PAGE", parent: null }, pageB = { id: "0:2", type: "PAGE", parent: null };
+    const a1 = { id: "1:1", type: "FRAME", parent: pageA }, a2 = { id: "1:2", type: "FRAME", parent: pageA };
+    const b1 = { id: "2:1", type: "FRAME", parent: pageB };
+    for (const n of [a1, a2, b1]) env.nodes.set(n.id, n);
+    env.figma.currentPage = pageA;
+    env.figma.viewport = { scrollAndZoomIntoView() {} };
+    env.figma.setCurrentPageAsync = async (p) => { env.figma.currentPage = p; };
+    env.posted.length = 0;
+    await env.figma.ui.onmessage({ type: "select", id: "1:1", ids: ["1:1", "2:1", "1:2", "9:9"] });
+    check("Show all selects the layers of the first one's page together", env.figma.currentPage.selection.map((n) => n.id), ["1:1", "1:2"]);
+    check("…and only a layer that is really gone is reported gone, not one on another page",
+          env.posted.filter((m) => m.type === "selected").map((m) => [m.id, m.ok]),
+          [["1:1", true], ["2:1", true], ["1:2", true], ["9:9", false]]);
+    env.posted.length = 0;
+    await env.figma.ui.onmessage({ type: "select", id: "2:1" });
+    check("one id works as before", [env.figma.currentPage.id, env.figma.currentPage.selection.map((n) => n.id), env.posted.filter((m) => m.type === "selected")],
+          ["0:2", ["2:1"], [{ type: "selected", id: "2:1", ok: true }]]);
+  }
+
   // ─── pictures that come with a script ───────────────────────────────────
   {
     const env = load();

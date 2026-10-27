@@ -926,7 +926,7 @@ function rvOf(f) {
 // The notes the designer has not ticked, per file; a new set of notes comes all ticked.
 const unticked = new Map();    // doc -> {sig, set}
 function rvUnticked(f, r) {
-  const sig = r.notes.map((n) => n.id).join();
+  const sig = r.at + ":" + r.notes.map((n) => n.id).join();  // a second check with the same ids is a new set
   let u = unticked.get(f.doc);
   if (!u || u.sig !== sig) { u = { sig, set: new Set() }; unticked.set(f.doc, u); }
   return u.set;
@@ -1027,6 +1027,8 @@ const notesBadge = (n) => `<span class="bdg notes"><svg viewBox="0 0 12 12"><cir
   + `<text x="6" y="${n > 9 ? 8.2 : 8.8}"${n > 9 ? ' class="two"' : ""}>${n > 9 ? "9+" : n}</text></svg></span>`;
 const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
 
+// A layer's type icon; an unknown or odd type ("constructor") gets the frame's.
+const iconOf = (type) => (Object.prototype.hasOwnProperty.call(ICON, type) && typeof ICON[type] === "string" ? ICON[type] : ICON.FRAME);
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function color(name) {
   let h = 0;
@@ -1156,7 +1158,7 @@ function event(e, here) {
     const type = l.type === "COMPONENT_SET" ? "COMPONENT" : l.type;
     const gone = here && goneLayers.has(l.id);
     const cls = "layer" + (type === "COMPONENT" || type === "INSTANCE" ? " comp" : "") + (gone ? " gone" : "");
-    const inner = `${ICON[type] || ICON.FRAME}<span>${esc(l.name)}</span>`;
+    const inner = `${iconOf(type)}<span>${esc(l.name)}</span>`;
     return here ? `<button type="button" class="${cls}" data-act="layer" data-id="${esc(l.id)}" title="${gone ? "Not in the file any more" : "Select it in Figma"}">${inner}</button>`
       : `<span class="${cls}">${inner}</span>`;
   }).join("") + (e.more ? `<span class="more">+${e.more}</span>` : "");
@@ -1205,7 +1207,7 @@ function reviewerAsk(f, r) {
     const chips = nt.layers.map((l) => {
       const type = l.type === "COMPONENT_SET" ? "COMPONENT" : l.type;
       const cls = "layer" + (type === "COMPONENT" || type === "INSTANCE" ? " comp" : "");
-      const inner = `${ICON[type] || ICON.FRAME}<span>${esc(l.name)}</span>`;
+      const inner = `${iconOf(type)}<span>${esc(l.name)}</span>`;
       return f.here ? `<button type="button" class="${cls}" data-act="layer" data-id="${esc(l.id)}" title="Select it in Figma">${inner}</button>` : `<span class="${cls}">${inner}</span>`;
     }).join("") + (nt.more ? `<span class="more">+${nt.more}</span>` : "");
     return `<li class="${on ? "on" : ""}"><button type="button" class="cb" data-act="rv-tick" data-id="${esc(nt.id)}" role="checkbox" aria-checked="${on}" aria-label="${esc(nt.title)}">${on ? ICON.done : ""}</button>`
@@ -1770,6 +1772,7 @@ function render() {
     finishDrive();  // its island is drawn anew
     app.innerHTML = html;
     lastHtml = html;
+    rvHint(null);  // its "?" may be gone
   }
   if (tail !== lastFoot) {
     foot.innerHTML = tail;
@@ -1799,6 +1802,7 @@ function renderView() {
   if (html !== lastHtml) {
     app.innerHTML = html;
     lastHtml = html;
+    rvHint(null);
     const field = caret && tokenField();
     if (field && !field.disabled) {
       field.focus();

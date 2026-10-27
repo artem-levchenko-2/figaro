@@ -1490,6 +1490,32 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("…one note is a note", /reviewer: 1 note for you/.test(env.app()), true);
     await show(env, rv({ state: "notes", layers: 24, notes: notes.slice(0, 1) }), {}, { reviewer: false });
     check("…and with the switch off in the settings, back to the agents", /reviewer: /.test(env.app()), false);
+
+    // a second check that returns the same ids comes all ticked too
+    const again = (extra) => env.board([file("KEY1", "Dashboard", { agents: [agent("designer", { since: 990, last: 990 })], reviewer: rv(extra) })],
+                                       { settings: { reviewer: true } });
+    again({ state: "notes", at: 1010, notes });
+    await env.clock.advance(400);
+    env.click("toggle", "here");
+    await env.clock.advance(400);
+    env.click("rv-tick", "here", { id: "n3" });
+    check("a tick taken off", /Send 2 to designer/.test(env.app()), true);
+    again({ state: "good", layers: 5, at: 1020 });
+    await env.clock.advance(400);
+    again({ state: "notes", at: 1030, notes });
+    await env.clock.advance(400);
+    check("a second round with the same ids: all ticked again", /Send 3 to designer/.test(env.app()), true);
+
+    // what comes from a file is text: names, titles, texts, types, the agent's name
+    const evil = [{ id: "e1", rule: "x", title: "<img src=x onerror=alert(1)>", text: '"><b>x</b>',
+                    layers: [{ id: "1:1", name: '<script>alert(2)</script>"', type: "constructor" }, { id: "1:2", name: "ok", type: "__proto__" }], more: 0 }];
+    again({ state: "notes", at: 1040, notes: evil, agent: "<i>d</i>" });
+    await env.clock.advance(400);
+    const bad = env.app();
+    check("names, titles, texts and the agent are escaped",
+          [/<img|<script|<b>x|<i>d/.test(bad), /&lt;img src=x onerror=alert\(1\)&gt;/.test(bad), /&quot;&gt;&lt;b&gt;/.test(bad), /&lt;script&gt;alert\(2\)/.test(bad)],
+          [false, true, true, true]);
+    check("…and a type like constructor gets the frame's icon, not Object's source", /native code|function Object/.test(bad), false);
   }
   {
     // another file: its notes answer through the bridge, its layers are names only

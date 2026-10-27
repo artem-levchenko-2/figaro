@@ -9,7 +9,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-27.7";
+const PLUGIN_VERSION = "2026-10-27.8";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -3440,7 +3440,7 @@ async function selectLayer(id, ids) {
       figma.viewport.scrollAndZoomIntoView(nodes.map((x) => x.node));
     } catch (e) { /* removed meanwhile, or locked away in an instance */ }
   }
-  for (const x of found) figma.ui.postMessage({ type: "selected", id: x.id, ok: nodes.includes(x) });
+  for (const x of found) figma.ui.postMessage({ type: "selected", id: x.id, ok: !!x.node });
 }
 
 // ─── hot reload ──────────────────────────────────────────────────────────
