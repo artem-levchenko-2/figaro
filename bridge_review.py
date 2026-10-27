@@ -257,42 +257,90 @@ return { layers: nodes.length, roots: roots.length, skipped: top.length - roots.
 
 
 DETAILS_MAX = 10       # original lines kept per note, for the agent
-VALUES_MAX = 6         # distinct values a summary lists
-VALUE_LEN = 40         # characters of one value; longer ones make the summary generic
+VALUES_MAX = 6         # distinct colours a summary lists
 _PAINT = re.compile(r"\b(fill|stroke) (#[0-9A-Fa-f]{3,8})\b")
+_RATIO = re.compile(r"contrast (\d+(?:\.\d+)?):1")
+_UNDER = re.compile(r"\bunder (\d+ × \d+)\b")
 
 
 def _list(items):
     return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
 
 
-def _summary(rule, texts):
-    """One line for the window from the texts of one rule: the text itself when they are all
-    the same, else what they have in common with the values that differ listed once each."""
+def _lowest(texts):
+    """", as low as 1.9:1" from the ratios the lines name; nothing when they name none."""
+    ratios = [float(m.group(1)) for t in texts for m in [_RATIO.search(t)] if m]
+    return f", as low as {min(ratios):g}:1" if ratios else ""
+
+
+def _button_size(texts):
+    sizes = {m.group(1) for t in texts for m in [_UNDER.search(t)] if m}
+    return f"under {next(iter(sizes))} px" if len(sizes) == 1 else "too small to hit"
+
+
+# One line per rule for when its layers' lines differ; every value in it is a count or a
+# single token the lines name, never a piece cut out of them. n: layers.
+SUMMARIES = {
+    "missing-font": lambda n, t: f"{n} texts use fonts that are not installed here, so they show "
+                                 f"in stand-ins; switch them to installed fonts",
+    "text-clipped": lambda n, t: f"{n} texts are cut off or run out of their boxes; make room for "
+                                 f"the text or turn the clipping off",
+    "zero-size": lambda n, t: f"{n} layers have no size or no visible text, so nothing shows; "
+                              f"give them a size or delete them",
+    "low-contrast": lambda n, t: f"contrast is too low on {n} texts{_lowest(t)}; use stronger colours",
+    "low-contrast-ui": lambda n, t: f"icon contrast is too low on {n} layers{_lowest(t)}; "
+                                    f"use stronger colours",
+    "placeholder-text": lambda n, t: f"{n} texts look like placeholders; write the real text, or ask",
+    "small-target": lambda n, t: f"{n} layers look like buttons but are {_button_size(t)}; "
+                                 f"make them at least that big",
+    "no-auto-layout": lambda n, t: f"{n} frames have children placed by hand with no auto-layout; "
+                                   f"add auto-layout so spacing follows the content",
+    "empty-frame": lambda n, t: f"{n} frames are empty and still have Figma's default names; "
+                                f"delete them or fill them",
+    "detached-instance": lambda n, t: f"{n} instances are detached: fine as one-off states, "
+                                      f"otherwise use the component again",
+    "no-text-style": lambda n, t: f"{n} texts have no text style or typography variables; "
+                                  f"apply the file's text styles",
+    "default-name": lambda n, t: f"{n} layers have Figma's default names; name them for what "
+                                 f"they are",
+    "uneven-siblings": lambda n, t: f"{n} layers differ in size from their same-named siblings; "
+                                    f"make them equal",
+    "heading-order": lambda n, t: f"heading levels skip in {n} places; do not skip a level",
+    "absolute-in-layout": lambda n, t: f"{n} layers are positioned by hand inside auto-layout; "
+                                       f"fine for a badge or an overlay, otherwise put them "
+                                       f"in the flow",
+}
+
+
+def _colours(texts):
+    """unbound-color: the hexes, when they are few enough to list, else how many."""
+    paints = [m for t in texts for m in _PAINT.findall(t)]
+    if not paints:
+        return None
+    kinds = list(dict.fromkeys(k for k, _ in paints))
+    where = {"fill": "fills", "stroke": "strokes"}.get(kinds[0]) if len(kinds) == 1 \
+        else "fills and strokes"
+    values = list(dict.fromkeys(v for _, v in paints))
+    if len(values) == 1:
+        return f"{values[0]} in {where} has no style or variable; bind it to one of the file's"
+    if len(values) <= VALUES_MAX:
+        return f"{where} {_list(values)} have no style or variable; bind them to the file's"
+    return f"{len(values)} colours in {where} have no style or variable; bind them to the file's"
+
+
+def _summary(rule, texts, layers):
+    """One line for the window from the texts of one rule, `layers` counted: the text itself
+    when they are all the same, else the rule's summary."""
     if len(texts) == 1:
         return texts[0]
     if rule == "unbound-color":
-        paints = [m for t in texts for m in _PAINT.findall(t)]
-        kinds = list(dict.fromkeys(k for k, _ in paints))
-        values = list(dict.fromkeys(v for _, v in paints))
-        if values and len(values) <= VALUES_MAX:
-            what = {"fill": "fills", "stroke": "strokes"}.get(kinds[0]) if len(kinds) == 1 \
-                else "fills and strokes"
-            return (f"{what} {_list(values)} have no style or variable; bind them to the file's"
-                    if len(values) > 1 else texts[0])
-    words = [t.split() for t in texts]
-    head = 0
-    while all(len(w) > head for w in words) and len({w[head] for w in words}) == 1:
-        head += 1
-    tail = 0
-    while all(len(w) > head + tail for w in words) and len({w[-1 - tail] for w in words}) == 1:
-        tail += 1
-    mids = list(dict.fromkeys(" ".join(w[head:len(w) - tail]).rstrip(",;") for w in words))
-    if (head + tail >= 3 and "" not in mids and max(map(len, mids)) <= VALUE_LEN
-            and len(mids) <= VALUES_MAX):
-        parts = words[0][:head] + [_list(mids)] + (words[0][len(words[0]) - tail:] if tail else [])
-        return " ".join(parts)
-    return f"{texts[0]} (and {len(texts) - 1} more like it)"
+        line = _colours(texts)
+        if line:
+            return line
+    n = max(layers, len(texts))
+    if rule in SUMMARIES:
+        return SUMMARIES[rule](n, texts)
+    return f"{n} layers: {TITLES[rule].lower()}"
 
 
 def _merge(found):
@@ -320,7 +368,7 @@ def _merge(found):
             layers.append({"id": i, "name": str(meta.get("name") or "Untitled")[:60],
                            "type": str(meta.get("type") or "FRAME")})
         note = {"id": f"n{len(notes) + 1}", "rule": rule, "title": TITLES[rule],
-                "text": _summary(rule, list(texts))[:bridge_board.TEXT_MAX], "layers": layers,
+                "text": _summary(rule, list(texts), total)[:bridge_board.TEXT_MAX], "layers": layers,
                 "more": max(0, total - len(layers))}
         if len(texts) > 1:
             note["details"] = [{"text": t[:bridge_board.TEXT_MAX], "layers": v["ids"][:LAYERS_MAX]}

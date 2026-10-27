@@ -696,16 +696,98 @@ def test_fills_only_say_fills_and_a_single_text_stays_as_it_is():
     assert notes["default-name"]["more"] == 2  # three layers counted, one listed
 
 
-def test_other_rules_list_the_values_that_differ_or_fall_back_to_the_first_text():
-    texts = [f"contrast {r}:1 of #AAAAAA on #FFFFFF, needs 4.5:1; use a stronger colour"
-             for r in ("2.3", "1.9")]
-    found = {"notes": [{"rule": "low-contrast", "text": t, "ids": [f"1:{i}"]} for i, t in enumerate(texts)]}
+# Two or more different lines per rule, as the functions of plugin/code.js write them.
+LINES = {
+    "missing-font": ["uses a font that is not installed here, so it shows in a stand-in; switch it to an installed font"],
+    "text-clipped": [
+        'is cut off by the frame "Card", which clips its content; make room for the text or turn the clipping off',
+        'is cut off by the frame "Header" and "Footer", which clips its content; make room for the text or turn the clipping off',
+        "runs out of its own box (20 px high, the text needs 41); make the box taller or the text shorter",
+        "runs out of its own box on the side; make the box wider or the text shorter"],
+    "zero-size": ["is 0 × 12 px, so nothing shows; give it a size or delete it",
+                  "text with no visible characters; write the text or delete the layer"],
+    "low-contrast": ["contrast 2.3:1 of #AAAAAA on #FFFFFF, needs 4.5:1; use a stronger colour",
+                     "contrast 1.9:1 of #BBBBBB on #FFFFFF, needs 3:1 for large text; use a stronger colour"],
+    "low-contrast-ui": ["icon contrast 2.1:1 of #CCCCCC on #FFFFFF, needs 3:1; use a stronger colour",
+                        "icon contrast 1.5:1 of #DDDDDD on #F0F0F0, needs 3:1; use a stronger colour"],
+    "placeholder-text": ['placeholder text "TBC"; write the real text, or ask',
+                         'placeholder text "Lorem ipsum, dolor"; write the real text, or ask'],
+    "small-target": [
+        'looks like a button (its name is "Button") but is 20 × 20 px, under 24 × 24; make it at least that big',
+        'looks like a button (its component is "Chip") but is 18 × 30 px, under 24 × 24; make it at least that big'],
+    "no-auto-layout": ["3 children placed by hand with no auto-layout; add auto-layout so spacing follows the content",
+                       "5 children placed by hand with no auto-layout; add auto-layout so spacing follows the content"],
+    "empty-frame": ["empty, shows nothing and still has Figma's default name; delete it (for a gap use the parent's spacing) or fill it"],
+    "detached-instance": ["was an instance and is detached: fine as a one-off state, otherwise use the component again"],
+    "no-text-style": ["has no text style or typography variables; apply one of the file's text styles"],
+    "default-name": ['named "Frame 1", Figma\'s own default; name it for what it is',
+                     'named "Group 7", Figma\'s own default; name it for what it is'],
+    "uneven-siblings": ["is 40 px wide, its same-named siblings are 48, 40; make them equal",
+                        "is 12 px high, its same-named siblings are 16; make them equal"],
+    "heading-order": ["is a level 3 heading right after a level 1; do not skip a level",
+                      "is a level 4 heading right after a level 2; do not skip a level"],
+    "absolute-in-layout": ['positioned by hand inside the auto-layout "Row"; fine for a badge or an overlay, otherwise put it in the flow',
+                           'positioned by hand inside the auto-layout "Nav, main"; fine for a badge or an overlay, otherwise put it in the flow'],
+}
+SUMMARIES = {
+    "missing-font": "2 texts use fonts that are not installed here, so they show in stand-ins; switch them to installed fonts",
+    "text-clipped": "4 texts are cut off or run out of their boxes; make room for the text or turn the clipping off",
+    "zero-size": "2 layers have no size or no visible text, so nothing shows; give them a size or delete them",
+    "low-contrast": "contrast is too low on 2 texts, as low as 1.9:1; use stronger colours",
+    "low-contrast-ui": "icon contrast is too low on 2 layers, as low as 1.5:1; use stronger colours",
+    "placeholder-text": "2 texts look like placeholders; write the real text, or ask",
+    "small-target": "2 layers look like buttons but are under 24 × 24 px; make them at least that big",
+    "no-auto-layout": "2 frames have children placed by hand with no auto-layout; add auto-layout so spacing follows the content",
+    "empty-frame": "2 frames are empty and still have Figma's default names; delete them or fill them",
+    "detached-instance": "2 instances are detached: fine as one-off states, otherwise use the component again",
+    "no-text-style": "2 texts have no text style or typography variables; apply the file's text styles",
+    "default-name": "2 layers have Figma's default names; name them for what they are",
+    "uneven-siblings": "2 layers differ in size from their same-named siblings; make them equal",
+    "heading-order": "heading levels skip in 2 places; do not skip a level",
+    "absolute-in-layout": "2 layers are positioned by hand inside auto-layout; fine for a badge or an overlay, otherwise put them in the flow",
+}
+
+
+def test_every_rule_has_a_summary_and_a_test_line():
+    assert set(bridge_review.SUMMARIES) == set(bridge_review.TITLES) - {"unbound-color"}
+    assert set(SUMMARIES) == set(bridge_review.SUMMARIES) and set(LINES) == set(SUMMARIES)
+
+
+@pytest.mark.parametrize("rule", sorted(SUMMARIES))
+def test_a_rule_whose_lines_differ_gets_its_summary_counted_in_layers(rule):
+    lines = LINES[rule]
+    if len(lines) == 1:  # the rule writes one line: two texts of it still differ in the test
+        lines = [lines[0], lines[0] + " "]
+    found = {"notes": [{"rule": rule, "text": t, "ids": [f"2:{i}"]} for i, t in enumerate(lines)]}
     (note,) = bridge_review._merge(found)
-    assert note["text"] == "contrast 2.3:1 and 1.9:1 of #AAAAAA on #FFFFFF, needs 4.5:1; use a stronger colour"
-    odd = [{"rule": "text-clipped", "text": t, "ids": [f"2:{i}"]} for i, t in enumerate(
-        ["is cut", "something else entirely, a long text of another shape"])]
-    (note,) = bridge_review._merge({"notes": odd})
-    assert note["text"] == "is cut (and 1 more like it)"
+    assert note["text"] == SUMMARIES[rule]
+    assert len(note["layers"]) == len(lines) and [d["text"] for d in note["details"]] == lines
+    # one line the rule writes, the same for every layer: as it is
+    (same,) = bridge_review._merge({"notes": [{"rule": rule, "text": lines[0], "count": 3, "ids": ["2:9"]}]})
+    assert same["text"] == lines[0] and "details" not in same and same["more"] == 2
+
+
+def test_colours_are_listed_up_to_six_then_counted():
+    tail = " has no style or variable; bind it to one of the file's"
+
+    def text(n):
+        found = {"notes": [{"rule": "unbound-color", "text": f"stroke #00000{i}" + tail, "ids": [f"1:{i}"]}
+                           for i in range(n)]}
+        return bridge_review._merge(found)[0]["text"]
+    assert text(6) == ("strokes #000000, #000001, #000002, #000003, #000004 and #000005 have no style "
+                       "or variable; bind them to the file's")
+    assert text(7) == "7 colours in strokes have no style or variable; bind them to the file's"
+    both = {"notes": [{"rule": "unbound-color", "text": "fill #111111" + tail, "ids": ["1:1"]},
+                      {"rule": "unbound-color", "text": "stroke #111111" + tail, "ids": ["1:2"]}]}
+    assert bridge_review._merge(both)[0]["text"] == \
+        "#111111 in fills and strokes has no style or variable; bind it to one of the file's"
+
+
+def test_a_rule_without_a_summary_falls_back_to_a_count(monkeypatch):
+    monkeypatch.setitem(bridge_review.TITLES, "future-rule", "Something new")
+    monkeypatch.setattr(bridge_review, "RULES", bridge_review.RULES + ["future-rule"])
+    found = {"notes": [{"rule": "future-rule", "text": t, "ids": [i]} for t, i in (("a", "1:1"), ("b", "1:2"))]}
+    assert bridge_review._merge(found)[0]["text"] == "2 layers: something new"
 
 
 def test_details_are_capped_and_the_text_fits_the_board():
