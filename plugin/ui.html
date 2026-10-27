@@ -853,7 +853,6 @@ function reviewerOf(r, t) {
     state: RV_STATES.includes(r.state) ? r.state : r.on === true ? "waiting" : "off",
     agent: typeof r.agent === "string" && r.agent ? r.agent : "",
     layers: num(r.layers), since: typeof r.since === "number" ? t(r.since) : 0, at: typeof r.at === "number" ? t(r.at) : 0, stamp: typeof r.at === "number" ? r.at : null,  // the bridge's own time, sent back with the answer
-   
     notes: (Array.isArray(r.notes) ? r.notes : []).filter((n) => n && n.id !== undefined).map((n) => ({
       id: String(n.id), rule: String(n.rule || ""), title: String(n.title || ""), text: String(n.text || ""),
       layers: (Array.isArray(n.layers) ? n.layers : []).filter((l) => l && l.id).map((l) => ({ id: String(l.id), name: String(l.name || l.id), type: String(l.type || "FRAME") })),
