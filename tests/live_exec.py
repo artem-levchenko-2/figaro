@@ -25,6 +25,7 @@ import live_file
 BRIDGE = live_file.BRIDGE
 DRAFT = live_file.key()
 AGENT = "live-exec"
+AGENTS = [AGENT, "live-exec cleanup", "someone-else"]  # every name the test runs under
 STATE = Path(os.environ.get("FIGARO_STATE_DIR") or Path.home() / ".cache" / "figaro")
 FIND = "figma.root.findAll((n) => n.name.startsWith('figaro-live'))"
 
@@ -208,4 +209,7 @@ return 1;""")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        live_file.forget(DRAFT, AGENTS)  # off the window's board

@@ -833,3 +833,80 @@ def test_why_a_pull_failed(out, why):
     # few words: the window's row has room for about 30 letters
     assert bridge_update.why_pull_failed(out) == why
     assert len("Couldn't update: " + why) <= 32
+
+
+# ─── POST /forget ─────────────────────────────────────────────────────────
+
+def test_forget_takes_named_agents_off_every_windows_board():
+    made = {"value": 1, "changes": {"created": 1, "deleted": 0, "changed": 0, "styles": 0, "props": {},
+                                    "items": [], "top": [{"id": "5:6", "name": "Card", "type": "FRAME"}]}}
+
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, name="Draft", key="KEY1", caps=CAPS, reply=lambda m: made) as a, \
+                FakePlugin(c, name="Other", key="KEY2", caps=CAPS, reply=lambda m: made) as b:
+            for name in ("stress-0", "stress-1", "designer"):
+                await c.post("/exec", json={"code": "x", "target": "Draft", "agent": name})
+            await c.post("/exec", json={"code": "x", "target": "Other", "agent": "stress-0"})
+            await c.post("/done", json={"target": "Draft", "agent": "stress-1", "text": "done"})
+            await settle()
+            assert set(agents(b, "Draft")) == {"stress-0", "stress-1", "designer"}
+            r = await c.post("/forget", json={"target": "Draft", "agents": [
+                "stress-0", " stress-1 ", "never-ran", "stress-0", " "]})
+            assert r.status == 200
+            assert await r.json() == {"ok": True, "file": "Draft", "forgotten": ["stress-0", "stress-1"],
+                                      "busy": []}
+            await settle()
+            for window in (a, b):  # a window of another file sees it at once, too
+                assert set(agents(window, "Draft")) == {"designer"}
+                assert [e["agent"] for e in island(window, "Draft")["recent"]] == ["designer"]
+            assert set(agents(a, "Other")) == {"stress-0"}  # the same name in another file stays
+            assert len(island(a, "Other")["recent"]) == 1
+            await c.post("/exec", json={"code": "x", "target": "Draft", "agent": "stress-0"})
+            await settle()
+            assert set(agents(a, "Draft")) == {"designer", "stress-0"}  # back at work: a fresh row
+        await c.close()
+    run(go())
+
+
+def test_forget_leaves_an_agent_with_a_script_running():
+    async def go():
+        c = await make_client()
+        async with Stoppable(c, name="Draft", key="KEY1", caps=CAPS) as p:
+            await c.post("/exec", json={"code": "x", "agent": "icons"})
+            running = asyncio.ensure_future(c.post("/exec", json={"code": "loop", "agent": "designer"}))
+            await asyncio.sleep(0.2)
+            r = await c.post("/forget", json={"agents": ["icons", "designer"]})
+            assert await r.json() == {"ok": True, "file": "Draft", "forgotten": ["icons"],
+                                      "busy": ["designer"]}
+            await settle()
+            assert set(agents(p, "Draft")) == {"designer"}
+            await stop(p, "doc:KEY1", "designer")
+            assert (await running).status == 409
+        await c.close()
+    run(go())
+
+
+def test_forget_wants_a_list_of_names_and_a_file():
+    async def go():
+        c = await make_client()
+        r = await c.post("/forget", json={"agents": ["a"]})
+        assert r.status == 503  # no plugin at all
+        async with FakePlugin(c, name="Draft", key="KEY1", caps=CAPS) as p:
+            await c.post("/exec", json={"code": "x", "agent": "designer"})
+            for bad in ({}, {"agents": "designer"}, {"agents": [5]}, {"agents": ["a"] * 201}):
+                r = await c.post("/forget", json=bad)
+                assert r.status == 400, bad
+            r = await c.post("/forget", json={"agents": ["a"], "target": "Nowhere"})
+            assert r.status == 409
+            r = await c.post("/forget", json={"agents": []})
+            assert r.status == 200 and (await r.json())["forgotten"] == []
+            await settle()
+            assert set(agents(p, "Draft")) == {"designer"}  # none of that touched the board
+        async with FakePlugin(c, name="Old", key="KEY2", caps=OLD_CAPS):
+            await c.post("/exec", json={"code": "x", "target": "Old", "agent": "designer"})
+            r = await c.post("/forget", json={"agents": ["designer"], "target": "Old"})
+            assert r.status == 200  # it asks nothing of a window
+            assert (await r.json())["forgotten"] == ["designer"]
+        await c.close()
+    run(go())

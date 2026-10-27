@@ -50,3 +50,18 @@ def connected(file_key):
 def url(entry):
     """The file's link, as Figma writes it."""
     return f"https://www.figma.com/design/{entry['fileKey']}/{figma_links.slug(entry.get('name'))}"
+
+
+def forget(file_key, names):
+    """Take the test's made-up agents off the window's board once the test is over
+    (POST /forget), or each idles there for an hour. Best effort: a bridge older
+    than this answers 404, or may be gone, and the test result doesn't depend on it."""
+    names = list(names)
+    for i in range(0, len(names), 200):  # the bridge takes 200 names at a time
+        req = urllib.request.Request(
+            BRIDGE + "/forget", headers=HEADERS,
+            data=json.dumps({"target": file_key, "agents": names[i:i + 200]}).encode())
+        try:
+            urllib.request.urlopen(req, timeout=10).close()
+        except OSError:  # no bridge, an older one (404), a closed file
+            return

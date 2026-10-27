@@ -56,6 +56,7 @@ export FIGARO_TEST_FILE="<link to a draft of yours>"   # the live tests need the
 venv/bin/python tests/live_exec.py       # the exec core against real Figma, ~15 s
 venv/bin/python tests/live_cli.py        # the CLI commands against real Figma, ~30 s
 venv/bin/python tests/live_stress.py 20  # the file queue under load, ~10 s
+                                         # each live test takes its made-up agents off the window's board at the end
 
 bash tools/install.sh                    # `figaro` in ~/.local/bin, the skill in ~/.claude/skills and ~/.agents/skills
 bash tools/install.sh --uninstall        # remove them, only if they are ours
@@ -116,8 +117,10 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   first script until five quiet minutes or `figaro done`, its note, a failed last script, the user's Stop —
   and recent changes; a read leaves a done or a Stop on show, and `figaro doctor`'s checks (`probe`) stay
   off it), its buttons (Stop for one agent, Update, Reload, Skip, a switch in the settings, ↻ there) and
-  `POST /done`. A file turns red when Figma
-  stops answering there: a script runs on `STUCK_AFTER` past its time (`stuck`), or its window closed
+  `POST /done`. `POST /forget {target?, agents: [name]}` takes agents off the board, and their lines in Recent,
+  in every window at once; one with a script running stays. It is for tests that run under made-up names, and
+  needs nothing of the window: an older bridge answers 404 and the live tests carry on (`live_file.forget`).
+  A file turns red when Figma stops answering there: a script runs on `STUCK_AFTER` past its time (`stuck`), or its window closed
   mid-script (`lost`, kept `LOST_KEEP`; a window back within `LOST_GRACE` was a Hot reload).
 - `bridge_update.py` — the window's Update and Reload: waits until no file runs a script, moves the folder
   to the release and never past it (`git fetch --tags`, `git merge --ff-only vX.Y.Z`), reloads the plugins

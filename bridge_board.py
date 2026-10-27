@@ -16,7 +16,8 @@ something changes:
 - the update in progress, or why it failed (bridge_update);
 - the settings, and what they show about the version (bridge_settings).
 
-    POST /done  {target?, agent?, text?}  -> the agent is done in the file, for now
+    POST /done    {target?, agent?, text?}  -> the agent is done in the file, for now
+    POST /forget  {target?, agents: [name]}  -> those agents leave the file's board
 
 A window's buttons come back over its WebSocket: `stop` (one agent in a file:
 its running script ends and its agent gets a 409; pressed between its
@@ -472,5 +473,48 @@ async def done_handler(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "file": info.get("name"), "text": note})
 
 
+# ─── POST /forget ─────────────────────────────────────────────────────────
+
+FORGET_MAX = 200   # names in one request
+
+
+def forget(doc, names):
+    """Take the agents named, and their lines in Recent, off the file's board.
+    An agent with a script running or waiting stays: its row is still true.
+    Returns (forgotten, busy)."""
+    f = FILES.get(doc)
+    busy = _busy(doc)
+    gone = [n for n in names if n not in busy and f and n in f["agents"]]
+    if f and gone:
+        for n in gone:
+            del f["agents"][n]
+        f["recent"] = [e for e in f["recent"] if e.get("agent") not in gone]
+        changed()
+    return gone, [n for n in names if n in busy]
+
+
+async def forget_handler(request: web.Request) -> web.Response:
+    """Agents that will not come back (a test's made-up names) leave the file's
+    board at once, in every window, instead of idling there for an hour. Only
+    the names the caller sends go; nothing else on the board changes. It asks
+    nothing of the window, so it works with any. An older bridge answers 404,
+    which a caller that cleans up after itself ignores."""
+    body, error = await bridge_exec._body(request)
+    if error:
+        return error
+    names = body.get("agents")
+    if not isinstance(names, list) or len(names) > FORGET_MAX \
+            or not all(isinstance(n, str) for n in names):
+        return web.json_response({"ok": False, "error": f"'agents' must be a list of at most "
+                                                         f"{FORGET_MAX} names"}, status=400)
+    conn_id, info = bridge_exec._target(body)
+    if conn_id is None:
+        return info
+    names = list(dict.fromkeys(n.strip()[:40] for n in names if n.strip()))
+    gone, busy = forget(bridge._doc_key(conn_id), names)
+    return web.json_response({"ok": True, "file": info.get("name"), "forgotten": gone, "busy": busy})
+
+
 def install(app: web.Application):
     app.router.add_post("/done", done_handler)
+    app.router.add_post("/forget", forget_handler)

@@ -1286,6 +1286,9 @@ async def root_handler(request: web.Request) -> web.Response:
             "POST /done": ("{target, agent?, text?} -> the agent is done in the file: the plugin's "
                            "window says so, with the note, until its next script there that "
                            "can change the file"),
+            "POST /forget": ("{target?, agents: [name]} -> those agents leave the file's board in "
+                             "every window, with their lines in Recent; one with a script "
+                             "running stays"),
             "POST /comments": ("{target?, agent?} -> the file's open Figma comments, each with where "
                                "it is pinned; needs the designer's Figma token (403 `needs_token`)"),
             "WS /plugin": "Figma plugin connects here (one per open file)",
@@ -1306,7 +1309,7 @@ def build_app() -> web.Application:
     app.router.add_post("/clear", clear_handler)
     app.router.add_get("/plugin", plugin_ws_handler)
     bridge_exec.install(app)  # /undo, /reload
-    bridge_board.install(app)  # /done
+    bridge_board.install(app)  # /done, /forget
     bridge_comments.install(app)  # /comments
     return app
 

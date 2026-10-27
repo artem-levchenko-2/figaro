@@ -37,6 +37,12 @@ RMW = (f"const v = +(figma.root.getPluginData('{KEY}') || 0);"
 READ = f"return +(figma.root.getPluginData('{KEY}') || 0)"
 RESET = f"figma.root.setPluginData('{KEY}', ''); return 0"
 
+N = int(sys.argv[1]) if len(sys.argv) > 1 else 20
+# Every name the test posts under; the window forgets them at the end. "agent" is the
+# name of a script sent without one (the counter reads).
+AGENTS = (["agent", "stress"] + [f"stress-{i}" for i in range(N)] + [f"reader-{i}" for i in range(2 * N)]
+          + [f"rogue-{i}" for i in range(5)])
+
 failed = 0
 
 
@@ -68,7 +74,7 @@ def check(label, ok, detail=None):
 
 
 def main():
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 20
+    n = N
     live_file.connected(DRAFT)
     post({"code": RESET, "agent": "stress"})
     try:
@@ -107,4 +113,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        live_file.forget(DRAFT, AGENTS)

@@ -250,4 +250,7 @@ return [f.width, f.layoutSizingHorizontal, f.layoutSizingVertical, r.layoutSizin
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        live_file.forget(DRAFT, [AGENT])  # off the window's board

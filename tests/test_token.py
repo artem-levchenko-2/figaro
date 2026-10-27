@@ -22,7 +22,7 @@ import figaro_token
 ROOT = Path(__file__).resolve().parent.parent
 GOOD = {"X-Figaro-Token": "test-token"}
 CHANGING = [("/exec", {"code": "return 1"}), ("/clear", {}), ("/undo", {}), ("/reload", {}),
-            ("/done", {})]
+            ("/done", {}), ("/forget", {})]
 
 
 def run(coro):
