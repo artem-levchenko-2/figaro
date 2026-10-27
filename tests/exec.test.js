@@ -693,6 +693,17 @@ function check(label, actual, expected) {
     check("…and only a layer that is really gone is reported gone, not one on another page",
           env.posted.filter((m) => m.type === "selected").map((m) => [m.id, m.ok]),
           [["1:1", true], ["2:1", true], ["1:2", true], ["9:9", false]]);
+    // Figma keeps only the ancestor when a frame and its child are both set: the plugin sets the specific ones
+    let held = [];
+    Object.defineProperty(env.figma.currentPage, "selection", { configurable: true, get: () => held,
+      set(list) { held = list.filter((n) => !list.some((o) => o !== n && (() => { for (let q = n.parent; q; q = q.parent) if (q === o) return true; return false; })())); } });
+    const card = { id: "1:5", type: "FRAME", parent: pageA }, kid = { id: "1:6", type: "TEXT", parent: card }, sib = { id: "1:7", type: "TEXT", parent: pageA };
+    for (const n of [card, kid, sib]) env.nodes.set(n.id, n);
+    env.posted.length = 0;
+    await env.figma.ui.onmessage({ type: "select", id: "1:5", ids: ["1:5", "1:6", "1:7"] });
+    check("Show all with a frame and its child selects the child, not only the frame",
+          [env.figma.currentPage.selection.map((n) => n.id), env.posted.filter((m) => m.type === "selected").map((m) => m.id)],
+          [["1:6", "1:7"], ["1:5", "1:6", "1:7"]]);
     env.posted.length = 0;
     await env.figma.ui.onmessage({ type: "select", id: "2:1" });
     check("one id works as before", [env.figma.currentPage.id, env.figma.currentPage.selection.map((n) => n.id), env.posted.filter((m) => m.type === "selected")],

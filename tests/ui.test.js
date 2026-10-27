@@ -1399,10 +1399,17 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("the settings' Reviewer off: no row though the file has one", /rv-toggle|reviewer/.test(env.app()), false);
 
     await show(env, rv({ on: false, state: "off" }), {}, { reviewer: true });
-    check("off: a ghost avatar, the name, its hint, a switch that is off, and no status",
+    check("off: a ghost avatar, the name, its hint, a switch that is off, and its own status",
           [/class="av ghost rvi"/.test(env.app()), /<span>reviewer<\/span><span class="qm"/.test(env.app()),
            /class="sw" role="switch" aria-checked="false" aria-label="Reviewer" data-act="rv-toggle" data-on="1"/.test(env.app()),
-           /<span class="st"><\/span>/.test(env.app())], [true, true, true, true]);
+           /<span class="st">off<\/span>/.test(env.app())], [true, true, true, true]);
+    check("…the switch sits in a slot that opens on hover, like Stop; the pointer on the row opens it",
+          [/<span class="act swa"><button type="button" class="sw"/.test(env.app()), /class="agent rv" data-agent="reviewer"/.test(env.app())], [true, true]);
+    env.point("here", "reviewer");
+    await env.clock.advance(400);
+    await show(env, rv({ on: false, state: "off" }), {}, { reviewer: true });
+    check("…and keeps it through a redraw", /class="agent rv hot" data-agent="reviewer"/.test(env.app()), true);
+    env.point("here", null);
     check("…the row is the last of the agents, with no divider",
           env.app().indexOf("designer") < env.app().indexOf("rv-toggle") && !/class="agent rv"[^]*class="agent/.test(env.app()), true);
     env.click("rv-toggle", "here", { on: "1" });
@@ -1426,17 +1433,21 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.point("here", null);
 
     await show(env, rv({ state: "sent", sent: 2, left: 1 }), {}, {});
-    check("sent: how many went and how many stay", [/sent 2 · 1 left as is/.test(env.app()), /rv-toggle/.test(env.app())], [true, true]);
+    check("sent: how many went and how many stay", [/sent 2 fixes · 1 left as is/.test(env.app()), /rv-toggle/.test(env.app())], [true, true]);
     await show(env, rv({ state: "sent", sent: 3, left: 0 }), {}, {});
-    check("…with none left, nothing more", /sent 3</.test(env.app()), true);
+    check("…with none left, nothing more", /sent 3 fixes</.test(env.app()), true);
+    await show(env, rv({ state: "sent", sent: 1, left: 0 }), {}, {});
+    check("…one fix is a fix", /sent 1 fix</.test(env.app()), true);
+    await show(env, rv({ state: "sent", sent: 0, left: 3 }), {}, {});
+    check("…All fine says so", /all fine</.test(env.app()) && !/left as is/.test(env.app()), true);
     await show(env, rv({ state: "good", layers: 24 }), {}, {});
     check("good: a tick and the layers", /bdg done[^]*all good · 24 layers/.test(env.app()), true);
 
     // notes
     await show(env, rv({ state: "notes", layers: 24, notes }), {}, {});
     const open = env.app();
-    check("notes: the yellow disc with their number in the row, and 'for you'",
-          [/<span class="bdg count"><svg viewBox="0 0 12 12"><circle[^>]*\/><text x="6" y="8.8">3<\/text>/.test(open), /<\/span>notes for you<\/span>/.test(open)], [true, true]);
+    check("notes: the plain yellow ! in the row, the count in the text, and no disc in the callout",
+          [/bdg caution[^]*3 notes for you<\/span>/.test(open), /bdg count/.test(open), /class="callout rq"><div class="h"><span class="ind">/.test(open)], [true, false, false]);
     check("…the callout names the agent, with a Show all", [/3 notes on designer's work/.test(open), /data-act="rv-all"/.test(open),
           /Tick the ones designer should fix/.test(open)], [true, true, true]);
     check("…every note comes ticked, with its text and a button for each layer of this file",
@@ -1482,8 +1493,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.selected("I2:1068", true);
     env.selected("12:45", true);
     await env.clock.advance(400);
-    check("the badge's class is its own: nothing else styles .bdg.count",
-          [/class="bdg notes"/.test(env.app()), (html.match(/^\.notes\b/gm) || []).length > 0, /class="bdg count"/.test(env.app())], [false, true, true]);
+    check("no number disc is left anywhere", [/bdg count|bdg notes/.test(env.app()), /bdg count/.test(html)], [false, false]);
 
     // expired
     await show(env, rv({ state: "notes", layers: 24, notes, expired: true }), {}, {});
@@ -1504,8 +1514,8 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await show(env, rv({ state: "notes", layers: 24, notes }), {}, {});
     env.click("toggle", "here");
     await env.clock.advance(400);
-    check("collapsed: the island's row shows the disc, and its line says 'reviewer: 3 notes for you'",
-          [/<span class="ind"><span class="bdg count">/.test(env.app()), /reviewer: 3 notes for you/.test(env.app())], [true, true]);
+    check("collapsed: the island's row shows the yellow !, and its line says 'reviewer: 3 notes for you'",
+          [/<span class="ind"><span class="bdg caution">/.test(env.app()), /reviewer: 3 notes for you/.test(env.app())], [true, true]);
     await show(env, rv({ state: "notes", layers: 24, notes: notes.slice(0, 1) }), {}, {});
     check("…one note is a note", /reviewer: 1 note for you/.test(env.app()), true);
     await show(env, rv({ state: "notes", layers: 24, notes: notes.slice(0, 1) }), {}, { reviewer: false });

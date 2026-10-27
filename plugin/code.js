@@ -9,7 +9,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-27.11";
+const PLUGIN_VERSION = "2026-10-27.12";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -3436,8 +3436,13 @@ async function selectLayer(id, ids) {
   if (nodes.length) {
     try {
       if (figma.currentPage !== first.page) await figma.setCurrentPageAsync(first.page);
-      figma.currentPage.selection = nodes.map((x) => x.node);
-      figma.viewport.scrollAndZoomIntoView(nodes.map((x) => x.node));
+      // Figma keeps only the ancestor of a frame and its own child: select the specific layers
+      const pick = nodes.map((x) => x.node);
+      const parentsOf = new Set();
+      for (const n of pick) for (let q = n.parent; q; q = q.parent) parentsOf.add(q);
+      const picked = pick.filter((n) => !parentsOf.has(n));
+      figma.currentPage.selection = picked;
+      figma.viewport.scrollAndZoomIntoView(picked);
     } catch (e) { /* removed meanwhile, or locked away in an instance */ }
   }
   for (const x of found) figma.ui.postMessage({ type: "selected", id: x.id, ok: !!x.node });

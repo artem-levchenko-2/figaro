@@ -466,6 +466,16 @@ SENT = {"ok": True, "state": "sent", "total": 3, "left": 1, "file": "Draft", "no
      "layers": [{"id": "5:7", "name": "Title", "type": "TEXT", "url": None}]}]}
 
 
+def test_notes_layer_lines_follow_the_text_column_of_wide_numbers():
+    import review_text
+    notes = [{"title": f"T{i}", "text": "x", "more": 1 if i == 10 else 0,
+              "layers": [{"id": "1:1", "name": "Payouts", "type": "TEXT"}]} for i in range(1, 11)]
+    lines = review_text.render({"state": "sent", "notes": notes, "total": 10, "left": 0}, "designer")
+    at = lines.index("10. T10: x")
+    assert lines[at + 1] == '    "Payouts" (TEXT) 1:1' and lines[at + 2] == "    and 1 more layer"
+    assert lines[lines.index("9. T9: x") + 1] == '   "Payouts" (TEXT) 1:1'
+
+
 def test_notes_prints_what_the_designer_sent(monkeypatch, capsys):
     rc, out, err, calls = cli(monkeypatch, capsys, "notes", "-A", "designer", "-T", "KEY1", bridge_reply=SENT)
     assert rc == 0 and calls == [{"target": "KEY1", "agent": "designer", "wait": False}]

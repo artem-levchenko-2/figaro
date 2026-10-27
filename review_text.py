@@ -23,12 +23,14 @@ def render(resp, agent):
         total, left = int(resp.get("total") or len(notes)), int(resp.get("left") or 0)
         lines = [f"The designer sent you {len(notes)} of the reviewer's {_n(total, 'note')}:", ""]
         for i, note in enumerate(notes, 1):
-            lines.append(f"{i}. {note.get('title')}: {note.get('text')}")
+            head = f"{i}. "
+            pad = " " * len(head)
+            lines.append(f"{head}{note.get('title')}: {note.get('text')}")
             for layer in note.get("layers") or []:
                 url = f"  {layer['url']}" if layer.get("url") else ""
-                lines.append(f"   \"{layer.get('name')}\" ({layer.get('type')}) {layer.get('id')}{url}")
+                lines.append(f"{pad}\"{layer.get('name')}\" ({layer.get('type')}) {layer.get('id')}{url}")
             if note.get("more"):
-                lines.append(f"   and {_n(int(note['more']), 'more layer')}")
+                lines.append(f"{pad}and {_n(int(note['more']), 'more layer')}")
         lines.append("")
         fix = {1: "Fix this one", 2: "Fix these two"}.get(len(notes), "Fix these")
         lines.append((f"They left {left} as it is. " if left else "")

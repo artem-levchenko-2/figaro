@@ -248,19 +248,20 @@ html.rainbow .px i:nth-child(9) { --c: hsl(275 75% 62%); animation-delay: 0ms; }
 .av.rvi svg { width: 10px; height: 10px; }
 .av.ghost.rvi { color: var(--is-dim); }
 .nm.rvn { flex: 1; display: flex; align-items: center; gap: 5px; overflow: visible; }
-.qm { display: grid; width: 12px; height: 12px; color: var(--is-faint); cursor: help; }
+.qm { display: grid; width: 12px; height: 12px; color: var(--is-faint); }
 .qm:hover { color: var(--is-dim); }
 .qm svg { width: 12px; height: 12px; }
-.agent.rv .ah .sw { margin-left: -2px; }
 .agent.rv .act { width: 18px; margin-left: -2px; }
-.bdg.count { --c: var(--is-warn); }
-.bdg.count svg { width: 13px; height: 13px; }
-.bdg.count text { font: 700 8.5px var(--sys); text-anchor: middle; fill: var(--is-warn-on); }
-.bdg.count text.two { font-size: 6.6px; }
+.agent.rv .act.swa { width: 0; margin-left: -8px; }
+.agent.rv .act.swa .sw { opacity: 0; pointer-events: none; transition: opacity .1s ease, background-color .15s; }
+.agent.rv.hot .act.swa, .agent.rv:focus-within .act.swa { width: 26px; margin-left: -2px; }
+.agent.rv.hot .act.swa .sw, .agent.rv:focus-within .act.swa .sw { opacity: 1; pointer-events: auto; transition: opacity .16s ease .06s, background-color .15s; }
 .callout.rq { --c: var(--wait); margin-bottom: 6px; }
 .callout.rq .h { padding-right: 2px; }
 .callout.rq .acts { flex-wrap: wrap; }
-.rql { margin: 2px 0 0 26px; padding: 0; list-style: none; display: grid; gap: 7px; }
+.callout.rq p { margin-left: 0; }
+.callout.rq .acts { margin: 10px 0 0; justify-content: flex-end; }
+.rql { margin: 2px 0 0; padding: 0; list-style: none; display: grid; gap: 7px; }
 .rql li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 8px; align-items: start; font-size: 11.5px; line-height: 15px; color: var(--is-dim); }
 .rql li b { color: var(--is-text); font-weight: 500; }
 .rql li em { font-style: normal; }
@@ -1022,9 +1023,6 @@ const BADGE = {
 };
 const badge = (kind) => `<span class="bdg ${kind}"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/>${BADGE[kind]}</svg></span>`;
 
-// The yellow disc with the number of notes waiting for the designer.
-const notesBadge = (n) => `<span class="bdg count"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/>`
-  + `<text x="6" y="${n > 9 ? 8.2 : 8.8}"${n > 9 ? ' class="two"' : ""}>${n > 9 ? "9+" : n}</text></svg></span>`;
 const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
 
 // A layer's type icon; an unknown or odd type ("constructor") gets the frame's.
@@ -1066,7 +1064,7 @@ function headlineOf(f) {
   const list = agentsOf(f);
   const rv = rvOf(f);
   if (rv && rv.state === "notes" && rv.notes.length) {
-    return { kind: "notes", ind: notesBadge(rv.notes.length), sub: "reviewer: " + plural(rv.notes.length, "note", "notes") + " for you" };
+    return { kind: "notes", ind: badge("caution"), sub: "reviewer: " + plural(rv.notes.length, "note", "notes") + " for you" };
   }
   const working = list.filter((a) => a.st === "working");
   if (working.length) {
@@ -1177,9 +1175,9 @@ function reviewerRow(f, r) {
   const avatar = r.state === "off" ? `<span class="av ghost rvi">${LENS}</span>` : `<span class="av rvi" style="--av: ${color("reviewer")}">${LENS}</span>`;
   const n = r.notes.length;
   const st = checking ? `${LOADER}<span><span class="shim">checking</span>${r.layers ? " " + plural(r.layers, "layer", "layers") : ""}</span>`
-    : r.state === "waiting" ? "waits for agents"
-    : r.state === "notes" ? `${notesBadge(n)}${n === 1 ? "note" : "notes"} for you`
-    : r.state === "sent" ? `sent ${r.sent}` + (r.left ? ` · ${r.left} left as is` : "")
+    : r.state === "off" ? "off" : r.state === "waiting" ? "waits for agents"
+    : r.state === "notes" ? `${badge("caution")}${plural(n, "note", "notes")} for you`
+    : r.state === "sent" ? (r.sent ? "sent " + plural(r.sent, "fix", "fixes") : "all fine") + (r.sent && r.left ? ` · ${r.left} left as is` : "")
     : r.state === "good" ? `${badge("done")}all good${r.layers ? " · " + plural(r.layers, "layer", "layers") : ""}` : "";
   let cls = "agent rv", data = "", right;
   if (checking) {
@@ -1190,8 +1188,11 @@ function reviewerRow(f, r) {
     if (pressed) cls += " held";
     if (hot === f.id + "\nreviewer") cls += " hot";
   } else {
+    // like Stop on the others: shown while the pointer is on the row, or the keyboard is in it
     const on = r.state !== "off";
-    right = `<button type="button" class="sw${on ? " on" : ""}" role="switch" aria-checked="${on}" aria-label="Reviewer" data-act="rv-toggle" data-on="${on ? "" : "1"}"></button>`;
+    right = `<span class="act swa"><button type="button" class="sw${on ? " on" : ""}" role="switch" aria-checked="${on}" aria-label="Reviewer" data-act="rv-toggle" data-on="${on ? "" : "1"}"></button></span>`;
+    data = ' data-agent="reviewer"';
+    if (hot === f.id + "\nreviewer") cls += " hot";
   }
   return `<div class="${cls}"${data}><div class="ah">${avatar}<span class="nm rvn"><span>reviewer</span><span class="qm" data-hint="1">${QM}</span></span>`
     + `<span class="st">${st}</span>${right}</div></div>`;
@@ -1221,7 +1222,7 @@ function reviewerAsk(f, r) {
     : `<button type="button" class="go" data-act="rv-send"${k ? "" : " disabled"}>Send ${k} to ${esc(who)}</button>`;
   const alive = r.notes.some((nt) => nt.layers.some((l) => !goneLayers.has(l.id)));
   const all = f.here && alive ? '<button type="button" class="showall" data-act="rv-all">Show all</button>' : "";
-  return `<div class="callout rq"><div class="h"><span class="ind">${notesBadge(r.notes.length)}</span>${plural(r.notes.length, "note", "notes")} on ${esc(who)}'s work${all}</div>`
+  return `<div class="callout rq"><div class="h">${plural(r.notes.length, "note", "notes")} on ${esc(who)}'s work${all}</div>`
     + `<p>${text}</p><ul class="rql">${items}</ul><div class="acts"><button type="button" class="go2" data-act="rv-fine">All fine</button>${main}</div></div>`;
 }
 
