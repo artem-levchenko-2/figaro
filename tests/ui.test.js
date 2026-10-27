@@ -1448,10 +1448,10 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("a tick taken off: the count follows, the note dims",
           [/Send 2 to designer/.test(env.app()), /<li class="">/.test(env.app())], [true, true]);
     env.click("rv-send", "here");
-    check("Send answers with the ticked ones", env.sent("review-answer"), [{ type: "review-answer", doc: "doc:KEY1", send: ["n1", "n2"] }]);
+    check("Send answers with the ticked ones", env.sent("review-answer"), [{ type: "review-answer", doc: "doc:KEY1", send: ["n1", "n2"], at: 1000 }]);
     env.click("rv-tick", "here", { id: "n3" });
     env.click("rv-fine", "here");
-    check("All fine sends none, however many are ticked", env.sent("review-answer").slice(-1), [{ type: "review-answer", doc: "doc:KEY1", send: [] }]);
+    check("All fine sends none, however many are ticked", env.sent("review-answer").slice(-1), [{ type: "review-answer", doc: "doc:KEY1", send: [], at: 1000 }]);
     for (const id of ["n1", "n2", "n3"]) env.click("rv-tick", "here", { id });
     check("with none ticked, Send is off", /data-act="rv-send" disabled>Send 0 to designer/.test(env.app()), true);
     env.click("rv-tick", "here", { id: "n1" });
@@ -1551,7 +1551,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("a file of another place: names only, no Show all, and the answer names its file",
           [/<span class="layer"><svg/.test(env.app()), /rv-all/.test(env.app()), /data-act="layer" data-id="1:2"/.test(env.app())], [true, false, false]);
     env.click("rv-send", "doc:KEY2");
-    check("…Send names its file", env.sent("review-answer"), [{ type: "review-answer", doc: "doc:KEY2", send: ["n1"] }]);
+    check("…Send names its file", env.sent("review-answer"), [{ type: "review-answer", doc: "doc:KEY2", send: ["n1"], at: 1000 }]);
   }
 
   console.log(failed ? `\n${failed} FAILED` : "\nall window checks passed");
