@@ -134,8 +134,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - `bridge_settings.py` — the window's settings, the bridge's for every window and kept in `settings.json` next
   to the token: Sounds (until switched, `FIGARO_SOUNDS`), Show other files, Show recent changes (`recent`;
   off: the islands show no Recent list), Reviewer (`reviewer`; off: the bridge adds `review: false` to the exec
-  fields and `h.audit` returns at once, `force: true` runs it), Save versions as agents work (off: no automatic checkpoint, a label
-  still saves one). And what the settings show about the version: what is new (the newest release's notes
+  fields and `h.audit` returns at once, `force: true` runs it), Save versions as agents work (off: no automatic
+  checkpoint, a label still saves one). And what the settings show about the version: what is new (the newest release's notes
   from GitHub, else this version's from `CHANGELOG.md`, each item's first clause), the folder, when GitHub
   last answered (`bridge.CHECKED`; ↻ is `bridge.look_now`).
 - `bridge_exec.py` — the bridge's side of exec: the fields it sends (`readOnly`, `checkpoint`, `quick`,
