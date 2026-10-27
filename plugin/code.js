@@ -9,7 +9,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-27.6";
+const PLUGIN_VERSION = "2026-10-27.7";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -616,7 +616,7 @@ figma.ui.onmessage = async (msg) => {
   }
   if (msg.type === "resize") { fitWindow(msg); return; }
   if (msg.type === "view") { await keepView(msg.view); return; }
-  if (msg.type === "select") { await selectLayer(msg.id); return; }
+  if (msg.type === "select") { await selectLayer(msg.id, msg.ids); return; }
   if (msg.type === "abort") {
     if (msg.id) markAborted(msg.id);
     const fail = GATES.get(msg.id);  // a script stuck in a Figma call ends now
@@ -3415,25 +3415,32 @@ Object.assign(HELPERS, {
 // A click on a layer there selects it and brings it into view, on its own
 // page. The user asked for it, so their selection and camera are ours to move.
 
-async function selectLayer(id) {
-  let node = null;
-  try {
-    node = nodeHere(id);
-    if (node === undefined) node = await figma.getNodeByIdAsync(String(id));
-  } catch (e) { node = null; }
-  let page = node;
-  try {
-    while (page && page.type !== "PAGE") page = page.parent;
-  } catch (e) { page = null; }
-  const ok = !!(node && page && node !== page);
-  if (ok) {
+async function selectLayer(id, ids) {
+  // Several layers (the window's Show all): those on the first one's page are selected together.
+  const list = Array.isArray(ids) && ids.length ? ids.map(String).slice(0, 200) : [id];
+  const found = [];
+  for (const one of list) {
+    let node = null;
     try {
-      if (figma.currentPage !== page) await figma.setCurrentPageAsync(page);
-      figma.currentPage.selection = [node];
-      figma.viewport.scrollAndZoomIntoView([node]);
+      node = nodeHere(one);
+      if (node === undefined) node = await figma.getNodeByIdAsync(String(one));
+    } catch (e) { node = null; }
+    let page = node;
+    try {
+      while (page && page.type !== "PAGE") page = page.parent;
+    } catch (e) { page = null; }
+    found.push({ id: one, node: node && page && node !== page ? node : null, page });
+  }
+  const first = found.find((x) => x.node);
+  const nodes = first ? found.filter((x) => x.node && x.page === first.page) : [];
+  if (nodes.length) {
+    try {
+      if (figma.currentPage !== first.page) await figma.setCurrentPageAsync(first.page);
+      figma.currentPage.selection = nodes.map((x) => x.node);
+      figma.viewport.scrollAndZoomIntoView(nodes.map((x) => x.node));
     } catch (e) { /* removed meanwhile, or locked away in an instance */ }
   }
-  figma.ui.postMessage({ type: "selected", id, ok });
+  for (const x of found) figma.ui.postMessage({ type: "selected", id: x.id, ok: nodes.includes(x) });
 }
 
 // ─── hot reload ──────────────────────────────────────────────────────────

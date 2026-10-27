@@ -242,6 +242,38 @@ html.rainbow .px i:nth-child(9) { --c: hsl(275 75% 62%); animation-delay: 0ms; }
 /* An open island with no agent at work: a ghost of an agent's row under
    Agents, where the first one will show, and how to get one there. */
 .av.ghost { background: none; border: 1px dashed var(--is-faint); }
+/* The reviewer: an agent among the agents, with its own switch for the file, and its notes for the
+   designer, a callout that asks which of them the agent should fix. The "?" explains it in a hint
+   drawn outside the islands (#rvtip), as an island clips what sticks out of it. */
+.av.rvi svg { width: 10px; height: 10px; }
+.av.ghost.rvi { color: var(--is-dim); }
+.nm.rvn { flex: 1; display: flex; align-items: center; gap: 5px; overflow: visible; }
+.qm { display: grid; width: 12px; height: 12px; color: var(--is-faint); cursor: help; }
+.qm:hover { color: var(--is-dim); }
+.qm svg { width: 12px; height: 12px; }
+.agent.rv .ah .sw { margin-left: -2px; }
+.agent.rv .act { width: 18px; margin-left: -2px; }
+.bdg.notes { --c: var(--is-warn); }
+.bdg.notes svg { width: 13px; height: 13px; }
+.bdg.notes text { font: 700 8.5px var(--sys); text-anchor: middle; fill: var(--is-warn-on); }
+.bdg.notes text.two { font-size: 6.6px; }
+.callout.rq { --c: var(--wait); margin-bottom: 6px; }
+.callout.rq .h { padding-right: 2px; }
+.callout.rq .acts { flex-wrap: wrap; }
+.rql { margin: 2px 0 0 26px; padding: 0; list-style: none; display: grid; gap: 7px; }
+.rql li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 8px; align-items: start; font-size: 11.5px; line-height: 15px; color: var(--is-dim); }
+.rql li b { color: var(--is-text); font-weight: 500; }
+.rql li em { font-style: normal; }
+.rql li:not(.on) b, .rql li:not(.on) em { opacity: .55; }
+.rql .layers { margin-top: 4px; }
+.rql .cb { width: 14px; height: 14px; padding: 0; border: 0; background: none; display: grid; place-items: center; border-radius: 4px; box-shadow: inset 0 0 0 1.5px var(--is-faint); color: #fff; cursor: pointer; }
+.rql li.on .cb { background: var(--run); box-shadow: none; }
+.rql .cb svg { width: 10px; height: 10px; }
+.rq .showall { margin-left: auto; padding: 0 4px; border: 0; background: none; color: var(--is-dim); font: 500 11px/18px var(--sys); cursor: pointer; }
+.rq .showall:hover { color: var(--is-text); }
+#rvtip { position: fixed; z-index: 9; max-width: 232px; padding: 6px 9px; border-radius: 5px; background: #1e1e1e; color: #fff; font: 500 11px/15px var(--sys);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .3); pointer-events: none; opacity: 0; transition: opacity .12s; }
+#rvtip.on { opacity: 1; transition-delay: .3s; }
 .msg { margin: -4px 0 0; padding: 0 0 7px 26px; color: var(--is-dim); font-size: 11.5px; line-height: 15px; overflow-wrap: anywhere; }
 .msg.err { color: var(--is-err); }
 .feed { display: grid; padding-bottom: 2px; }
@@ -490,6 +522,7 @@ body > .ghost { position: fixed; right: 0; bottom: 0; z-index: 5; display: flex;
 <body>
 <div id="scroll"><div id="app"></div><div id="end"></div></div>
 <div id="foot"></div>
+<div id="rvtip" role="tooltip"></div>
 
 <script>
 const SERVER = "ws://localhost:8788/plugin";
@@ -810,6 +843,25 @@ let hot = "";                  // the agent row the pointer is on: island id + "
 const stopping = new Map();    // doc + "\n" + agent -> when the user pressed its Stop
 const goneLayers = new Set();  // Recent layers that are no longer in the file
 
+// The reviewer of a file, as the board says it; a bridge without one sends no key.
+const RV_STATES = ["off", "waiting", "checking", "notes", "sent", "good"];
+function reviewerOf(r, t) {
+  if (!r || typeof r !== "object") return null;
+  const num = (x) => (typeof x === "number" && x > 0 ? Math.floor(x) : 0);
+  return {
+    on: r.on === true,
+    state: RV_STATES.includes(r.state) ? r.state : r.on === true ? "waiting" : "off",
+    agent: typeof r.agent === "string" && r.agent ? r.agent : "",
+    layers: num(r.layers), since: typeof r.since === "number" ? t(r.since) : 0, at: typeof r.at === "number" ? t(r.at) : 0,
+    notes: (Array.isArray(r.notes) ? r.notes : []).filter((n) => n && n.id !== undefined).map((n) => ({
+      id: String(n.id), rule: String(n.rule || ""), title: String(n.title || ""), text: String(n.text || ""),
+      layers: (Array.isArray(n.layers) ? n.layers : []).filter((l) => l && l.id).map((l) => ({ id: String(l.id), name: String(l.name || l.id), type: String(l.type || "FRAME") })),
+      more: num(n.more),
+    })),
+    expired: r.expired === true, sent: num(r.sent), left: num(r.left),
+  };
+}
+
 // The board's times are the bridge's clock in seconds; the window counts in its own.
 // A file that stopped answering has `stuck` (a script still running past its
 // deadline); `lost` lists those whose window closed while a script ran there.
@@ -830,6 +882,7 @@ function takeBoard(m) {
     recent: (f.recent || []).map((e) => Object.assign({}, e, { at: t(e.at) })),
     stuck: f.stuck ? { agent: f.stuck.agent || "agent", since: t(f.stuck.since) } : null,
     lost: f.lost ? { agent: f.lost.agent || "agent", at: t(f.lost.at) } : null,
+    reviewer: reviewerOf(f.reviewer, t),
   });
   board = {
     version: m.version || "", update: m.update || null, release: m.release || null, stale: !!m.stale,
@@ -865,6 +918,20 @@ const alarm = (f) => (f.stuck || f.lost ? 1 : 0);
 const othersShown = () => !(board && board.settings && board.settings.others === false);
 // Each island's Recent list; off in the settings, it is gone from all of them.
 const recentShown = () => !(board && board.settings && board.settings.recent === false);
+// A file's reviewer: none when the settings switch it off, the bridge has none, or the bridge is away.
+function rvOf(f) {
+  if (conn !== "ok" || !f.doc || !f.reviewer || (board && board.settings && board.settings.reviewer === false)) return null;
+  return f.reviewer;
+}
+// The notes the designer has not ticked, per file; a new set of notes comes all ticked.
+const unticked = new Map();    // doc -> {sig, set}
+function rvUnticked(f, r) {
+  const sig = r.notes.map((n) => n.id).join();
+  let u = unticked.get(f.doc);
+  if (!u || u.sig !== sig) { u = { sig, set: new Set() }; unticked.set(f.doc, u); }
+  return u.set;
+}
+const rvTicked = (f, r) => { const off = rvUnticked(f, r); return r.notes.filter((n) => !off.has(n.id)); };
 function filesNow() {
   const here = { id: "here", doc: null, name: identity.name || "This file", here: true, agents: [], recent: [] };
   if (conn !== "ok" || !board) {
@@ -955,6 +1022,11 @@ const BADGE = {
 };
 const badge = (kind) => `<span class="bdg ${kind}"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/>${BADGE[kind]}</svg></span>`;
 
+// The yellow disc with the number of notes waiting for the designer.
+const notesBadge = (n) => `<span class="bdg notes"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/>`
+  + `<text x="6" y="${n > 9 ? 8.2 : 8.8}"${n > 9 ? ' class="two"' : ""}>${n > 9 ? "9+" : n}</text></svg></span>`;
+const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
+
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function color(name) {
   let h = 0;
@@ -990,6 +1062,10 @@ function headlineOf(f) {
   if (f.here && conn === "nobridge") return { kind: "nobridge", ind: '<span class="dot idle"></span>', sub: "no bridge yet" };
   if (alarm(f)) return { kind: "alarm", ind: badge("alarm"), sub: "Figma isn't answering", alarm: true };
   const list = agentsOf(f);
+  const rv = rvOf(f);
+  if (rv && rv.state === "notes" && rv.notes.length) {
+    return { kind: "notes", ind: notesBadge(rv.notes.length), sub: "reviewer: " + plural(rv.notes.length, "note", "notes") + " for you" };
+  }
   const working = list.filter((a) => a.st === "working");
   if (working.length) {
     const sub = working.length > 1 ? working.map((a) => esc(a.name)).join(", ") : esc(working[0].name) + " " + clockSpan(working[0].since);
@@ -1090,19 +1166,91 @@ function event(e, here) {
     + (chips ? `<div class="layers">${chips}</div>` : "") + "</div>";
 }
 
+const LENS = '<svg viewBox="0 0 12 12"><circle cx="5.2" cy="5.2" r="3.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M7.7 7.7 10.4 10.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+const QM = '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="5.2" fill="none" stroke="currentColor" stroke-width="1.1"/><path d="M4.65 4.7a1.4 1.4 0 1 1 2 1.25c-.42.22-.65.52-.65.98v.22" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><circle cx="6" cy="8.75" r=".62" fill="currentColor"/></svg>';
+const RV_HINT = "Checks what agents change when they're done: colours and text styles, names, contrast. Turn it on before they start.";
+// The reviewer's row, the last of the agents: a switch for this file when it is idle, a Stop while it checks.
+function reviewerRow(f, r) {
+  const checking = r.state === "checking";
+  const avatar = r.state === "off" ? `<span class="av ghost rvi">${LENS}</span>` : `<span class="av rvi" style="--av: ${color("reviewer")}">${LENS}</span>`;
+  const n = r.notes.length;
+  const st = checking ? `${LOADER}<span><span class="shim">checking</span>${r.layers ? " " + plural(r.layers, "layer", "layers") : ""}</span>`
+    : r.state === "waiting" ? "waits for agents"
+    : r.state === "notes" ? `${notesBadge(n)}${n === 1 ? "note" : "notes"} for you`
+    : r.state === "sent" ? `sent ${r.sent}` + (r.left ? ` · ${r.left} left as is` : "")
+    : r.state === "good" ? `${badge("done")}all good${r.layers ? " · " + plural(r.layers, "layer", "layers") : ""}` : "";
+  let cls = "agent rv", data = "", right;
+  if (checking) {
+    const pressed = stopping.has(f.doc + "\nreviewer");
+    const tip = pressed ? "Stopping…" : "Stop reviewer";
+    right = `<span class="act"><button type="button" class="ib" data-act="stop" data-agent="reviewer" title="${tip}" aria-label="${tip}"${pressed ? " disabled" : ""}><span class="sq"></span></button></span>`;
+    data = ' data-agent="reviewer"';
+    if (pressed) cls += " held";
+    if (hot === f.id + "\nreviewer") cls += " hot";
+  } else {
+    const on = r.state !== "off";
+    right = `<button type="button" class="sw${on ? " on" : ""}" role="switch" aria-checked="${on}" aria-label="Reviewer" data-act="rv-toggle" data-on="${on ? "" : "1"}"></button>`;
+  }
+  return `<div class="${cls}"${data}><div class="ah">${avatar}<span class="nm rvn"><span>reviewer</span><span class="qm" data-hint="1">${QM}</span></span>`
+    + `<span class="st">${st}</span>${right}</div></div>`;
+}
+
+// Its notes for the designer: which of them the agent should fix. All come ticked.
+function reviewerAsk(f, r) {
+  if (r.state !== "notes" || !r.notes.length) return "";
+  const picked = rvTicked(f, r);
+  const who = r.agent || "the agent";
+  const items = r.notes.map((nt) => {
+    const on = picked.includes(nt);
+    const chips = nt.layers.map((l) => {
+      const type = l.type === "COMPONENT_SET" ? "COMPONENT" : l.type;
+      const cls = "layer" + (type === "COMPONENT" || type === "INSTANCE" ? " comp" : "");
+      const inner = `${ICON[type] || ICON.FRAME}<span>${esc(l.name)}</span>`;
+      return f.here ? `<button type="button" class="${cls}" data-act="layer" data-id="${esc(l.id)}" title="Select it in Figma">${inner}</button>` : `<span class="${cls}">${inner}</span>`;
+    }).join("") + (nt.more ? `<span class="more">+${nt.more}</span>` : "");
+    return `<li class="${on ? "on" : ""}"><button type="button" class="cb" data-act="rv-tick" data-id="${esc(nt.id)}" role="checkbox" aria-checked="${on}" aria-label="${esc(nt.title)}">${on ? ICON.done : ""}</button>`
+      + `<div><b>${esc(nt.title)}</b>${nt.text ? ` <em>· ${esc(nt.text)}</em>` : ""}${chips ? `<div class="layers">${chips}</div>` : ""}</div></li>`;
+  }).join("");
+  const text = r.expired ? `${esc(who)} has finished. Copy the ones to fix into its chat.` : `Tick the ones ${esc(who)} should fix. It waits for your answer.`;
+  const k = picked.length;
+  const main = r.expired
+    ? `<button type="button" class="go" data-act="rv-copy"${k ? "" : " disabled"}>Copy for chat</button>`
+    : `<button type="button" class="go" data-act="rv-send"${k ? "" : " disabled"}>Send ${k} to ${esc(who)}</button>`;
+  const all = f.here ? '<button type="button" class="showall" data-act="rv-all">Show all</button>' : "";
+  return `<div class="callout rq"><div class="h"><span class="ind">${notesBadge(r.notes.length)}</span>${plural(r.notes.length, "note", "notes")} on ${esc(who)}'s work${all}</div>`
+    + `<p>${text}</p><ul class="rql">${items}</ul><div class="acts"><button type="button" class="go2" data-act="rv-fine">All fine</button>${main}</div></div>`;
+}
+
+// The ticked notes as `figaro notes` prints them for an agent, with a link to each layer.
+function reviewerText(f, r) {
+  const picked = rvTicked(f, r), who = r.agent || "the agent";
+  const slug = String(f.name || "").replace(/[^A-Za-z0-9]+/g, "-") || "Untitled";
+  const link = (id) => (f.sig ? `https://www.figma.com/design/${f.sig}/${slug}?node-id=${encodeURIComponent(String(id).replace(/:/g, "-"))}` : "");
+  const lines = [`The reviewer's notes on ${who}'s work in ${f.name}:`];
+  picked.forEach((nt, i) => {
+    const at = nt.layers.map((l) => `"${l.name}" (${l.id})`).join(", ");
+    lines.push(`${i + 1}. ${nt.title}.` + (at ? ` ${at}` : "") + (nt.text ? `, ${nt.text}.` : ""));
+    for (const l of nt.layers) if (link(l.id)) lines.push("   " + link(l.id));
+    if (nt.more) lines.push(`   and ${nt.more} more layers`);
+  });
+  lines.push(`Fix ${picked.length === 1 ? "this one" : "these"}, then run figaro done again.`);
+  return lines.join("\n");
+}
+
 function panel(f) {
   const on = conn === "ok";
   const list = on ? agentsOf(f) : [];
+  const rv = on ? rvOf(f) : null;
   const feed = on && recentShown() ? f.recent.slice(0, 5) : [];
   const note = callout(f);
   // No agent at work: the Agents section is there all the same, with a ghost of
   // an agent's row. Changes left from agents who went are no reason to drop it.
   const empty = on && !note && !list.length
-    ? '<div class="sect">Agents</div><div class="agent empty"><div class="ah"><span class="av ghost"></span>'
+    ? '<div class="agent empty"><div class="ah"><span class="av ghost"></span>'
       + `<span class="nm">${f.recent.length ? "No agents at work" : "No agents yet"}</span></div>`
       + `<p class="msg">Give an agent a link to ${f.here ? "this" : "the"} file:<br>its work shows up here.</p></div>` : "";
-  return '<div class="panel">' + note + empty
-    + (list.length ? '<div class="sect">Agents</div>' + list.map((a) => agentRow(f, a)).join("") : "")
+  return '<div class="panel">' + note + (empty || list.length || rv ? '<div class="sect">Agents</div>' : "") + empty
+    + list.map((a) => agentRow(f, a)).join("") + (rv ? reviewerRow(f, rv) + reviewerAsk(f, rv) : "")
     + (feed.length ? '<div class="sect">Recent</div><div class="feed">' + feed.map((e) => event(e, f.here)).join("") + "</div>" : "")
     + "</div>";
 }
@@ -1317,7 +1465,7 @@ const SETS = [
   ["sounds", "Sounds", "Buttons, minimize, Stop; a knock when Figma stops answering"],
   ["others", "Show other files", "Islands of your other Figma files where agents work. A file where Figma isn't answering shows anyway"],
   ["recent", "Show recent changes", "What agents changed lately, under each file's agents. A layer there selects it in Figma"],
-  ["reviewer", "Reviewer", "Agents check their work before they say done: contrast, small buttons, clipped text, colours and text without styles"],
+  ["reviewer", "Reviewer", "A reviewer among each file's agents: it checks what agents change when they're done and shows you its notes. Off in every file until you turn it on"],
   ["versions", "Save versions as agents work", "Before an agent first changes a file, then hourly. Everyone with access sees them in its version history"],
 ];
 function settingsView() {
@@ -1857,6 +2005,25 @@ function act(name, fid, el) {
   } else if (name === "layer") {
     cue("layer");
     parent.postMessage({ pluginMessage: { type: "select", id: el.dataset.id } }, "*");
+  } else if (name === "rv-toggle" && f && f.doc) {
+    cue("go");
+    send({ type: "reviewer", doc: f.doc, on: el.dataset.on === "1" });
+  } else if (name === "rv-tick" && f && f.doc && rvOf(f)) {
+    cue("layer");
+    const off = rvUnticked(f, rvOf(f)), id = String(el.dataset.id);
+    if (!off.delete(id)) off.add(id);
+    render();
+  } else if ((name === "rv-send" || name === "rv-fine") && f && f.doc && rvOf(f)) {
+    cue("go");
+    send({ type: "review-answer", doc: f.doc, send: name === "rv-fine" ? [] : rvTicked(f, rvOf(f)).map((n) => n.id) });
+  } else if (name === "rv-all" && f && f.here && rvOf(f)) {
+    cue("layer");
+    const ids = [];
+    for (const n of rvOf(f).notes) for (const l of n.layers) if (!ids.includes(l.id)) ids.push(l.id);
+    if (ids.length) parent.postMessage({ pluginMessage: { type: "select", id: ids[0], ids } }, "*");
+  } else if (name === "rv-copy" && f && f.doc && rvOf(f)) {
+    cue("go");
+    copyText(reviewerText(f, rvOf(f)));
   } else if (name === "gear") {
     cue(view === "settings" ? "back" : "gear");
     setView(view === "settings" ? "files" : "settings");
@@ -1959,7 +2126,20 @@ function point(key) {
 }
 // The pointer in the window: the last line shows Skip.
 function inside(on) { if (foot.classList) foot.classList.toggle("inside", on); }
+// The reviewer's "?": its hint, drawn on the page and not in the island, which clips what sticks out of it.
+const rvtip = document.getElementById("rvtip");
+function rvHint(el) {
+  if (!rvtip || !rvtip.classList) return;
+  if (!el) { rvtip.classList.remove("on"); return; }
+  rvtip.textContent = RV_HINT;
+  const r = el.getBoundingClientRect(), width = document.documentElement.clientWidth || 320;
+  const w = rvtip.offsetWidth || 232, h = rvtip.offsetHeight || 60;
+  rvtip.style.left = Math.max(6, Math.min(width - 6 - w, r.left + r.width / 2 - w / 2)) + "px";
+  rvtip.style.top = (r.top - h - 8 >= 4 ? r.top - h - 8 : r.bottom + 8) + "px";
+  rvtip.classList.add("on");
+}
 document.addEventListener("pointerover", (e) => {
+  rvHint(e.target && e.target.closest ? e.target.closest(".qm") : null);
   if (e.target && e.target.closest && e.target.closest(".tw")) placeTips();  // where it is now, before it shows
   const row = e.target && e.target.closest ? e.target.closest(".agent[data-agent]") : null;
   const slot = row && row.closest("[data-fid]");
@@ -1968,7 +2148,7 @@ document.addEventListener("pointerover", (e) => {
 });
 document.addEventListener("pointerout", (e) => {
   if (hold && hold.el.contains(e.target) && !hold.el.contains(e.relatedTarget)) holdEnd(false);  // off Minimize: no minimize
-  if (!e.relatedTarget) { point(""); inside(false); }  // it left the window
+  if (!e.relatedTarget) { point(""); inside(false); rvHint(null); }  // it left the window
 });
 const calm = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 

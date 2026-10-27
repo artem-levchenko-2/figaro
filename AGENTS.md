@@ -173,7 +173,7 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   `ui.html` (the window: one island per file where Figaro runs, in a list that scrolls, and under them a line
   that is always there: the version, with Update, Reload or a failure's "!" by it, and ⚙ Settings and ⤡
   Minimize. The settings take the islands' place (`settingsView`, `versionCard`); minimized, the window is
-  one card, 240 px wide, or 70 px held (`miniView`). `glide` moves from one view to another).
+  one card, 240 px wide, or 70 px held (`miniView`). `glide` moves from one view to another); the Reviewer's row, its switch and its notes callout are `reviewerRow` and `reviewerAsk`, shown only when the file's board entry has `reviewer` and `settings.reviewer` isn't off).
 - `skill/figaro/` — `SKILL.md` (the loop, the commands, safety, house rules) and `references/`:
   `helpers.md`, `craft.md`, `pitfalls.md`. The recipes in them were checked against real Figma.
 - `tools/install.sh` — the command and the skill's links (`~/.claude/skills`, `~/.agents/skills`); never

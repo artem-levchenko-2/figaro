@@ -949,7 +949,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.board(files, { settings: Object.assign({ reviewer: true }, settings), notes, folder: "~/figaro", checked: 990 });
     await env.clock.advance(400);
     check("…and with one, the row, its hint and a switch that is on",
-          [/<b>Reviewer<\/b><span>Agents check their work before they say done: contrast/.test(env.app()),
+          [/<b>Reviewer<\/b><span>A reviewer among each file's agents: it checks what agents change/.test(env.app()),
            /aria-label="Reviewer" data-act="set" data-name="reviewer"/.test(env.app()),
            /class="sw on" role="switch" aria-checked="true" aria-label="Reviewer"/.test(env.app())], [true, true, true]);
     env.board(files, { settings, notes, folder: "~/figaro", checked: 990 });
@@ -1362,6 +1362,150 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.board([file("KEY1", "Dashboard")], { sounds: false });
     await env.clock.advance(2000);
     check("with the sounds off from the start, no AudioContext is made for them", env.cues(), "none");
+  }
+
+  // ─── the reviewer: a row among the agents, its notes for the designer ───
+  {
+    const rv = (extra) => Object.assign({ on: true, state: "waiting", agent: "designer", layers: 0, since: null, at: 1000,
+                                           notes: [], expired: false, sent: 0, left: 0 }, extra);
+    const notes = [
+      { id: "n1", rule: "unbound-color", title: "Colour isn't a token", text: "#2F6BFF, bg/brand matches",
+        layers: [{ id: "I2:1068", name: "Get started", type: "INSTANCE" }], more: 0 },
+      { id: "n2", rule: "text-style", title: "Text has no style", text: "Heading/H2 matches",
+        layers: [{ id: "12:44", name: "Pricing", type: "TEXT" }, { id: "12:45", name: "Plan", type: "TEXT" }], more: 2 },
+      { id: "n3", rule: "default-name", title: "Default name", text: "Frame 12, rename it",
+        layers: [{ id: "12:50", name: "Frame 12", type: "FRAME" }], more: 0 },
+    ];
+    const make = async () => {
+      const env = load();
+      env.identity("Dashboard", "KEY1");
+      env.ws().open();
+      return env;
+    };
+    const show = async (env, reviewer, extra, settings) => {
+      env.board([file("KEY1", "Dashboard", Object.assign({
+        agents: [agent("designer", { since: 990, last: 990, done: { text: "ready", at: 995 } })] }, reviewer === undefined ? {} : { reviewer }, extra))],
+        settings ? { settings } : {});
+      await env.clock.advance(400);
+    };
+    const env = await make();
+    env.board([file("KEY1", "Dashboard", { agents: [agent("designer", { since: 990, last: 990 })] })]);
+    env.click("toggle", "here");
+    await env.clock.advance(400);
+    check("a bridge that sends no reviewer: no row, no switch", [/reviewer/.test(env.html()), /rv-toggle/.test(env.html())], [false, false]);
+
+    await show(env, rv({ on: false, state: "off" }), {}, { reviewer: false });
+    check("the settings' Reviewer off: no row though the file has one", /rv-toggle|reviewer/.test(env.app()), false);
+
+    await show(env, rv({ on: false, state: "off" }), {}, { reviewer: true });
+    check("off: a ghost avatar, the name, its hint, a switch that is off, and no status",
+          [/class="av ghost rvi"/.test(env.app()), /<span>reviewer<\/span><span class="qm"/.test(env.app()),
+           /class="sw" role="switch" aria-checked="false" aria-label="Reviewer" data-act="rv-toggle" data-on="1"/.test(env.app()),
+           /<span class="st"><\/span>/.test(env.app())], [true, true, true, true]);
+    check("…the row is the last of the agents, with no divider",
+          env.app().indexOf("designer") < env.app().indexOf("rv-toggle") && !/class="agent rv"[^]*class="agent/.test(env.app()), true);
+    env.click("rv-toggle", "here", { on: "1" });
+    check("the switch turns it on for the file", env.sent("reviewer"), [{ type: "reviewer", doc: "doc:KEY1", on: true }]);
+
+    await show(env, rv(), {}, { reviewer: true });
+    check("waiting: the colour of the agents' palette, the switch on, 'waits for agents'",
+          [/class="av rvi" style="--av: #[0-9a-f]{6}"/.test(env.app()), /waits for agents/.test(env.app()),
+           /class="sw on" role="switch" aria-checked="true" aria-label="Reviewer" data-act="rv-toggle" data-on=""/.test(env.app())], [true, true, true]);
+    env.click("rv-toggle", "here", { on: "" });
+    check("…and the switch turns it off", env.sent("reviewer").slice(-1), [{ type: "reviewer", doc: "doc:KEY1", on: false }]);
+
+    await show(env, rv({ state: "checking", layers: 24, since: 999 }), {}, {});
+    check("checking: the grid, the count of layers, a Stop and no switch",
+          [/checking<\/span> 24 layers/.test(env.app()), /data-act="stop" data-agent="reviewer"/.test(env.app()),
+           /rv-toggle/.test(env.app()), /class="agent rv" data-agent="reviewer"/.test(env.app())], [true, true, false, true]);
+    env.click("stop", "here", { agent: "reviewer" });
+    check("…its Stop is the agents' Stop", env.sent("stop").slice(-1), [{ type: "stop", doc: "doc:KEY1", agent: "reviewer" }]);
+    env.point("here", "reviewer");
+    await env.clock.advance(400);
+    env.point("here", null);
+
+    await show(env, rv({ state: "sent", sent: 2, left: 1 }), {}, {});
+    check("sent: how many went and how many stay", [/sent 2 · 1 left as is/.test(env.app()), /rv-toggle/.test(env.app())], [true, true]);
+    await show(env, rv({ state: "sent", sent: 3, left: 0 }), {}, {});
+    check("…with none left, nothing more", /sent 3</.test(env.app()), true);
+    await show(env, rv({ state: "good", layers: 24 }), {}, {});
+    check("good: a tick and the layers", /bdg done[^]*all good · 24 layers/.test(env.app()), true);
+
+    // notes
+    await show(env, rv({ state: "notes", layers: 24, notes }), {}, {});
+    const open = env.app();
+    check("notes: the yellow disc with their number in the row, and 'for you'",
+          [/<span class="bdg notes"><svg viewBox="0 0 12 12"><circle[^>]*\/><text x="6" y="8.8">3<\/text>/.test(open), /<\/span>notes for you<\/span>/.test(open)], [true, true]);
+    check("…the callout names the agent, with a Show all", [/3 notes on designer's work/.test(open), /data-act="rv-all"/.test(open),
+          /Tick the ones designer should fix/.test(open)], [true, true, true]);
+    check("…every note comes ticked, with its text and a button for each layer of this file",
+          [(open.match(/aria-checked="true" aria-label="[^"]*"><svg/g) || []).length, /Colour isn't a token<\/b> <em>· #2F6BFF, bg\/brand matches/.test(open),
+           /data-act="layer" data-id="I2:1068"/.test(open), /<span class="more">\+2<\/span>/.test(open)], [3, true, true, true]);
+    check("…All fine first, the blue button last, with the count and the agent",
+          /data-act="rv-fine">All fine<\/button><button type="button" class="go" data-act="rv-send">Send 3 to designer<\/button><\/div>/.test(open), true);
+    env.click("rv-tick", "here", { id: "n3" });
+    check("a tick taken off: the count follows, the note dims",
+          [/Send 2 to designer/.test(env.app()), /<li class="">/.test(env.app())], [true, true]);
+    env.click("rv-send", "here");
+    check("Send answers with the ticked ones", env.sent("review-answer"), [{ type: "review-answer", doc: "doc:KEY1", send: ["n1", "n2"] }]);
+    env.click("rv-tick", "here", { id: "n3" });
+    env.click("rv-fine", "here");
+    check("All fine sends none, however many are ticked", env.sent("review-answer").slice(-1), [{ type: "review-answer", doc: "doc:KEY1", send: [] }]);
+    for (const id of ["n1", "n2", "n3"]) env.click("rv-tick", "here", { id });
+    check("with none ticked, Send is off", /data-act="rv-send" disabled>Send 0 to designer/.test(env.app()), true);
+    env.click("rv-tick", "here", { id: "n1" });
+    env.click("rv-tick", "here", { id: "n2" });
+    env.click("rv-tick", "here", { id: "n3" });
+    await show(env, rv({ state: "notes", layers: 24, notes: notes.slice(0, 2) }), {}, {});
+    check("a new set of notes comes ticked again", /Send 2 to designer/.test(env.app()), true);
+
+    env.click("layer", "here", { id: "I2:1068" });
+    check("a note's layer is selected in Figma as Recent's are", env.posted.filter((m) => m.type === "select").slice(-1), [{ type: "select", id: "I2:1068" }]);
+    env.click("rv-all", "here");
+    check("Show all selects every layer of every note at once",
+          env.posted.filter((m) => m.type === "select").slice(-1), [{ type: "select", id: "I2:1068", ids: ["I2:1068", "12:44", "12:45"] }]);
+
+    // expired
+    await show(env, rv({ state: "notes", layers: 24, notes, expired: true }), {}, {});
+    check("expired: the agent stopped waiting, so Copy for chat takes the place of Send",
+          [/designer has finished\. Copy the ones to fix/.test(env.app()), /data-act="rv-copy">Copy for chat/.test(env.app()), /rv-send/.test(env.app())], [true, true, false]);
+    env.click("rv-tick", "here", { id: "n3" });
+    env.click("rv-copy", "here");
+    await env.clock.advance(50);
+    const copied = env.copied();
+    check("…it copies the ticked notes as `figaro notes` prints them, with a link to each layer",
+          [copied.length, copied[0] && copied[0].split("\n").slice(0, 3), copied[0] && /node-id=I2-1068/.test(copied[0]),
+           copied[0] && /Frame 12/.test(copied[0]), copied[0] && /and 2 more layers/.test(copied[0])],
+          [1, ["The reviewer's notes on designer's work in Dashboard:",
+               "1. Colour isn't a token. \"Get started\" (I2:1068), #2F6BFF, bg/brand matches.",
+               "   https://www.figma.com/design/KEY1/Dashboard?node-id=I2-1068"], true, false, true]);
+
+    // the island's row and the collapsed island
+    await show(env, rv({ state: "notes", layers: 24, notes }), {}, {});
+    env.click("toggle", "here");
+    await env.clock.advance(400);
+    check("collapsed: the island's row shows the disc, and its line says 'reviewer: 3 notes for you'",
+          [/<span class="ind"><span class="bdg notes">/.test(env.app()), /reviewer: 3 notes for you/.test(env.app())], [true, true]);
+    await show(env, rv({ state: "notes", layers: 24, notes: notes.slice(0, 1) }), {}, {});
+    check("…one note is a note", /reviewer: 1 note for you/.test(env.app()), true);
+    await show(env, rv({ state: "notes", layers: 24, notes: notes.slice(0, 1) }), {}, { reviewer: false });
+    check("…and with the switch off in the settings, back to the agents", /reviewer: /.test(env.app()), false);
+  }
+  {
+    // another file: its notes answer through the bridge, its layers are names only
+    const env = load();
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    const other = file("KEY2", "Landing", { agents: [agent("tokens", { since: 990, last: 990 })],
+      reviewer: { on: true, state: "notes", agent: "tokens", layers: 3, since: null, at: 1000, expired: false, sent: 0, left: 0,
+                  notes: [{ id: "n1", rule: "x", title: "Default name", text: "Frame 2", layers: [{ id: "1:2", name: "Frame 2", type: "FRAME" }], more: 0 }] } });
+    env.board([file("KEY1", "Dashboard"), other], { settings: { reviewer: true } });
+    env.click("toggle", "doc:KEY2");
+    await env.clock.advance(400);
+    check("a file of another place: names only, no Show all, and the answer names its file",
+          [/<span class="layer"><svg/.test(env.app()), /rv-all/.test(env.app()), /data-act="layer" data-id="1:2"/.test(env.app())], [true, false, false]);
+    env.click("rv-send", "doc:KEY2");
+    check("…Send names its file", env.sent("review-answer"), [{ type: "review-answer", doc: "doc:KEY2", send: ["n1"] }]);
   }
 
   console.log(failed ? `\n${failed} FAILED` : "\nall window checks passed");
