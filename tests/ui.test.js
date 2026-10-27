@@ -1411,7 +1411,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("…and keeps it through a redraw", /class="agent rv hot" data-agent="reviewer"/.test(env.app()), true);
     const sw = (env.app().match(/<button[^>]*data-act="rv-toggle"[^>]*>/) || [""])[0];
     check("…the keyboard reaches the switch: it is focusable, and focus inside the row opens its slot",
-          [/tabindex="-1"/.test(sw), /disabled/.test(sw), /\.agent\.rv:focus-within \.act\.swa \{[^}]*width: 26px/.test(html),
+          [/tabindex="-1"/.test(sw), /disabled/.test(sw), /\.agent\.rv:focus-within \.act\.swa \{[^}]*width: 27px/.test(html),
            /\.agent\.rv:focus-within \.act\.swa \.sw \{[^}]*opacity: 1/.test(html),
            /\.agent\.rv \.act\.swa \.sw \{[^}]*(display: none|visibility: hidden)/.test(html)], [false, false, true, true, false]);
     check("…and the notes callout's buttons are styled once", (html.match(/^\.callout\.rq \.acts \{/gm) || []).length, 1);

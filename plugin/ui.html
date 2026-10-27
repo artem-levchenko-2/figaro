@@ -252,9 +252,9 @@ html.rainbow .px i:nth-child(9) { --c: hsl(275 75% 62%); animation-delay: 0ms; }
 .qm:hover { color: var(--is-dim); }
 .qm svg { width: 12px; height: 12px; }
 .agent.rv .act { width: 18px; margin-left: -2px; }
-.agent.rv .act.swa { width: 0; margin-left: -8px; }
-.agent.rv .act.swa .sw { opacity: 0; pointer-events: none; transition: opacity .1s ease, background-color .15s; }
-.agent.rv.hot .act.swa, .agent.rv:focus-within .act.swa { width: 26px; margin-left: -2px; }
+.agent.rv .act.swa { width: 0; margin-left: -8px; align-items: center; }  /* the switch in the middle of the row, 6 px from its round end */
+.agent.rv .act.swa .sw { margin-right: 1px; opacity: 0; pointer-events: none; transition: opacity .1s ease, background-color .15s; }
+.agent.rv.hot .act.swa, .agent.rv:focus-within .act.swa { width: 27px; margin-left: -2px; }
 .agent.rv.hot .act.swa .sw, .agent.rv:focus-within .act.swa .sw { opacity: 1; pointer-events: auto; transition: opacity .16s ease .06s, background-color .15s; }
 .callout.rq { --c: var(--wait); margin-bottom: 6px; }
 .callout.rq .h { padding-right: 2px; }
