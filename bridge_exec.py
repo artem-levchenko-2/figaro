@@ -119,6 +119,8 @@ def exec_fields(conn_id, agent, opts, parallel=False):
         fields["quick"] = True
     if agent:
         fields["agent"] = agent
+    if not bridge_settings.on("reviewer"):
+        fields["review"] = False   # nothing when on: an older plugin runs the check
     title = None if opts.quick else _checkpoint_title(conn_id, agent, read_only, opts.checkpoint)
     if title:
         fields["checkpoint"] = title
