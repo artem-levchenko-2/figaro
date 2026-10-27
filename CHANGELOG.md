@@ -9,8 +9,6 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
-## [1.8.0] — 2026-10-27
-
 ### Added
 
 - **`figaro inspect` of a component set shows what differs between its variants.** It prints the variant axes,
