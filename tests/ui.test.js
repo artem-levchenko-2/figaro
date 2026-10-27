@@ -144,6 +144,7 @@ function load({ calm = false, layout = null, figma = null } = {}) {
     cues: () => { const c = contexts.find((x) => !x.oscs.some((o) => o.frequency.value === 20)); return c ? c.state : "none"; },
     exec: (id, timeout) => env.ws().receive({ type: "exec", id, code: "return 1", timeout }),
     // The sandbox's answer to a request, on its way to the bridge.
+    selected: (id, ok) => window.onmessage({ data: { pluginMessage: { type: "selected", id, ok } } }),
     answer: (id) => window.onmessage({ data: { pluginMessage: { type: "result", id, value: 1 } } }),
     html: () => elements.app.innerHTML + elements.end.innerHTML + elements.foot.innerHTML,  // the islands, then the last line
     app: () => elements.app.innerHTML,
@@ -1435,7 +1436,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     await show(env, rv({ state: "notes", layers: 24, notes }), {}, {});
     const open = env.app();
     check("notes: the yellow disc with their number in the row, and 'for you'",
-          [/<span class="bdg notes"><svg viewBox="0 0 12 12"><circle[^>]*\/><text x="6" y="8.8">3<\/text>/.test(open), /<\/span>notes for you<\/span>/.test(open)], [true, true]);
+          [/<span class="bdg count"><svg viewBox="0 0 12 12"><circle[^>]*\/><text x="6" y="8.8">3<\/text>/.test(open), /<\/span>notes for you<\/span>/.test(open)], [true, true]);
     check("…the callout names the agent, with a Show all", [/3 notes on designer's work/.test(open), /data-act="rv-all"/.test(open),
           /Tick the ones designer should fix/.test(open)], [true, true, true]);
     check("…every note comes ticked, with its text and a button for each layer of this file",
@@ -1465,6 +1466,25 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     check("Show all selects every layer of every note at once",
           env.posted.filter((m) => m.type === "select").slice(-1), [{ type: "select", id: "I2:1068", ids: ["I2:1068", "12:44", "12:45"] }]);
 
+    // layers the file no longer has
+    env.selected("12:44", false);
+    await env.clock.advance(400);
+    check("a note's layer that is gone is dimmed as in Recent, the others are not",
+          [/class="layer gone" data-act="layer" data-id="12:44"/.test(env.app()), /class="layer comp" data-act="layer" data-id="I2:1068"/.test(env.app())], [true, true]);
+    env.posted.length = 0;
+    env.click("rv-all", "here");
+    check("Show all leaves the gone ones out", env.posted.filter((m) => m.type === "select"), [{ type: "select", id: "I2:1068", ids: ["I2:1068", "12:45"] }]);
+    env.selected("I2:1068", false);
+    env.selected("12:45", false);
+    await env.clock.advance(400);
+    check("…and is gone itself once every layer of the notes is", /rv-all/.test(env.app()), false);
+    env.selected("12:44", true);
+    env.selected("I2:1068", true);
+    env.selected("12:45", true);
+    await env.clock.advance(400);
+    check("the badge's class is its own: nothing else styles .bdg.count",
+          [/class="bdg notes"/.test(env.app()), (html.match(/^\.notes\b/gm) || []).length > 0, /class="bdg count"/.test(env.app())], [false, true, true]);
+
     // expired
     await show(env, rv({ state: "notes", layers: 24, notes, expired: true }), {}, {});
     check("expired: the agent stopped waiting, so Copy for chat takes the place of Send",
@@ -1485,7 +1505,7 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.click("toggle", "here");
     await env.clock.advance(400);
     check("collapsed: the island's row shows the disc, and its line says 'reviewer: 3 notes for you'",
-          [/<span class="ind"><span class="bdg notes">/.test(env.app()), /reviewer: 3 notes for you/.test(env.app())], [true, true]);
+          [/<span class="ind"><span class="bdg count">/.test(env.app()), /reviewer: 3 notes for you/.test(env.app())], [true, true]);
     await show(env, rv({ state: "notes", layers: 24, notes: notes.slice(0, 1) }), {}, {});
     check("…one note is a note", /reviewer: 1 note for you/.test(env.app()), true);
     await show(env, rv({ state: "notes", layers: 24, notes: notes.slice(0, 1) }), {}, { reviewer: false });

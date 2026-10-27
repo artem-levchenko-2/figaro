@@ -253,10 +253,10 @@ html.rainbow .px i:nth-child(9) { --c: hsl(275 75% 62%); animation-delay: 0ms; }
 .qm svg { width: 12px; height: 12px; }
 .agent.rv .ah .sw { margin-left: -2px; }
 .agent.rv .act { width: 18px; margin-left: -2px; }
-.bdg.notes { --c: var(--is-warn); }
-.bdg.notes svg { width: 13px; height: 13px; }
-.bdg.notes text { font: 700 8.5px var(--sys); text-anchor: middle; fill: var(--is-warn-on); }
-.bdg.notes text.two { font-size: 6.6px; }
+.bdg.count { --c: var(--is-warn); }
+.bdg.count svg { width: 13px; height: 13px; }
+.bdg.count text { font: 700 8.5px var(--sys); text-anchor: middle; fill: var(--is-warn-on); }
+.bdg.count text.two { font-size: 6.6px; }
 .callout.rq { --c: var(--wait); margin-bottom: 6px; }
 .callout.rq .h { padding-right: 2px; }
 .callout.rq .acts { flex-wrap: wrap; }
@@ -1023,7 +1023,7 @@ const BADGE = {
 const badge = (kind) => `<span class="bdg ${kind}"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/>${BADGE[kind]}</svg></span>`;
 
 // The yellow disc with the number of notes waiting for the designer.
-const notesBadge = (n) => `<span class="bdg notes"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/>`
+const notesBadge = (n) => `<span class="bdg count"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="6" fill="currentColor"/>`
   + `<text x="6" y="${n > 9 ? 8.2 : 8.8}"${n > 9 ? ' class="two"' : ""}>${n > 9 ? "9+" : n}</text></svg></span>`;
 const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
 
@@ -1206,9 +1206,10 @@ function reviewerAsk(f, r) {
     const on = picked.includes(nt);
     const chips = nt.layers.map((l) => {
       const type = l.type === "COMPONENT_SET" ? "COMPONENT" : l.type;
-      const cls = "layer" + (type === "COMPONENT" || type === "INSTANCE" ? " comp" : "");
+      const gone = f.here && goneLayers.has(l.id);
+      const cls = "layer" + (type === "COMPONENT" || type === "INSTANCE" ? " comp" : "") + (gone ? " gone" : "");
       const inner = `${iconOf(type)}<span>${esc(l.name)}</span>`;
-      return f.here ? `<button type="button" class="${cls}" data-act="layer" data-id="${esc(l.id)}" title="Select it in Figma">${inner}</button>` : `<span class="${cls}">${inner}</span>`;
+      return f.here ? `<button type="button" class="${cls}" data-act="layer" data-id="${esc(l.id)}" title="${gone ? "Not in the file any more" : "Select it in Figma"}">${inner}</button>` : `<span class="${cls}">${inner}</span>`;
     }).join("") + (nt.more ? `<span class="more">+${nt.more}</span>` : "");
     return `<li class="${on ? "on" : ""}"><button type="button" class="cb" data-act="rv-tick" data-id="${esc(nt.id)}" role="checkbox" aria-checked="${on}" aria-label="${esc(nt.title)}">${on ? ICON.done : ""}</button>`
       + `<div><b>${esc(nt.title)}</b>${nt.text ? ` <em>· ${esc(nt.text)}</em>` : ""}${chips ? `<div class="layers">${chips}</div>` : ""}</div></li>`;
@@ -1218,7 +1219,8 @@ function reviewerAsk(f, r) {
   const main = r.expired
     ? `<button type="button" class="go" data-act="rv-copy"${k ? "" : " disabled"}>Copy for chat</button>`
     : `<button type="button" class="go" data-act="rv-send"${k ? "" : " disabled"}>Send ${k} to ${esc(who)}</button>`;
-  const all = f.here ? '<button type="button" class="showall" data-act="rv-all">Show all</button>' : "";
+  const alive = r.notes.some((nt) => nt.layers.some((l) => !goneLayers.has(l.id)));
+  const all = f.here && alive ? '<button type="button" class="showall" data-act="rv-all">Show all</button>' : "";
   return `<div class="callout rq"><div class="h"><span class="ind">${notesBadge(r.notes.length)}</span>${plural(r.notes.length, "note", "notes")} on ${esc(who)}'s work${all}</div>`
     + `<p>${text}</p><ul class="rql">${items}</ul><div class="acts"><button type="button" class="go2" data-act="rv-fine">All fine</button>${main}</div></div>`;
 }
@@ -2023,7 +2025,7 @@ function act(name, fid, el) {
   } else if (name === "rv-all" && f && f.here && rvOf(f)) {
     cue("layer");
     const ids = [];
-    for (const n of rvOf(f).notes) for (const l of n.layers) if (!ids.includes(l.id)) ids.push(l.id);
+    for (const n of rvOf(f).notes) for (const l of n.layers) if (!ids.includes(l.id) && !goneLayers.has(l.id)) ids.push(l.id);
     if (ids.length) parent.postMessage({ pluginMessage: { type: "select", id: ids[0], ids } }, "*");
   } else if (name === "rv-copy" && f && f.doc && rvOf(f)) {
     cue("go");
