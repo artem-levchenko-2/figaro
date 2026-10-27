@@ -19,10 +19,10 @@ file; the release notes say when it has to be imported again.
   (`Size=S`) when every variant with that value has it, so a set of 50 stays short. It says what it did not compare: layers below `--depth` or the layer limit, hidden layers it could not read, and a vector's path (only its size and paints are compared). `--json` and `-o` keep all
   their keys and add `variants` (the base, the axes and the differences). Other layers print as before.
 - **`h.audit(layer, opts?)`** checks the layers under one before `figaro done`: it returns notes (the rule, the
-  layer's id and name, one line on what is wrong and what to do) sorted by importance, capped at 50 with a
+  layer's id and name, one line on what is wrong and what to do) sorted by importance, capped at 50 by rank with a
   count of the rest, and layers with the same note come as one. It only hints. Rules: a colour without a style
   or variable and text without a text style (only where the file works with them), weak contrast of text (WCAG
-  AA, 4.5:1, 3:1 for large text) and of icons (3:1), buttons under 24 × 24 px, text that is clipped, runs out
+  AA, 4.5:1, 3:1 for large text) and of icons in controls (3:1), buttons under 24 × 24 px, text that is clipped, runs out
   of its box or has a missing font, placeholder text such as "TBC", frames with several children and no
   auto-layout, empty and zero-size layers, detached instances, default names like "Frame 12", siblings a few
   px apart, skipped heading levels and absolutely positioned content inside auto-layout. The walk is iterative

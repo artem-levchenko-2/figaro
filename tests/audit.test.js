@@ -125,6 +125,32 @@ const ids = (notes) => notes.map((n) => n.id);
     check("low-contrast: large text says so", /needs 3:1 for large text/.test(r[1].text), true);
     check("low-contrast: a ratio is rounded down, never up to the threshold",
           /^contrast 4\.4[0-9]:1/.test(r[3].text), true);
+    // the edges of "large": 24 px, or 18.66 px and bold (700); #777777 is 4.48:1, so only large text passes
+    const edge = (props) => TX("edge", Object.assign({ fills: [solid("#777777")] }, props));
+    const e24 = edge({ fontSize: 24 }), e235 = edge({ fontSize: 23.5 }), reg20 = edge({ fontSize: 20 });
+    const b1866 = edge({ fontSize: 18.66, fontWeight: 700 }), b185 = edge({ fontSize: 18.5, fontWeight: 700 });
+    const b600 = edge({ fontSize: 19, fontWeight: 600 }), b700 = edge({ fontSize: 19, fontWeight: 700 });
+    check("low-contrast: large is 24 px, or 18.66 px and bold 700 — not 23.5, not regular 20, not 18.5 bold, not 600",
+          ids(await only("low-contrast", F([e24, e235, reg20, b1866, b185, b600, b700]))), [e235.id, reg20.id, b185.id, b600.id]);
+    // opacity of a layer above counts, though it has no fill of its own
+    const dim = F([TX("dim", { fills: [solid("#000000")] })], { fills: [], opacity: 0.3 });
+    check("low-contrast: the opacity of a parent counts", (await only("low-contrast", F([dim]))).length, 1);
+    const full = F([TX("dim", { fills: [solid("#000000")] })], { fills: [], opacity: 1 });
+    check("low-contrast: a parent at full opacity does not", (await only("low-contrast", F([full]))).length, 0);
+    // inactive things are exempt (WCAG 1.4.3): by a layer's name above, an instance's variant, or the text's own name
+    const weak = (props) => TX("x", Object.assign({ fills: [solid("#AAAAAA")] }, props));
+    const offByParent = F([weak()], { name: "Button / Disabled" });
+    const offByOwn = weak({ name: "Label inactive" });
+    const offByVariant = F([weak()], { name: "State=Disabled" });
+    const inst = N("INSTANCE", { name: "Field", componentProperties: { State: { type: "VARIANT", value: "Disabled" } } });
+    const innerText = weak();
+    inst.children = [innerText]; innerText.parent = inst; F([inst]);
+    const onWord = TX("Disabled", { fills: [solid("#AAAAAA")] });  // its name is just its words
+    for (const [what, node] of [["a parent's name", offByParent], ["the text's own name", offByOwn], ["a variant component's name", offByVariant], ["an instance's variant value", innerText]]) {
+      const root = node === innerText ? innerText : F([node]);
+      check("low-contrast: quiet for " + what, (await only("low-contrast", root)).length, 0);
+    }
+    check("low-contrast: a text that only says Disabled is still judged", (await only("low-contrast", F([onWord]))).length, 1);
     // mixed runs: one weak run is enough
     const mixed = TX("strong weak", { fills: MIXED, segments: [
       { characters: "strong ", fills: [solid("#111111")], fontSize: 14, fontWeight: 400 },
@@ -159,21 +185,33 @@ const ids = (notes) => notes.map((n) => n.id);
     check("low-contrast: hidden layers are not judged", (await only("low-contrast", F([hidden]))).length, 0);
   }
 
-  // ── low-contrast-ui: icons at 3:1
+  // ── low-contrast-ui: icons at 3:1, in a control
   {
     const faint = VEC("#DDDDDD"), dark = VEC("#222222");
-    const r = await only("low-contrast-ui", F([faint, dark]));
-    check("low-contrast-ui: a pale icon, not a dark one", ids(r), [faint.id]);
+    const r = await only("low-contrast-ui", F([faint, dark], { name: "Close Button" }));
+    check("low-contrast-ui: a pale icon in a button, not a dark one", ids(r), [faint.id]);
     check("low-contrast-ui: the note", r[0].text, "icon contrast 1.35:1 of #DDDDDD on #FFFFFF, needs 3:1; use a stronger colour");
+    const edge = (hex) => only("low-contrast-ui", F([VEC(hex)], { name: "Button" })).then((x) => x.length);
+    check("low-contrast-ui: 2.85:1 fails, 3.54:1 passes", [await edge("#999999"), await edge("#888888")], [1, 0]);
+    check("low-contrast-ui: a decorative vector outside a control is not judged",
+          (await only("low-contrast-ui", F([VEC("#DDDDDD")], { name: "Illustration" }))).length, 0);
+    const near = F([F([F([VEC("#DDDDDD")], { name: "wrap 2" })], { name: "wrap 1" })], { name: "Close Button" });
+    check("low-contrast-ui: a control up to four levels above counts", (await only("low-contrast-ui", near)).length, 1);
+    const far = F([F([F([F([F([VEC("#DDDDDD")], { name: "w4" })], { name: "w3" })], { name: "w2" })], { name: "w1" })], { name: "Close Button" });
+    check("low-contrast-ui: a control five levels above does not", (await only("low-contrast-ui", far)).length, 0);
+    const click = F([VEC("#DDDDDD")], { name: "Thing", reactions: [{ trigger: { type: "ON_CLICK" }, actions: [] }] });
+    check("low-contrast-ui: a click in the prototype makes a control", (await only("low-contrast-ui", click)).length, 1);
+    check("low-contrast-ui: an inactive control is exempt",
+          (await only("low-contrast-ui", F([VEC("#DDDDDD")], { name: "Button disabled" }))).length, 0);
     // a mark on a disc of its own: the disc is the backdrop; the same colour as its neighbour is a drawing's part
     const disc = VEC("#0D6EFD"), mark = VEC("#FFFFFF");
     const part = VEC("#0D6EFD");
-    const r2 = await only("low-contrast-ui", F([disc, mark, part], { layoutMode: "NONE" }));
+    const r2 = await only("low-contrast-ui", F([disc, mark, part], { layoutMode: "NONE", name: "Close Button" }));
     check("low-contrast-ui: a mark on its disc, and a part of the same colour, are quiet", ids(r2), []);
     const big = VEC("#EEEEEE", { width: 300, height: 300 });
-    check("low-contrast-ui: only icon-sized vectors", (await only("low-contrast-ui", F([big]))).length, 0);
-    const a = VEC("#EEEEEE"), b = VEC("#EEEEEE");
-    check("low-contrast-ui: one note per parent", (await only("low-contrast-ui", F([a, b]))).length, 1);
+    check("low-contrast-ui: only icon-sized vectors", (await only("low-contrast-ui", F([big], { name: "Button" }))).length, 0);
+    const a1 = VEC("#EEEEEE"), b1 = VEC("#EEEEEE");
+    check("low-contrast-ui: one note per parent", (await only("low-contrast-ui", F([a1, b1], { name: "Button" }))).length, 1);
   }
 
   // ── text-clipped
@@ -184,6 +222,13 @@ const ids = (notes) => notes.map((n) => n.id);
     const snug = TX("snug", { textAutoResize: "NONE", height: 16, absoluteRenderBounds: { x: 0, y: 2, width: 80, height: 14 } });
     const r = await only("text-clipped", F([ownBox, auto, truncated, snug]));
     check("text-clipped: a fixed box the text runs out of (not auto-height, truncation or a snug fit)", ids(r), [ownBox.id]);
+    // the slack is 40% of the font size (5.6 px at 14): within it, glyph overhang; past it, a line gone over
+    const box = (h, w) => TX("fixed", { textAutoResize: "NONE", height: 20, absoluteRenderBounds: { x: 0, y: 0, width: w || 80, height: h } });
+    const within = box(25), past = box(26), tall = box(25, 80);
+    check("text-clipped: 5 px over a fixed box is slack, 6 px is not", ids(await only("text-clipped", F([within, past]))), [past.id]);
+    const sideIn = TX("w", { textAutoResize: "HEIGHT", absoluteRenderBounds: { x: 0, y: 0, width: 85, height: 16 } });
+    const sideOut = TX("w", { textAutoResize: "HEIGHT", absoluteRenderBounds: { x: 0, y: 0, width: 86, height: 16 } });
+    check("text-clipped: the same slack on the side", ids(await only("text-clipped", F([sideIn, sideOut]))), [sideOut.id]);
     // cut by a frame that clips: the box sticks out, the part that shows reaches the frame's edge
     const cut = TX("wide", { width: 209, absoluteRenderBounds: { x: 0, y: 0, width: 100, height: 16 } });
     const clipper = F([cut], { width: 100, height: 30, clipsContent: true, name: "Frame that clips" });
@@ -239,6 +284,11 @@ const ids = (notes) => notes.map((n) => n.id);
     const screen = F(kids3(), { name: "Screen", layoutMode: "NONE", width: 390, height: 844 });
     const page = N("PAGE", { name: "Page" }, [screen]);
     check("no-auto-layout: a screen on the page is placed by hand on purpose", (await only("no-auto-layout", page)).length, 0);
+    const onPage = (w, hh) => { const f = F(kids3(), { name: "Mock", layoutMode: "NONE", width: w, height: hh }); N("PAGE", {}, [f]); return f; };
+    const exempt = [onPage(450, 320), onPage(440, 320), onPage(320, 440), onPage(844, 390)];
+    const caught = [onPage(450, 319), onPage(439, 320), onPage(300, 600)];
+    check("no-auto-layout: landscape and portrait mocks are exempt", (await Promise.all(exempt.map((f) => only("no-auto-layout", f)))).map((r) => r.length), [0, 0, 0, 0]);
+    check("no-auto-layout: just under the sizes they are not", (await Promise.all(caught.map((f) => only("no-auto-layout", f)))).map((r) => r.length), [1, 1, 1]);
     const card = F(kids3(), { name: "Card on page", layoutMode: "NONE", width: 300, height: 200 });
     N("PAGE", { name: "Page" }, [card]);
     check("no-auto-layout: a card on the page is not a screen", ids(await only("no-auto-layout", card)), [card.id]);
@@ -246,16 +296,17 @@ const ids = (notes) => notes.map((n) => n.id);
     check("no-auto-layout: a component set lays out its variants by hand", (await only("no-auto-layout", set)).length, 0);
   }
 
-  // ── empty-frame
+  // ── empty-frame: nothing to see, and still named by Figma
   {
-    const bare = F([], { name: "Bare", fills: [] });
-    const filled = F([], { name: "Filled" });
-    const stroked = F([], { name: "Stroked", fills: [], strokes: [solid("#CCCCCC")], strokeWeight: 1 });
-    const shadow = F([], { name: "Shadow", fills: [], effects: [{ type: "DROP_SHADOW", visible: true }] });
-    const holder = F([RECT("#CCCCCC")], { name: "Holder", fills: [] });
-    const mask = F([], { name: "Mask", fills: [], isMask: true });
-    check("empty-frame: nothing in it and nothing to see",
-          ids(await only("empty-frame", F([bare, filled, stroked, shadow, holder, mask]))), [bare.id]);
+    const bare = F([], { name: "Frame", fills: [] }), bare12 = F([], { name: "Frame 12", fills: [] });
+    const spacer = F([], { name: "AM/PM (empty in 24h)", fills: [] });
+    const filled = F([], { name: "Frame 3" });
+    const stroked = F([], { name: "Frame 4", fills: [], strokes: [solid("#CCCCCC")], strokeWeight: 1 });
+    const shadow = F([], { name: "Frame 5", fills: [], effects: [{ type: "DROP_SHADOW", visible: true }] });
+    const holder = F([RECT("#CCCCCC")], { name: "Frame 6", fills: [] });
+    const mask = F([], { name: "Frame 7", fills: [], isMask: true });
+    check("empty-frame: an empty, invisible frame that still has Figma's name; a named one is on purpose",
+          ids(await only("empty-frame", F([bare, bare12, spacer, filled, stroked, shadow, holder, mask]))), [bare.id, bare12.id]);
   }
 
   // ── detached-instance
@@ -307,6 +358,15 @@ const ids = (notes) => notes.map((n) => n.id);
           (await only("no-text-style", F([plain]))).length, 0);
     check("no-text-style: a styled text in the layers shows the file uses them",
           ids(await only("no-text-style", F([plain, styled]))), [plain.id]);
+    const typed = TX("typed", { boundVariables: { fontSize: { type: "VARIABLE_ALIAS", id: "V:2" } } });
+    const family = TX("family", { boundVariables: { fontFamily: { type: "VARIABLE_ALIAS", id: "V:3" } } });
+    const color = TX("colour only", { boundVariables: { fills: [{ type: "VARIABLE_ALIAS", id: "V:4" }] } });
+    LOCAL.text = [{ id: "S:9" }];
+    check("no-text-style: typography variables count as a style, a colour variable does not",
+          ids(await only("no-text-style", F([typed, family, color]))), [color.id]);
+    LOCAL.text = [];
+    check("no-text-style: a text with typography variables shows the file works with tokens",
+          ids(await only("no-text-style", F([TX("plain"), typed]))).length, 1);
     LOCAL.text = [{ id: "S:9" }];
     check("no-text-style: the file has styles", ids(await only("no-text-style", F([plain, styled]))), [plain.id]);
     const half = TX("half styled", { textStyleId: MIXED, segments: [
@@ -338,10 +398,18 @@ const ids = (notes) => notes.map((n) => n.id);
     const r = await only("uneven-siblings", F([F(a, { layoutMode: "HORIZONTAL", name: "A" }), F(equal, { layoutMode: "HORIZONTAL", name: "B" }),
       F(far, { layoutMode: "HORIZONTAL", name: "C" }), F(hug, { layoutMode: "HORIZONTAL", name: "D" }), F(tall, { layoutMode: "HORIZONTAL", name: "E" })]));
     check("uneven-siblings: same-named fixed siblings a few px apart, not equal, far apart or hugging", ids(r), [a[2].id, tall[1].id]);
+    const pair = async (a, b) => {
+      const kids = [card(a), card(b)];
+      return ids(await only("uneven-siblings", F([F(kids, { layoutMode: "HORIZONTAL" })]))).length;
+    };
+    check("uneven-siblings: 8 px apart is a slip, 9 is a decision, 0.6 is a slip, 0.5 is rounding",
+          [await pair(300, 292), await pair(300, 291), await pair(300, 299.4), await pair(300, 299.5)], [1, 0, 1, 0]);
+    const near = await h.audit(F([F([card(300), card(299.7)], { layoutMode: "HORIZONTAL" })]), { only: ["uneven-siblings"] });
+    check("uneven-siblings: 0.3 px apart is rounding: no note and no failure", [near.total, near.errors], [0, undefined]);
     check("uneven-siblings: the note", r[0].text, "is 296 px wide, its same-named siblings are 300, 296; make them equal");
   }
 
-  // ── heading-order: by name or by the text style's name, top to bottom
+  // ── heading-order: by name or by the text style's name, top to bottom, within each screen
   {
     STYLES["S:h2"] = { name: "Heading/H2" };
     const h1 = TX("Title", { name: "H1", y: 0 }), h2 = TX("Sub", { textStyleId: "S:h2", name: "x", y: 40 });
@@ -353,6 +421,24 @@ const ids = (notes) => notes.map((n) => n.id);
     const fine = F([TX("a", { name: "H1", y: 0 }), TX("b", { name: "H2", y: 10 }), TX("c", { name: "H3", y: 20 }), TX("d", { name: "H2", y: 30 })], { layoutMode: "NONE" });
     check("heading-order: going back up is fine", (await only("heading-order", fine)).length, 0);
     check("heading-order: a lone heading is fine", (await only("heading-order", F([TX("a", { name: "H3" })]))).length, 0);
+    // a text is a heading by its whole name: "H2 2024 results" is a line of text, "H2 / Section" is not H2
+    const t1 = TX("Title", { name: "H1", y: 0 });
+    const words = TX("H2 2024 results", { y: 10 });           // named by its own words
+    const sect = TX("Section", { name: "H4 Section", y: 20 });
+    const same = TX("H4", { y: 30 });                         // a text that says H4, named by it
+    check("heading-order: only a name that is exactly H1-H6 (or Heading N) makes a heading",
+          (await only("heading-order", F([t1, words, sect, same], { layoutMode: "NONE" }))).length, 0);
+    const wordy = TX("Section", { name: "Heading 4", y: 20 });
+    check("heading-order: Heading 4 is a name too", ids(await only("heading-order", F([t1, wordy], { layoutMode: "NONE" }))), [wordy.id]);
+    // screens side by side are judged one by one
+    const A = F([TX("a1", { name: "H1", y: 0 }), TX("a2", { name: "H2", y: 100 })], { name: "A", layoutMode: "NONE" });
+    const B = F([TX("b3", { name: "H3", y: 50 })], { name: "B", layoutMode: "NONE" });
+    const C1 = TX("c1", { name: "H1", y: 0 }), C4 = TX("c4", { name: "H4", y: 10 });
+    const C = F([C1, C4], { name: "C", layoutMode: "NONE" });
+    const board = N("PAGE", { name: "Page" }, [A, B, C]);
+    check("heading-order: screens on a page are judged apart (B starting at H3 is fine; C skips)", ids(await only("heading-order", board)), [C4.id]);
+    const sectioned = N("SECTION", { name: "Sec" }, [F([TX("s1", { name: "H1", y: 0 })], { name: "S1" }), F([TX("s3", { name: "H3", y: 5 })], { name: "S2" })]);
+    check("heading-order: the frames of a section are screens too", (await only("heading-order", sectioned)).length, 0);
   }
 
   // ── absolute-in-layout
@@ -414,6 +500,47 @@ const ids = (notes) => notes.map((n) => n.id);
     check("group: the ids listed stop at 30", [g2.notes.length, g2.notes[0].count, g2.notes[0].ids.length], [1, 80, 30]);
   }
 
+  // ── the cap is by rank: a flood of a quiet rule never pushes out a louder one
+  {
+    LOCAL.text = [{ id: "S:9" }]; LOCAL.paint = [{ id: "S:9" }];
+    const texts = [];
+    for (let i = 0; i < 2100; i++) texts.push(TX("t" + i, { fillStyleId: "S:1" }));
+    const rects = [];
+    for (let i = 0; i < 5; i++) rects.push(RECT("#FF00" + (10 + i)));
+    const r = await h.audit(W(texts.concat(rects)), { group: false });
+    check("cap by rank: 5 raw colours come first, then no-text-style fills the rest",
+          [r.notes.slice(0, 5).map((n) => n.rule), r.notes[5].rule, r.notes.length], [Array(5).fill("unbound-color"), "no-text-style", 50]);
+    check("cap by rank: total and more count every layer", [r.total, r.more, r.counts["unbound-color"], r.counts["no-text-style"]], [2105, 2055, 5, 2100]);
+    const g = await h.audit(W(texts.concat(rects)));
+    check("cap by rank: grouped, 5 colours and one group of 2100 texts", [g.notes.length, g.notes[5].count, g.more], [6, 2100, 0]);
+    LOCAL.text = []; LOCAL.paint = [];
+  }
+
+  // ── a call to Figma that fails does not fail the audit
+  {
+    const was = [figma.getLocalTextStylesAsync, figma.getLocalPaintStylesAsync, figma.variables.getLocalVariablesAsync];
+    figma.getLocalTextStylesAsync = async () => { throw new Error("did not answer"); };
+    figma.getLocalPaintStylesAsync = async () => { throw new Error("did not answer"); };
+    figma.variables.getLocalVariablesAsync = async () => { throw new Error("did not answer"); };
+    let why = null, a = null, b = null;
+    try {
+      a = await h.audit(F([TX("plain")]), { only: ["no-text-style"] });
+      b = await h.audit(W([RECT("#FF0000")]), { only: ["unbound-color"] });
+    } catch (e) { why = e.message; }
+    figma.getLocalTextStylesAsync = was[0]; figma.getLocalPaintStylesAsync = was[1]; figma.variables.getLocalVariablesAsync = was[2];
+    check("audit: a rejected call for the file's styles or variables is no failure, and no tokens means no notes",
+          [why, a && a.total, b && b.total], [null, 0, 0]);
+  }
+
+  // ── a layer that breaks the walk is counted, not hidden
+  {
+    const broken = TX("x");
+    Object.defineProperty(broken, "characters", { get() { throw new Error("gone"); } });
+    const r = await h.audit(F([broken, TX("TBC")]), { only: ["placeholder-text"] });
+    check("errors: one layer failed; the rest is still judged and the count is in the answer", [r.total, r.errors], [1, 1]);
+    check("errors: a clean walk has no errors field", "errors" in (await h.audit(F([TX("fine")]))), false);
+  }
+
   // ── a walk that is bounded and asks h.ck()
   {
     const row = [];
@@ -434,6 +561,21 @@ const ids = (notes) => notes.map((n) => n.id);
     const slow = await h.audit(page, { maxMs: 2000 });
     Date.now = now;
     check("walk: a time budget ends it too", /^stopped after 2 s/.test(slow.partial), true);
+    clock = now();
+    Date.now = () => (clock += 500);
+    const quick = await h.audit(page, { maxMs: 300 });
+    Date.now = now;
+    check("walk: under a second is told in tenths", /^stopped after 0\.3 s/.test(quick.partial), true);
+    // the walk gives the plugin a breath (setTimeout 0) when it has run 40 ms without one
+    const realTimeout = globalThis.setTimeout;
+    let breaths = 0;
+    globalThis.setTimeout = (fn, ms) => { if (ms === 0) breaths++; return realTimeout(fn, 0); };
+    clock = now();
+    Date.now = () => (clock += 100);
+    await h.audit(page, { only: ["default-name"] });
+    Date.now = now;
+    globalThis.setTimeout = realTimeout;
+    check("walk: yields to the plugin while it runs", breaths >= 1, true);
     // depth does not matter: an iterative walk has no stack to run out of
     let deep = F([TX("TBC")], { name: "deepest" });
     for (let i = 0; i < 3000; i++) deep = F([deep], { name: "level " + i });

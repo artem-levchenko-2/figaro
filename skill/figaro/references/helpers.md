@@ -130,10 +130,12 @@ return await h.audit(await h.node("12:34"));
 // }
 ```
 
-- **`notes`** — sorted by importance, then in the order of the layers; at most `limit` (50). Layers with the
-  same rule and the same text come as one note with `count` and their `ids` (up to 30), so a dozen texts of one
-  grey are one thing to fix. `total` is the number of layers with a note, `more` those not in `notes`,
-  `counts` them by rule; `partial` says the walk stopped early (see below). Links: `figaro link <id>…`, or
+- **`notes`** — the top `limit` (50) notes by importance (the table's order, then the order of the layers):
+  a flood of a quiet rule never pushes out a louder one. Layers with the same rule and the same text come as
+  one note with `count` and their `ids` (up to 30), so a dozen texts of one grey are one thing to fix.
+  `total` is the number of layers with a note, `more` those not in `notes`, `counts` them by rule, all
+  honest however long the page; `partial` says the walk stopped early (see below), `errors` how many layers
+  could not be read (removed while it ran) and so were skipped. Links: `figaro link <id>…`, or
   `links: true` for a `url` in each note.
 - **`opts`** — `only: [rule…]` and `skip: [rule…]` choose rules (an unknown id fails and lists them),
   `limit` (50), `group: false` (a note for each layer), `minTarget` (24; 44 for a phone design), `links`,
@@ -150,18 +152,18 @@ The rules, loudest first, with the thresholds:
 | `missing-font` | a text uses a font that is not installed | `hasMissingFont` |
 | `text-clipped` | a text is cut or runs out of its box | a fixed box (`textAutoResize` none) the text overflows by more than 40% of its font size; or a frame that clips (`clipsContent`) cuts it. A text with truncation (ellipsis) is on purpose and skipped |
 | `zero-size` | a layer shows nothing | a text, frame, rectangle, ellipse or instance under 1 px wide or high; a text with no visible characters. Lines are meant to be flat |
-| `low-contrast` | text is hard to read | WCAG AA: contrast under 4.5:1, or under 3:1 for large text (24 px, or 18.66 px and bold). The text colour is blended with its own opacity and the layers' above it, per run of one colour and size |
-| `low-contrast-ui` | an icon is hard to see | a vector under 64 px with a solid colour: under 3:1 (WCAG non-text contrast). One note per parent. A layer of the same colour right beside it counts as a part of one drawing |
+| `low-contrast` | text is hard to read | WCAG AA: contrast under 4.5:1, or under 3:1 for large text (24 px, or 18.66 px and bold 700). The text colour is blended with its own opacity and the layers' above it, per run of one colour and size. Inactive text is exempt (WCAG 1.4.3): a layer from the text up to the root named with *disabled* or *inactive*, or an instance whose variant value says so |
+| `low-contrast-ui` | an icon is hard to see | a vector under 64 px with a solid colour: under 3:1 (WCAG 1.4.11). Only one that is part of a control: a button-like name or a click in the prototype on a layer up to four levels above (as in `small-target`); an illustration is not judged. Not inactive ones. One note per parent. A layer of the same colour right beside it counts as a part of one drawing |
 | `placeholder-text` | leftover text | `TBC`/`TBD` as a word, "lorem ipsum", or a whole text that is `todo`, `xxx`, `placeholder`, `text`, `your text here`, `???`, `...`. Texts that fill an instance count |
 | `small-target` | a button is too small | under 24 × 24 px (WCAG 2.2, SC 2.5.8, AA). Something is a button when its name has the word *button*, *btn*, *cta*, *chip*, *tab*, *toggle*, *checkbox*, *radio*, *switch* or *link* (words, so *Tabs* and *Table* are not), or its component (or the component set) is named so, or it has a click in the prototype. A badge or an icon that is not named so is not judged |
-| `no-auto-layout` | children placed by hand | a frame with two or more visible children, no auto-layout, and no overlap among them (a stack of a photo and a caption is on purpose). Skipped: frames of shapes only (a drawing), component sets, and a frame on the page or in a section at least 320 × 480 (a screen) |
-| `empty-frame` | a frame with nothing in it | no children and no fill, stroke or effect to see (an empty frame with a colour is a block or a divider) |
+| `no-auto-layout` | children placed by hand | a frame with two or more visible children, no auto-layout, and no overlap among them (a stack of a photo and a caption is on purpose). Skipped: frames of shapes only (a drawing), component sets, and a frame on the page or in a section that is at least 320 px on its short side and 440 on its long one, in either orientation (a screen, a device mock) |
+| `empty-frame` | a frame with nothing in it | no children, no fill, stroke or effect to see, and still Figma's default name (`Frame`, `Frame 12`). A named empty frame is a spacer or a spec on purpose |
 | `detached-instance` | a frame that was an instance | `detachedInfo`. A one-off state is a fine reason (`SKILL.md`, house rule 7): the note asks you to check |
 | `unbound-color` | a colour with no token | a visible solid fill or stroke of a frame, component, rectangle, ellipse or text, with no style and no variable. Quiet when the file has no paint styles or colour variables and nothing in the walked layers uses one: there is nothing to bind to. Gradients, images and vector drawings are not judged |
-| `no-text-style` | text without a text style | quiet when the file has no text styles and no walked text uses one |
+| `no-text-style` | text without a text style | quiet when the file has no text styles and no walked text uses one. A text with a variable bound to its font size, family, style, weight, line height or letter spacing counts as styled |
 | `default-name` | Figma's own name | a frame, group, component or section named `Frame`, `Frame 12`, `Group 3`, `Component 1`, `Section 1`, `Auto layout`. Shapes (`Rectangle 4`) are not judged: drawings are full of them |
 | `uneven-siblings` | siblings that are nearly equal | in an auto-layout frame, same-type, same-named (numbers at the end ignored) siblings of a fixed size on an axis, whose sizes differ by more than 0.5 and up to 8 px. A bigger gap is a decision |
-| `heading-order` | a skipped heading level | headings are texts named `H1`…`H6` or `Heading 2`, or with a text style whose name has `H2`/`Heading 2` as a word; read top to bottom, a heading more than one level below the one before |
+| `heading-order` | a skipped heading level | headings are texts whose layer name is exactly `H1`…`H6` or `Heading 2` (a text still named by its own words, "H2 2024 results", is not one), or with a text style whose name has `H2`/`Heading 2` as a word. Read top to bottom within each screen (each frame on a page or in a section; the audited layer itself otherwise), a heading more than one level below the one before |
 | `absolute-in-layout` | content that left the flow | a text, frame, group or instance set to absolute position inside an auto-layout frame. Shapes (a dot, a ring, a backdrop) are meant to sit over their neighbours |
 
 Contrast needs the colour behind a layer: going up, a rectangle or frame below it that covers its middle, then

@@ -2696,7 +2696,6 @@ const AUDIT_RULES = [
 ];
 const AUDIT_SHOWN = 50;     // notes in the answer
 const AUDIT_IDS = 30;      // layer ids listed in a note that covers several
-const AUDIT_KEPT = 2000;    // notes held while walking; the rest are only counted
 const AUDIT_NODES = 8000;   // layers visited before the walk stops (partial)
 const AUDIT_MS = 8000;      // time before the walk stops (partial)
 const AUDIT_TARGET = 24;    // WCAG 2.2, SC 2.5.8 (AA): a target of at least 24 x 24 px
@@ -2712,11 +2711,27 @@ const AUDIT_PLACEHOLDER = [
   /lorem ipsum|dolor sit amet/i,
   /^\s*(?:todo|xxx+|placeholder|text|your text(?: here)?|text here|\?{2,}|\.{3}|…)\s*$/i,
 ];
-const AUDIT_HEADING_NAME = /^\s*(?:h|heading\s*)([1-6])(?![0-9a-z])/i;
+const AUDIT_HEADING_NAME = /^\s*(?:h|heading\s*)([1-6])\s*$/i;  // the whole name: "H2 2024 results" is a text, not a heading
+const AUDIT_OFF = new Set(["disabled", "inactive"]);  // WCAG 1.4.3 leaves inactive controls out
+const AUDIT_TYPE_VARS = ["fontSize", "fontFamily", "fontStyle", "fontWeight", "lineHeight", "letterSpacing"];
 const AUDIT_HEADING_STYLE = /(?:^|[\s/_-])(?:h|heading\s?)([1-6])(?:$|[\s/_-])/i;
 
 function auditSafe(fn, otherwise) {
   try { return fn(); } catch (e) { return otherwise; }
+}
+
+async function auditTry(fn, otherwise) {
+  try { return await fn(); } catch (e) { return otherwise; }
+}
+
+// "stopped after 0.3 s", "stopped after 8 s"
+function auditSecs(ms) {
+  return ms % 1000 === 0 ? String(ms / 1000) : String(Math.round(ms / 100) / 10);
+}
+
+function auditClicks(n) {
+  const list = auditSafe(() => n.reactions, null);
+  return Array.isArray(list) && list.some((r) => r && r.trigger && (r.trigger.type === "ON_CLICK" || r.trigger.type === "ON_PRESS"));
 }
 
 function auditHex(c) {
@@ -2823,12 +2838,21 @@ async function auditRun(root, opts, env) {
   const minTarget = typeof opts.minTarget === "number" ? opts.minTarget : AUDIT_TARGET;
   const mixed = fig.mixed;
 
-  const notes = [], counts = {};
-  let seq = 0;
+  // Notes are grouped as they arrive (the same rule and text, or each layer with group: false). A rule
+  // keeps only its first `limit` groups: the answer is the top `limit` by rank, so no more can show, and
+  // memory stays small on a page of thousands. Every layer is still counted.
+  const counts = {}, held = new Map();
+  let seq = 0, errors = 0;
   const add = (rule, n, text) => {
     if (!on(rule)) return;
     counts[rule] = (counts[rule] || 0) + 1;
-    if (notes.length < AUDIT_KEPT) notes.push({ rule, id: n.id, name: auditShort(n.name || n.type, 60), text, seq: seq++ });
+    let m = held.get(rule);
+    if (!m) { m = new Map(); held.set(rule, m); }
+    const key = opts.group === false ? String(seq) : text;
+    const g = m.get(key);
+    if (g) { g.count++; if (g.ids.length < AUDIT_IDS) g.ids.push(n.id); }
+    else if (m.size < shownMax) m.set(key, { rule, id: n.id, name: auditShort(n.name || n.type, 60), text, count: 1, ids: [n.id], seq });
+    seq++;
   };
 
   if (root.type === "PAGE" && typeof root.loadAsync === "function") await root.loadAsync();
@@ -2907,6 +2931,40 @@ async function auditRun(root, opts, env) {
     return null;
   };
 
+  // Inactive things are left out of contrast: a layer named for it, or an instance of a variant that
+  // says so, on the layer or any layer above it (also above the root).
+  const offMemo = new Map();
+  const looksOff = (n) => {
+    if (!(n.type === "TEXT" && n.name === n.characters) && auditWords(n.name).some((w) => AUDIT_OFF.has(w))) return true;
+    if (n.type === "INSTANCE") {
+      const props = auditSafe(() => n.componentProperties, null);
+      if (props) for (const k of Object.keys(props)) {
+        const v = props[k] && props[k].value;
+        if (typeof v === "string" && auditWords(v).some((w) => AUDIT_OFF.has(w))) return true;
+      }
+    }
+    return false;
+  };
+  const off = (e) => {
+    const chain = [];
+    let res = false;
+    for (let c = e; c; c = parentOf(c)) {
+      if (offMemo.has(c.n.id)) { res = offMemo.get(c.n.id); break; }
+      chain.push(c.n.id);
+      if (looksOff(c.n)) { res = true; break; }
+    }
+    for (const id of chain) offMemo.set(id, res);
+    return res;
+  };
+  // A control: a button-like name or a click in the prototype, on a layer within four levels above.
+  const inControl = (e) => {
+    let c = parentOf(e);
+    for (let d = 0; c && d < 4; d++, c = parentOf(c)) {
+      if (auditWords(c.n.name).some((w) => AUDIT_BUTTON.has(w)) || auditClicks(c.n)) return true;
+    }
+    return false;
+  };
+
   const headings = [];
   const unstyled = [], raws = [];
   let styled = false, tokened = false;
@@ -2967,36 +3025,39 @@ async function auditRun(root, opts, env) {
           const need = large ? 3 : 4.5;
           if (ratio < need && (!worst || ratio < worst.ratio)) worst = { ratio, need, fg, large };
         }
-        if (worst) {
+        if (worst && !off(e)) {
           add("low-contrast", n, "contrast " + auditShy(worst.ratio) + ":1 of " + auditHex(worst.fg) + " on " + auditHex(bg) + ", needs " +
             worst.need + ":1" + (worst.large ? " for large text" : "") + "; use a stronger colour");
         }
       }
     }
     // The text style: only counts where the file uses styles at all (resolved below).
+    // A text driven by typography variables is styled too.
     const sid = n.textStyleId;
-    if (sid === mixed) {
+    const vars = n.boundVariables;
+    const typed = !!vars && AUDIT_TYPE_VARS.some((k) => vars[k]);
+    if (sid && sid !== mixed) styled = true;
+    else if (typed) styled = true;
+    else if (sid === mixed) {
       const segs = auditSafe(() => n.getStyledTextSegments(["textStyleId"]), []);
       if (segs.some((s) => s.textStyleId)) styled = true;
       if (segs.some((s) => !s.textStyleId)) unstyled.push(n);
-    } else if (sid) styled = true;
-    else unstyled.push(n);
+    } else unstyled.push(n);
     // A heading's level, from its text style or its name.
     let level = null;
-    const named = AUDIT_HEADING_NAME.exec(n.name);
+    const named = n.name.trim() === chars.trim() ? null : AUDIT_HEADING_NAME.exec(n.name);
     if (named) level = +named[1];
     else if (sid && sid !== mixed) {
       const m = AUDIT_HEADING_STYLE.exec(await styleName(sid));
       if (m) level = +m[1];
     }
-    if (level !== null && bb) headings.push({ n, level, y: bb.y, x: bb.x });
+    if (level !== null && bb) headings.push({ n, level, y: bb.y, x: bb.x, screen: e.screen });
   };
 
   const small = async (n) => {
     if (!on("small-target") || (n.width >= minTarget && n.height >= minTarget)) return;
     let why = null;
-    const clicks = auditSafe(() => n.reactions, null);
-    if (Array.isArray(clicks) && clicks.some((r) => r && r.trigger && (r.trigger.type === "ON_CLICK" || r.trigger.type === "ON_PRESS"))) {
+    if (auditClicks(n)) {
       why = "it has a click in the prototype";
     } else if (auditWords(n.name).some((x) => AUDIT_BUTTON.has(x))) {
       why = 'it is named "' + auditShort(n.name, 30) + '"';
@@ -3020,13 +3081,17 @@ async function auditRun(root, opts, env) {
     if (!list.length) {
       const bare = !auditShown(n.fills).length && !(auditShown(n.strokes).length && n.strokeWeight !== 0) &&
         !(Array.isArray(n.effects) && n.effects.some((x) => x && x.visible !== false)) && !n.isMask;
-      if (bare && !(n.width < 1 || n.height < 1)) add("empty-frame", n, "empty and shows nothing; delete it (for a gap use the parent's spacing) or fill it");
+      // Only one still named by Figma: an empty frame with a name is a spacer or a spec on purpose.
+      if (bare && AUDIT_DEFAULT_NAME.test(n.name) && !(n.width < 1 || n.height < 1)) {
+        add("empty-frame", n, "empty, shows nothing and still has Figma's default name; delete it (for a gap use the parent's spacing) or fill it");
+      }
       return;
     }
     if (type === "COMPONENT_SET") return;
     if (n.layoutMode === "NONE") {
       const onPage = n.parent && (n.parent.type === "PAGE" || n.parent.type === "SECTION");
-      const screen = onPage && n.width >= 320 && n.height >= 480;  // a screen or a board: placed by hand on purpose
+      // a screen, a device mock or a board, in either orientation: placed by hand on purpose
+      const screen = onPage && Math.min(n.width, n.height) >= 320 && Math.max(n.width, n.height) >= 440;
       const drawing = flow.every((k) => AUDIT_SHAPES.has(k.type));
       if (flow.length >= 2 && !screen && !drawing) {
         let overlaps = false;
@@ -3072,7 +3137,7 @@ async function auditRun(root, opts, env) {
   };
 
   try {
-    const stack = [{ n: root, at: -1, up: undefined, alpha: 1, clip: null, inLayout: false }];
+    const stack = [{ n: root, at: -1, up: undefined, alpha: 1, clip: null, inLayout: false, screen: root.id }];
     // One layer: its own notes, then its children onto the stack.
     const visit = async (e) => {
       const n = e.n;
@@ -3133,7 +3198,8 @@ async function auditRun(root, opts, env) {
           const fg = auditBlend(top.color, a, bg);
           const ratio = auditRatio(fg, bg);
           // The same colour as a layer beside it: parts of one drawing, not an invisible icon.
-          if (ratio < 3 && !(back.near && ratio < 1.15)) {
+          // Only a graphic that is part of a control (WCAG 1.4.11); not one that is inactive.
+          if (ratio < 3 && !(back.near && ratio < 1.15) && inControl(e) && !off(e)) {
             iconSeen.add(key);
             add("low-contrast-ui", n, "icon contrast " + auditShy(ratio) + ":1 of " + auditHex(fg) + " on " + auditHex(bg) + ", needs 3:1; use a stronger colour");
           }
@@ -3153,7 +3219,8 @@ async function auditRun(root, opts, env) {
       }
       const alpha = e.alpha * (typeof n.opacity === "number" ? n.opacity : 1);
       const lay = (type === "FRAME" || type === "COMPONENT") && n.layoutMode !== "NONE";
-      for (let i = list.length - 1; i >= 0; i--) stack.push({ n: list[i], at: i, up: e, alpha, clip, inLayout: lay });
+      const onBoard = type === "PAGE" || type === "SECTION";  // each frame on a page or in a section is a screen
+      for (let i = list.length - 1; i >= 0; i--) stack.push({ n: list[i], at: i, up: e, alpha, clip, inLayout: lay, screen: onBoard ? list[i].id : e.screen });
     };
     while (stack.length) {
       const e = stack.pop();
@@ -3161,10 +3228,10 @@ async function auditRun(root, opts, env) {
       if ((visited & 31) === 0) {
         if (ck) ck();
         const t = Date.now();
-        if (t - started > maxMs) { partial = "stopped after " + Math.round(maxMs / 1000) + " s"; break; }
+        if (t - started > maxMs) { partial = "stopped after " + auditSecs(maxMs) + " s"; break; }
         if (t - breath > 40) { await env.wait(0); breath = Date.now(); }
       }
-      try { await visit(e); } catch (err) { /* the layer was removed while the walk ran */ }
+      try { await visit(e); } catch (err) { errors++; }  // a layer removed while the walk ran; counted, not hidden
     }
 
     // Judged on the whole: a style or a variable counts as missing only where the
@@ -3172,20 +3239,20 @@ async function auditRun(root, opts, env) {
     if (unstyled.length && on("no-text-style")) {
       let any = styled;
       if (!any) {
-        const list = await auditSafe(() => fig.getLocalTextStylesAsync(), []);
+        const list = await auditTry(() => fig.getLocalTextStylesAsync(), []);
         any = list.length > 0;
       }
-      if (any) for (const n of unstyled) add("no-text-style", n, "has no text style; apply one of the file's text styles");
+      if (any) for (const n of unstyled) add("no-text-style", n, "has no text style or typography variables; apply one of the file's text styles");
     }
     if (raws.length && on("unbound-color")) {
       let any = tokened;
       if (!any) {
-        const paintStyles = await auditSafe(() => fig.getLocalPaintStylesAsync(), []);
+        const paintStyles = await auditTry(() => fig.getLocalPaintStylesAsync(), []);
         any = paintStyles.length > 0;
       }
       if (!any && fig.variables) {
-        const vars = await auditSafe(() => fig.variables.getLocalVariablesAsync("COLOR"), []);
-        any = vars.length > 0;
+        const colors = await auditTry(() => fig.variables.getLocalVariablesAsync("COLOR"), []);
+        any = colors.length > 0;
       }
       if (any) {
         for (const r of raws) {
@@ -3196,12 +3263,19 @@ async function auditRun(root, opts, env) {
         }
       }
     }
-    // Headings, top to bottom: one that jumps down more than a level.
+    // Headings, top to bottom within each screen: one that jumps down more than a level.
     if (headings.length > 1 && on("heading-order")) {
-      headings.sort((a, b) => a.y - b.y || a.x - b.x);
-      for (let i = 1; i < headings.length; i++) {
-        const prev = headings[i - 1].level, cur = headings[i].level;
-        if (cur > prev + 1) add("heading-order", headings[i].n, "is a level " + cur + " heading right after a level " + prev + "; do not skip a level");
+      const screens = new Map();
+      for (const x of headings) {
+        if (!screens.has(x.screen)) screens.set(x.screen, []);
+        screens.get(x.screen).push(x);
+      }
+      for (const list of screens.values()) {
+        list.sort((a, b) => a.y - b.y || a.x - b.x);
+        for (let i = 1; i < list.length; i++) {
+          const prev = list[i - 1].level, cur = list[i].level;
+          if (cur > prev + 1) add("heading-order", list[i].n, "is a level " + cur + " heading right after a level " + prev + "; do not skip a level");
+        }
       }
     }
   } finally {
@@ -3210,24 +3284,16 @@ async function auditRun(root, opts, env) {
 
   if (ck) ck();  // past the deadline, the answers of the calls above were thrown away
   const rank = (id) => AUDIT_RULES.indexOf(id);
-  notes.sort((a, b) => rank(a.rule) - rank(b.rule) || a.seq - b.seq);
-  const total = Object.keys(counts).reduce((s, k) => s + counts[k], 0);
-  // Layers with the same note (the same colours, the same size…) come as one: a
-  // dozen texts of one grey are one thing to fix. group: false lists each layer.
-  const groups = new Map();
-  for (const x of notes) {
-    const key = opts.group === false ? String(x.seq) : x.rule + "\n" + x.text;
-    const g = groups.get(key);
-    if (!g) groups.set(key, { x, ids: [x.id], count: 1 });
-    else { g.count++; if (g.ids.length < AUDIT_IDS) g.ids.push(x.id); }
-  }
+  const total = Object.keys(counts).reduce((t, k) => t + counts[k], 0);
+  const all = [];
+  for (const m of held.values()) for (const g of m.values()) all.push(g);
+  all.sort((a, b) => rank(a.rule) - rank(b.rule) || a.seq - b.seq);
   let shown = 0;
   const out = [];
-  for (const g of groups.values()) {
-    if (out.length >= shownMax) break;
-    const o = { rule: g.x.rule, id: g.x.id, name: g.x.name, text: g.x.text };
+  for (const g of all.slice(0, shownMax)) {
+    const o = { rule: g.rule, id: g.id, name: g.name, text: g.text };
     if (g.count > 1) { o.count = g.count; o.ids = g.ids; }
-    if (opts.links && env.link) o.url = env.link(g.x.id);
+    if (opts.links && env.link) o.url = env.link(g.id);
     out.push(o);
     shown += g.count;
   }
@@ -3235,6 +3301,7 @@ async function auditRun(root, opts, env) {
   for (const id of AUDIT_RULES) if (counts[id]) byRule[id] = counts[id];
   const res = { notes: out, total, more: total - shown, counts: byRule, visited };
   if (partial) res.partial = partial + "; audit a smaller layer for the rest";
+  if (errors) res.errors = errors;
   return res;
 }
 // audit:end
