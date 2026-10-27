@@ -382,27 +382,31 @@ def _summary(a):
 
 def _diff_lines(a, limit):
     out = []
+    gone = "absent or hidden" if a.get("hiddenRead") is False else "absent"  # hidden layers unread
     last = None
     for d in a["differences"]:
         layer = (d["layer"] or "the variant itself", d["type"])
         if layer != last:
             out.append(f"{layer[0]} [{layer[1]}]" if d["layer"] else layer[0])
             last = layer
-        out += _diff(d)
+        out += _diff(d, gone)
     if len(out) > limit:
         out = out[:limit] + [f"… {it._count(len(out) - limit, 'more line')} of differences — use --json"]
     return out
 
 
-def _diff(d):
+def _diff(d, gone="absent"):
     attr, base = d["attr"], d["base"]
     label = "  " + _label(attr) + ": "
+
+    def s(raw):
+        return gone if attr == "layer" and raw is None else show(attr, raw)
     if len(d["values"]) == 1:
         v = d["values"][0]
-        return [label + f"{show(attr, base)} → {show(attr, v['value'])} · {_names(v['when'])}"]
-    lines = [label + show(attr, base)]
+        return [label + f"{s(base)} → {s(v['value'])} · {_names(v['when'])}"]
+    lines = [label + s(base)]
     for v in d["values"]:
-        lines.append(f"    → {show(attr, v['value'])} · {_names(v['when'])}")
+        lines.append(f"    → {s(v['value'])} · {_names(v['when'])}")
     return lines
 
 

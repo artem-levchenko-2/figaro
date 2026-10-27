@@ -300,6 +300,7 @@ def test_a_failed_second_read_still_prints_the_variants_without_hidden_layers(mo
         assert "base variant: Size=M, State=default" in out
         assert "  padding: 8 16 → 4 12 · Size=S" in out.splitlines()
         assert "not compared: hidden layers (they could not be read)" in out
+        assert " → absent or hidden · Size=S, State=default" in out  # hidden there, maybe: not read
         fake = FakeBridge(reply(wrap(button_set(False), 14)), failure)
         rc, out, err, calls = cli(monkeypatch, capsys, "inspect", "2:0", "--json", bridge_reply=fake)
         assert rc == 0 and "hidden layers failed" in err
