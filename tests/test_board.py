@@ -869,20 +869,23 @@ def test_forget_takes_named_agents_off_every_windows_board():
     run(go())
 
 
-def test_forget_leaves_an_agent_with_a_script_running():
+def test_forget_leaves_an_agent_at_work_or_stopped():
     async def go():
         c = await make_client()
         async with Stoppable(c, name="Draft", key="KEY1", caps=CAPS) as p:
-            await c.post("/exec", json={"code": "x", "agent": "icons"})
+            for name in ("icons", "held"):
+                await c.post("/exec", json={"code": "x", "agent": name})
+            await stop(p, "doc:KEY1", "held")  # between its scripts: the Stop waits for its next one
             running = asyncio.ensure_future(c.post("/exec", json={"code": "loop", "agent": "designer"}))
             await asyncio.sleep(0.2)
-            r = await c.post("/forget", json={"agents": ["icons", "designer"]})
+            r = await c.post("/forget", json={"agents": ["icons", "designer", "held"]})
             assert await r.json() == {"ok": True, "file": "Draft", "forgotten": ["icons"],
                                       "busy": ["designer"]}
             await settle()
-            assert set(agents(p, "Draft")) == {"designer"}
+            assert set(agents(p, "Draft")) == {"designer", "held"}
             await stop(p, "doc:KEY1", "designer")
             assert (await running).status == 409
+            assert (await c.post("/exec", json={"code": "y", "agent": "held"})).status == 409  # the Stop held
         await c.close()
     run(go())
 

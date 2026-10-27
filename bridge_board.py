@@ -480,11 +480,17 @@ FORGET_MAX = 200   # names in one request
 
 def forget(doc, names):
     """Take the agents named, and their lines in Recent, off the file's board.
-    An agent with a script running or waiting stays: its row is still true.
-    Returns (forgotten, busy)."""
+    An agent with a script running or waiting stays: its row is still true. So
+    does one the user stopped between its scripts: its Stop waits there for the
+    agent's next script (`refusal`). Returns (forgotten, busy)."""
     f = FILES.get(doc)
     busy = _busy(doc)
-    gone = [n for n in names if n not in busy and f and n in f["agents"]]
+    now = time.time()
+
+    def held(n):
+        return now - (f["agents"][n]["hold"] or 0) <= HOLD
+
+    gone = [n for n in names if n not in busy and f and n in f["agents"] and not held(n)]
     if f and gone:
         for n in gone:
             del f["agents"][n]
