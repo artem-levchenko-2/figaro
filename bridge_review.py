@@ -288,8 +288,11 @@ async def _check(request, conn_id, doc, ids):
     async def dispatch(meta):
         if row is None or row.get("cancel"):
             return web.json_response({"ok": False, "error": "stopped", "stopped": True})
+        ws = (bridge.PLUGINS.get(conn_id) or {}).get("ws")
+        if ws is None:
+            return web.json_response({"ok": False, "error": "the file's window closed"})
         return await bridge._dispatch(
-            bridge.PLUGINS[conn_id]["ws"], conn_id, _script(ids), CHECK_TIMEOUT, False, meta=meta,
+            ws, conn_id, _script(ids), CHECK_TIMEOUT, False, meta=meta,
             board=False, fields={"readOnly": True, "quick": True, "agent": AGENT})
 
     resp = await bridge._queued(request, conn_id, AGENT, CHECK_QUEUE, dispatch, script=False,
@@ -314,6 +317,26 @@ async def on_done(request, conn_id, info, doc, agent):
     if not enabled(doc, info) or not mine:
         return None
     ids = list(mine)
+    try:
+        return await _on_done(request, conn_id, doc, agent, ids)
+    except asyncio.CancelledError:
+        # The caller left (a disconnect, its own timeout): nothing was reviewed, so the layers
+        # wait for the next done and a row that says "checking" doesn't stay so.
+        _restore(doc, agent, ids)
+        raise
+
+
+def _restore(doc, agent, ids):
+    mine = TRACK.setdefault(doc, {}).setdefault(agent, {})
+    for i in ids:
+        mine.setdefault(i, None)
+    row = STATE.get(doc)
+    if row and row["state"] == "checking" and row["agent"] == agent:
+        _set(doc, "waiting", agent=agent, layers=len(ids))
+        bridge_board.changed()
+
+
+async def _on_done(request, conn_id, doc, agent, ids):
     lock = LOCKS.setdefault(doc, asyncio.Lock())
     async with lock:
         now = time.time()
@@ -352,6 +375,7 @@ async def on_done(request, conn_id, info, doc, agent):
         at = time.time()
         ASKING[doc] = {"agent": agent, "notes": notes, "at": at, "expired": False}
         _set(doc, "notes", agent=agent, layers=layers)
+        STATE[doc]["at"] = at  # the window sends it back with its answer: which notes it answers
         _recent(doc, {"agent": AGENT, "summary": f"Checked {_n(layers, 'layer')}",
                       "note": _n(len(notes), "note")})
         _expire_later(doc, at)
@@ -385,6 +409,18 @@ def _expire(doc, at):
         bridge_board.changed()
 
 
+def forget_agent(doc, agent):
+    """The window forgot an agent: its notes waiting for the designer and its layers go."""
+    TRACK.get(doc, {}).pop(agent, None)
+    ANSWERS.get(doc, {}).pop(agent, None)
+    asking = ASKING.get(doc)
+    if asking and asking["agent"] == agent:
+        ASKING.pop(doc, None)
+        row = STATE.get(doc)
+        if row and row["state"] == "notes":
+            _set(doc, "waiting", agent=agent, layers=0)
+
+
 def stop(doc):
     """Stop in the Reviewer's row while it checks: the check ends, the row waits again."""
     row = STATE.get(doc)
@@ -408,11 +444,17 @@ def stop(doc):
 
 # ─── the window's messages ────────────────────────────────────────────────
 
-def answer(doc, send):
-    """The designer's answer: the ids of the notes the agent should fix, [] for all fine."""
-    asking = ASKING.pop(doc, None)
+def answer(doc, send, at=None):
+    """The designer's answer: the ids of the notes the agent should fix, [] for all fine.
+    `at`, when the window sends it, is the `at` of the notes it answers: an answer to notes
+    that were replaced meanwhile is ignored (an older window sends none)."""
+    asking = ASKING.get(doc)
     if not asking or not isinstance(send, list):
         return False
+    if at is not None and not (isinstance(at, (int, float)) and not isinstance(at, bool)
+                               and abs(at - asking["at"]) < 0.001):
+        return False
+    ASKING.pop(doc, None)
     chosen = {s for s in send if isinstance(s, str)}
     notes = asking["notes"]
     sent = [n for n in notes if n["id"] in chosen]
@@ -442,7 +484,7 @@ def window_message(m):
         if mtype == "reviewer":
             switch(doc, m.get("on"))
         else:
-            answer(doc, m.get("send"))
+            answer(doc, m.get("send"), m.get("at"))
     return True
 
 

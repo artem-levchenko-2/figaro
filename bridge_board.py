@@ -508,6 +508,7 @@ def forget(doc, names):
     if f and gone:
         for n in gone:
             del f["agents"][n]
+            bridge_review.forget_agent(doc, n)
         f["recent"] = [e for e in f["recent"] if e.get("agent") not in gone]
         changed()
     return gone, [n for n in names if n in busy]

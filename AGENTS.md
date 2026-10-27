@@ -159,7 +159,7 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   and the `+` and `~` items, per agent); `figaro done` (`POST /done`) then runs `h.audit` on the top-most ones
   that still exist in a read-only built-in script through the file's queue (`board: False`, `quick`; the code is
   ours and only the layer ids are put in it), and answers with `review`. Its notes wait for the designer; the
-  window's `reviewer`, `review-answer` and the row's Stop (`stop` with agent `reviewer`) come through
+  window's `reviewer`, `review-answer` (with the notes' `at`, so an answer to replaced notes is ignored) and the row's Stop (`stop` with agent `reviewer`) come through
   `bridge_board.handle`. `POST /notes` hands the designer's answer to the agent once (long-poll, `HOLD` per
   call); after `EXPIRE` the notes show `expired`, and a later answer still reaches `figaro notes`.
   `review_text.py` is the CLI's side: the text `figaro notes` prints.

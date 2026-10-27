@@ -292,7 +292,9 @@ def test_stop_in_the_reviewers_row_ends_the_check():
             await p.ws.send_str(json.dumps({"type": "stop", "doc": island(p, "Draft")["doc"],
                                             "agent": "reviewer"}))
             reply = await asyncio.wait_for(task, 5)
-            assert reply["review"]["state"] == "none" and "stopped" in reply["review"]["text"]
+            assert reply["review"] == {"state": "none", "layers": 2, "notes": 0, "text":
+                                       "The designer stopped the reviewer's check, so nothing was reviewed."}
+            assert not bridge_review.TRACK[island(p, "Draft")["doc"]].get("designer")  # not checked again
             assert await until(lambda: row(p)["state"] == "waiting")
             assert await until(lambda: any(m.get("type") == "abort" for m in p.received))
             assert island(p, "Draft")["agents"][0]["stopped"] is None  # no agent was stopped
@@ -529,3 +531,85 @@ def test_done_prints_the_reviewers_line(monkeypatch, capsys):
     rc, out, _, _ = cli(monkeypatch, capsys, "done", "Look",
                         bridge_reply={"ok": True, "file": "Draft", "text": "Look"})
     assert rc == 0 and len(out.splitlines()) == 1
+
+
+# ─── a done that goes away, a window that closes, a stale answer, a forgotten agent ───
+
+def test_a_done_cancelled_mid_check_puts_the_row_and_the_layers_back():
+    async def go():
+        c = await make_client()
+        async with plugin(c, cls=SlowCheck) as p:
+            await turn_on(p)
+            await write(c)
+            doc = island(p, "Draft")["doc"]
+            task = asyncio.ensure_future(done(c))
+            assert await until(lambda: checks(p) and row(p)["state"] == "checking")
+            task.cancel()  # the agent's call went away: its client closed the connection
+            await asyncio.gather(task, return_exceptions=True)
+            assert await until(lambda: row(p)["state"] == "waiting")
+            assert list(bridge_review.TRACK[doc]["designer"]) == ["5:6", "5:7"]
+            p.__class__ = FakePlugin  # the next check answers
+            p.reply = lambda m: {"value": FOUND if m.get("agent") == "reviewer" else 1}
+            assert (await done(c))["review"]["state"] == "notes"
+        await c.close()
+    run(go())
+
+
+def test_a_window_that_closes_while_the_check_waits_is_no_answer():
+    async def go():
+        c = await make_client()
+        async with plugin(c) as p:
+            await turn_on(p)
+            await write(c)
+            conn = next(iter(bridge.PLUGINS))
+            doc = island(p, "Draft")["doc"]
+            bridge_review._row(doc)
+            gone = bridge.PLUGINS.pop(conn)  # as if its window went while the check was queued
+            request = type("R", (), {"transport": type("T", (), {"is_closing": lambda self: False})()})()
+            found, why = await bridge_review._check(request, conn, doc, ["5:6"])
+            assert found is None and why == "the file's window closed"
+            bridge.PLUGINS[conn] = gone
+        await c.close()
+    run(go())
+
+
+def test_an_answer_to_replaced_notes_is_ignored_and_one_without_at_works():
+    async def go():
+        c = await make_client()
+        async with plugin(c) as p:
+            await turn_on(p)
+            await write(c)
+            await done(c)
+            doc = island(p, "Draft")["doc"]
+            assert await until(lambda: row(p)["state"] == "notes")
+            at = row(p)["at"]
+            assert at == bridge_review.ASKING[doc]["at"]
+            await p.ws.send_str(json.dumps({"type": "review-answer", "doc": doc, "send": ["n1"], "at": at - 5}))
+            await settle()
+            assert row(p)["state"] == "notes" and (await notes(c))["state"] == "pending"
+            await p.ws.send_str(json.dumps({"type": "review-answer", "doc": doc, "send": ["n1"], "at": at}))
+            assert await until(lambda: row(p)["state"] == "sent")
+            await write(c)
+            await done(c)
+            await answer(p, [])  # an older window: no at
+            assert await until(lambda: row(p)["state"] == "sent" and row(p)["left"] == 2)
+        await c.close()
+    run(go())
+
+
+def test_forgetting_an_agent_withdraws_its_notes_and_layers():
+    async def go():
+        c = await make_client()
+        async with plugin(c) as p:
+            await turn_on(p)
+            await write(c)
+            await done(c)
+            await write(c, "bob")
+            doc = island(p, "Draft")["doc"]
+            r = await c.post("/forget", json={"target": "Draft", "agents": ["designer", "bob"]})
+            assert (await r.json())["forgotten"] == ["designer", "bob"]
+            assert await until(lambda: row(p)["state"] == "waiting" and row(p)["notes"] == [])
+            assert "bob" not in bridge_review.TRACK.get(doc, {}) and doc not in bridge_review.ASKING
+            assert (await notes(c))["state"] == "none"
+        await c.close()
+    run(go())

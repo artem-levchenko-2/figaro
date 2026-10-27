@@ -398,7 +398,7 @@ def cmd_done(args):
         payload["target"] = TARGET
     if AGENT:
         payload["agent"] = AGENT
-    status, resp = _request("POST", "/done", payload)
+    status, resp = _request("POST", "/done", payload, timeout=120)  # a check may wait for the file
     if status == 404:
         resp = {"ok": False, "error": "the bridge runs code older than `figaro done`",
                 "hint": ("restart it when no other agent is using it:  "
