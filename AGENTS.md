@@ -163,8 +163,10 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   `bridge_board.handle`. `POST /notes` hands the designer's answer to the agent once (long-poll, `HOLD` per
   call); after `EXPIRE` the notes show `expired`, and a later answer still reaches `figaro notes`.
   A note is one per rule: its `text` sums up the rule's lines when they differed, and `details` (`[{text, layers: [ids]}]`,
-  `detailsMore` when cut) keep each original line with its layers, on the board and in `/notes` (which adds `links`, a
-  link per id the details name). The window shows the summary and the chips; Copy for chat (`reviewerText`) and
+  `detailsMore` when cut) keep each original line with its layers, and `names` (`{id: {name, type}}`) the name and type
+  of each of those layers, on the board and in `/notes` (which adds `links`, a link per id the details name). The ids
+  stay plain in `details`, as the 1.8.0 window reads them; a 1.8.0 bridge sends no `names`, and the id is printed alone.
+  The window shows the summary and the chips; Copy for chat (`reviewerText`) and
   `review_text.py`, the CLI's side (the text `figaro notes` prints), list each line under its summary.
 - `bridge_idle.py` — the bridge exits after `--idle-exit` with no plugins and no requests; on any exit it
   closes the plugins' connections at once.

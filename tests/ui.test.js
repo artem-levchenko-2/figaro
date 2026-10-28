@@ -1533,7 +1533,14 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
            "     \"Title\" (TEXT) 1:2  https://www.figma.com/design/KEY1/Dashboard?node-id=1-2",
            "     1:9  https://www.figma.com/design/KEY1/Dashboard?node-id=1-9",
            "     and 3 more lines like these",
+           "",
            "Fix this one, then run figaro done again."]);
+    sum[0].names = { "1:9": { name: "Badge", type: "INSTANCE" }, "1:1": { name: "Card", type: "FRAME" } };
+    await show(env, rv({ state: "notes", layers: 5, at: 1200, notes: sum, expired: true }), {}, {});
+    env.click("rv-copy", "here");
+    await env.clock.advance(50);
+    check("…a layer that isn't among the note's chips gets its name from the board's names (a 1.8.0 bridge sends none: its id)",
+          (env.copied()[0] || "").split("\n")[7], "     \"Badge\" (INSTANCE) 1:9  https://www.figma.com/design/KEY1/Dashboard?node-id=1-9");
     check("…and the callout itself shows the summary and the chips only", [/fills #FFFFFF and #000000 have no style/.test(env.app()), /fill #000000/.test(env.app())], [true, false]);
 
     // the island's row and the collapsed island

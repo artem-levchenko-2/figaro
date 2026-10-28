@@ -343,10 +343,16 @@ def _summary(rule, texts, layers):
     return f"{n} layers: {TITLES[rule].lower()}"
 
 
+def _named(meta):
+    return {"name": str(meta.get("name") or "Untitled")[:60], "type": str(meta.get("type") or "FRAME")}
+
+
 def _merge(found):
     """One note per rule, in the order of the rules; ids n1, n2… Its text sums up the texts of
     the rule's layers (`_summary`); `details`, when they differ, keep each original line with
-    its layers: [{text, layers: [ids]}], at most DETAILS_MAX, `detailsMore` the lines left out."""
+    its layers: [{text, layers: [ids]}], at most DETAILS_MAX, `detailsMore` the lines left out,
+    and `names` the name and type of each of those layers the check could read: {id: {name, type}}.
+    The ids stay plain in `details`, as the 1.8.0 window reads them."""
     groups = {}
     for n in found.get("notes") or []:
         if not (isinstance(n, dict) and n.get("rule") in TITLES and isinstance(n.get("text"), str)):
@@ -365,8 +371,7 @@ def _merge(found):
         layers = []
         for i in ids[:LAYERS_MAX]:
             meta = info.get(i) if isinstance(info.get(i), dict) else {}
-            layers.append({"id": i, "name": str(meta.get("name") or "Untitled")[:60],
-                           "type": str(meta.get("type") or "FRAME")})
+            layers.append(dict(id=i, **_named(meta)))
         note = {"id": f"n{len(notes) + 1}", "rule": rule, "title": TITLES[rule],
                 "text": _summary(rule, list(texts), total)[:bridge_board.TEXT_MAX], "layers": layers,
                 "more": max(0, total - len(layers))}
@@ -375,6 +380,8 @@ def _merge(found):
                                for t, v in list(texts.items())[:DETAILS_MAX]]
             if len(texts) > DETAILS_MAX:
                 note["detailsMore"] = len(texts) - DETAILS_MAX
+            named = dict.fromkeys(i for d in note["details"] for i in d["layers"])
+            note["names"] = {i: _named(info[i]) for i in named if isinstance(info.get(i), dict)}
         notes.append(note)
     return notes
 
@@ -599,9 +606,8 @@ def _result(doc, agent, info):
                                      for l in n["layers"]]) for n in got["notes"]]
             for n in notes:  # a link for every id a detail line names
                 ids = {i for d in n.get("details") or [] for i in d.get("layers") or []}
-                n["links"] = {i: figma_links.node_url(info.get("fileKey"), info.get("name"), i) for i in ids} if ids else {}
-                if not ids:
-                    del n["links"]
+                if ids:
+                    n["links"] = {i: figma_links.node_url(info.get("fileKey"), info.get("name"), i) for i in ids}
             return "sent", {"notes": notes, "total": got["total"], "left": got["left"]}
         return got["kind"], {}
     asking = ASKING.get(doc)

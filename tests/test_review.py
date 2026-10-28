@@ -501,17 +501,60 @@ def test_the_answer_links_every_layer_a_detail_names():
     note = {"id": "n1", "title": "T", "text": "s", "more": 0, "layers": [{"id": "1:1", "name": "A", "type": "FRAME"}],
             "details": [{"text": "a", "layers": ["1:1", "1:2"]}]}
     bridge_review.ANSWERS.setdefault(doc, {})["designer"] = {"kind": "sent", "notes": [note], "total": 1, "left": 0}
+    plain = {"id": "n2", "title": "T", "text": "s", "more": 0, "layers": [{"id": "1:3", "name": "B", "type": "TEXT"}]}
+    bridge_review.ANSWERS.setdefault(doc, {})["designer"] = {"kind": "sent", "notes": [note, plain], "total": 2, "left": 0}
     state, extra = bridge_review._result(doc, "designer", {"fileKey": "KEY1", "name": "Dash"})
-    got = extra["notes"][0]
+    got, other = extra["notes"]
     assert state == "sent" and set(got["links"]) == {"1:1", "1:2"} and got["links"]["1:2"].endswith("node-id=1-2")
+    assert "links" not in other  # a note without details has its links on its layers
+
+
+def test_the_details_name_every_layer_the_check_could_read():
+    tail = " has no style or variable; bind it to one of the file's"
+    ids = [f"1:{i}" for i in range(1, 8)]
+    found = {"notes": [{"rule": "unbound-color", "text": "fill #111111" + tail, "count": 4, "ids": ids[:4]},
+                       {"rule": "unbound-color", "text": "fill #2E6BFF" + tail, "count": 3, "ids": ids[4:]}],
+             "info": {i: {"name": f"Layer {i}", "type": "TEXT"} for i in ids if i != "1:7"}}  # 1:7 was gone
+    (note,) = bridge_review._merge(found)
+    assert [l["id"] for l in note["layers"]] == ids[:5] and note["more"] == 2
+    assert note["details"][1]["layers"] == ["1:5", "1:6", "1:7"]  # ids, as the 1.8.0 window reads them
+    assert note["names"]["1:6"] == {"name": "Layer 1:6", "type": "TEXT"} and "1:7" not in note["names"]
+    assert set(note["names"]) == set(ids[:6])
+
+
+def test_the_designer_and_the_agent_get_the_names_of_the_details_layers():
+    tail = " has no style or variable; bind it to one of the file's"
+    cards = [f"6:{i}" for i in range(1, 6)]
+    found = dict(FOUND, notes=[{"rule": "unbound-color", "text": "fill #111111" + tail, "count": 5, "ids": cards},
+                               {"rule": "unbound-color", "text": "fill #2E6BFF" + tail, "count": 1, "ids": ["5:7"]}],
+                 info=dict(FOUND["info"], **{i: {"name": "Card", "type": "FRAME"} for i in cards}))
+
+    async def go():
+        c = await make_client()
+        async with plugin(c, found=found) as p:
+            await turn_on(p)
+            await write(c)
+            await done(c)
+            assert await until(lambda: row(p)["state"] == "notes")
+            (shown,) = row(p)["notes"]
+            assert "5:7" not in [l["id"] for l in shown["layers"]]  # five layers named, all cards
+            assert shown["names"]["5:7"] == {"name": "Title", "type": "TEXT"}  # for Copy for chat
+            await answer(p, ["n1"])
+            assert await until(lambda: row(p)["state"] == "sent")
+            (note,) = (await notes(c))["notes"]
+            lines = review_text.render({"state": "sent", "notes": [note], "total": 1, "left": 0}, "designer")
+            assert '     "Title" (TEXT) 5:7  ' + note["links"]["5:7"] in lines
+        await c.close()
+    run(go())
 
 
 def test_notes_with_details_print_each_original_line_with_its_layers():
     import review_text
     note = {"title": "Colour isn't a token", "text": "fills #FFFFFF and #000000 have no style", "more": 0,
             "layers": [{"id": "1:1", "name": "Card", "type": "FRAME", "url": "https://x/1"}],
-            "details": [{"text": "fill #FFFFFF", "layers": ["1:1"]}, {"text": "fill #000000", "layers": ["1:2"]}],
-            "detailsMore": 2, "links": {"1:1": "https://x/1", "1:2": "https://x/2"}}
+            "details": [{"text": "fill #FFFFFF", "layers": ["1:1"]}, {"text": "fill #000000", "layers": ["1:2", "1:4"]}],
+            "detailsMore": 2, "links": {"1:1": "https://x/1", "1:2": "https://x/2", "1:4": "https://x/4"},
+            "names": {"1:1": {"name": "Card", "type": "FRAME"}, "1:2": {"name": "Title", "type": "TEXT"}}}
     plain = {"title": "Default name", "text": "Frame 1", "more": 0,
              "layers": [{"id": "3:1", "name": "Frame 1", "type": "FRAME", "url": "https://x/3"}]}
     lines = review_text.render({"state": "sent", "notes": [note, plain], "total": 2, "left": 0}, "designer")
@@ -520,7 +563,8 @@ def test_notes_with_details_print_each_original_line_with_its_layers():
         "   - fill #FFFFFF",
         '     "Card" (FRAME) 1:1  https://x/1',
         "   - fill #000000",
-        "     1:2  https://x/2",
+        '     "Title" (TEXT) 1:2  https://x/2',
+        "     1:4  https://x/4",  # a layer the check couldn't read, or a 1.8.0 bridge: its id
         "     and 2 more lines like these",
         "2. Default name: Frame 1",
         '   "Frame 1" (FRAME) 3:1  https://x/3',

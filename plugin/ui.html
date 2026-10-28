@@ -861,6 +861,9 @@ function reviewerOf(r, t) {
       details: (Array.isArray(n.details) ? n.details : []).filter((d) => d && typeof d.text === "string").map((d) => ({
         text: d.text, layers: (Array.isArray(d.layers) ? d.layers : []).map(String) })),
       detailsMore: num(n.detailsMore),
+      // the name and type of those layers, by id; a 1.8.0 bridge sends none
+      names: new Map(Object.entries(n.names && typeof n.names === "object" ? n.names : {}).filter(([, l]) => l && typeof l.name === "string")
+        .map(([id, l]) => [id, { name: l.name, type: String(l.type || "FRAME") }])),
     })),
     expired: r.expired === true, sent: num(r.sent), left: num(r.left),
   };
@@ -1237,7 +1240,7 @@ function reviewerText(f, r) {
   const lines = [`The reviewer's notes on ${who}'s work in ${f.name}:`, ""];
   picked.forEach((nt, i) => {
     const head = `${i + 1}. `, pad = " ".repeat(head.length);
-    const known = new Map(nt.layers.map((l) => [l.id, l]));
+    const known = new Map([...nt.names, ...nt.layers.map((l) => [l.id, l])]);
     const one = (id) => { const l = known.get(id); return l ? `"${l.name}" (${l.type}) ${id}` : id; };
     if (nt.details.length) {
       lines.push(`${head}${nt.title}: ${nt.text}`);
@@ -1252,7 +1255,7 @@ function reviewerText(f, r) {
       if (nt.more) lines.push(`${pad}and ${plural(nt.more, "more layer", "more layers")}`);
     }
   });
-  lines.push(`Fix ${picked.length === 1 ? "this one" : "these"}, then run figaro done again.`);
+  lines.push("", `Fix ${picked.length === 1 ? "this one" : "these"}, then run figaro done again.`);
   return lines.join("\n");
 }
 

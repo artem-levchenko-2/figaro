@@ -11,6 +11,10 @@ file; the release notes say when it has to be imported again.
 
 ### Fixed
 
+- **The Reviewer's notes name every layer in `figaro notes` and Copy for chat.** A note that sums up several
+  lines lists each line with its layers, and a layer that wasn't among the note's first five came as an id and
+  a link alone. Now each comes with its name and type, as the others do. Copy for chat also leaves a blank line
+  before "Fix these", as `figaro notes` does.
 - **Recent names the agent the designer's answer went to.** "Sent 2 notes to designer" and "All fine, nothing
   sent to designer" said "designer" whatever the agent was called; now they say "to copywriter" for copywriter.
 
