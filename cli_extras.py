@@ -200,7 +200,8 @@ def fetch(host, port, method, path, body=None, headers=None, timeout=None, limit
     send http_proxy the token and the script even for 127.0.0.1, or fail and have autostart
     restart a bridge that is fine. And urllib on top of it loads ~10 ms of modules more."""
     import http.client
-    conn = http.client.HTTPConnection(host, port, timeout=timeout)
+    # "[::1]" as written in a URL: http.client wants it bare (3.9 can't resolve the brackets)
+    conn = http.client.HTTPConnection(host.strip("[]"), port, timeout=timeout)
     try:
         try:
             conn.request(method, path, body, dict(headers or {}, Connection="close"))

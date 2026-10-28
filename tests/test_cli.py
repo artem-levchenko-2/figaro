@@ -1347,7 +1347,9 @@ def test_an_ipv6_host_goes_into_the_url_in_brackets(monkeypatch):
     assert seen[-2:] == [("::1", 8788), ("GET", "/status")]
 
 
-def test_an_ipv6_bridge_is_asked_with_the_host_in_brackets(monkeypatch):
+# FIGARO_HOST may come bracketed, as in a URL: Python 3.9's http.client can't resolve "[::1]"
+@pytest.mark.parametrize("host", ["::1", "[::1]"])
+def test_an_ipv6_bridge_is_asked_with_the_host_in_brackets(monkeypatch, host):
     hosts = []
 
     class V6(http.server.HTTPServer):
@@ -1364,7 +1366,7 @@ def test_an_ipv6_bridge_is_asked_with_the_host_in_brackets(monkeypatch):
         pytest.skip("no IPv6 loopback here")
     threading.Thread(target=server.serve_forever, daemon=True).start()
     port = server.server_address[1]
-    monkeypatch.setattr(figaro, "HOST", "::1")
+    monkeypatch.setattr(figaro, "HOST", host)
     monkeypatch.setattr(figaro, "PORT", port)
     try:
         status, resp = figaro._request("GET", "/status")
