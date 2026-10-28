@@ -93,9 +93,12 @@ task in your draft:
 
 ```sh
 T=$(mktemp -d) && bash tools/install.sh --bin $T/bin --skills $T/proj/.claude/skills && cd $T/proj && \
-  PATH="$T/bin:$PATH" claude -p "<a small task with a link to your draft>" --max-turns 60 \
-  --allowedTools Bash Read Skill Glob Grep Write --output-format stream-json --verbose > $T/run.jsonl
+  PATH="$T/bin:$PATH" claude -p "<a small task with a link to your draft>" --setting-sources project,local \
+  --max-turns 60 --allowedTools Bash Read Skill Glob Grep Write --output-format stream-json --verbose > $T/run.jsonl
 ```
+
+`--setting-sources project,local` keeps a skill installed for your user (`~/.claude/skills/figaro`) from taking the
+place of the one under test: `run.jsonl` names the skill's folder ("Base directory for this skill").
 
 Then read `run.jsonl` (commands, errors, the final report) and clean up what it made in the draft.
 
