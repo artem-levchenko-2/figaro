@@ -50,7 +50,7 @@ RELOAD_WAIT = 15.0  # seconds for the reloaded plugin to connect again
 class Options(NamedTuple):
     read_only: bool
     checkpoint: str | bool | None  # a label forces one, False skips it, None: hourly rule
-    quick: bool                    # the CLI's own readers: no change report, ~150 ms less
+    quick: bool                    # the CLI's own readers: no change report, undo step or code reading
     libs: list                     # [{"name", "code"}] — the agent's --lib files
     images: tuple = ()             # [{"name", "data"}] — files for `figaro image`, `exec --image`
 

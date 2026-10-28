@@ -230,7 +230,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   plugin gets thanks to `"enablePrivatePluginApi": true`; `tests/plugin.test.js` checks that nothing calls
   `setPluginData` on the file. Figaro runs in shared libraries too.
 - **`quick` is for the CLI's built-in readers only.** The plugin doesn't track what a quick script changes,
-  so code from outside must never run as `quick`. A `-R` script costs ~150 ms more and is safe.
+  so code from outside must never run as `quick`. A normal exec, with or without `-R`, is safe: when its code
+  only reads it answers as soon as it ends, and only a script that may write waits ~150 ms for Figma's report.
 - **Python 3.9** — the `python3` of Apple's Command Line Tools, what a Mac without Homebrew runs. No `match`,
   no `zip(strict=…)`, no nested same-kind quotes inside f-strings (3.12+); `X | None` only in annotations of
   modules with `from __future__ import annotations`. The 3.9 run in Commands checks it.
@@ -340,7 +341,11 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   (instances on a page that a script loads for the first time in a large file) and the user's edits during
   a script come as the script's, though they aren't its undo step — and the Plugin API has no redo. So the
   plugin reads the script's code (`codeMayWrite`): while only code that reads runs, local changes count as
-  made in Figma itself — no rollback, no step for `undo`. A first undo that touches none of the script's
+  made in Figma itself — no rollback, no step for `undo`. Such a script answers the moment it ends, with no
+  wait for the batch: what Figma updates after it (in a large file, hundreds of instances, reported
+  ~100 ms later) counts as outside any run. A script that may write, started inside that window (`afterRead`:
+  until the first batch after the read, `FLUSH_MS` at most), waits for it, or it would take that batch as its
+  own — in its report, `-R` rollback and step for `undo`. A first undo that touches none of the script's
   layers took back someone else's step: the answer asks for Cmd+Shift+Z.
 - **`documentchange` doesn't see variables:** `-R` can't roll their changes back, and `undo` refuses after a
   script that may have changed them.

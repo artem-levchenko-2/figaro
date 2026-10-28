@@ -30,10 +30,12 @@ Commands:
 -R / --read-only: the script must not change the file; if it does, the plugin
 rolls the change back and the call fails. sel, tree, find, inspect, shot, link
 and doctor run as quick reads: their own code changes nothing, so they skip the
-undo step and the ~150 ms wait for Figma's change report. A writing script
-gets a checkpoint (a version in File → Version history) before the first one
-in a file and then hourly; --checkpoint LABEL forces one, --no-checkpoint
-skips it. Every reply says what the script changed.
+undo step and the ~150 ms wait for Figma's change report. Any other script
+whose code only reads skips the wait too: the plugin reads the code, and the
+script answers when it ends. Only a script that may write waits for the report.
+A writing script gets a checkpoint (a version in File → Version history) before
+the first one in a file and then hourly; --checkpoint LABEL forces one,
+--no-checkpoint skips it. Every reply says what the script changed.
 
 Anywhere a node id is taken, `page` (current page) and `sel` (first selected
 node) work too, and so does a Figma link (Copy link to selection): its file

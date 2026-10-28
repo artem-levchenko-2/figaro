@@ -367,7 +367,7 @@ JS
 
 - `-R` runs a script read-only: if it changes anything, the change is rolled
   back and the call fails. What Figma or a person changes while code that
-  only reads runs is reported and left alone.
+  only reads runs is left alone, and reported if it came while the script ran.
 - `--shot` takes a picture of what the script returned or created.
 - An error comes back with the line of your script that threw and, for known
   problems, a `hint:`.
@@ -391,8 +391,8 @@ it keeps four promises:
   links to the new layers.
 - **Read-only when you ask.** If a script run with `-R` changes anything, the
   change is rolled back and the call fails. Changes made meanwhile in Figma
-  itself aren't blamed on a script whose code only reads: they are reported and
-  left as they are.
+  itself aren't blamed on a script whose code only reads: they are left as
+  they are, and reported if they came while the script ran.
 - **An undo that knows when to refuse.** `figaro undo` takes back the last
   script that changed something, but not another agent's (by its `-A` name)
   and not once the file has changed since. Then it says so and points you to
@@ -409,7 +409,7 @@ it keeps four promises:
 | Local&nbsp;only | The bridge listens on `127.0.0.1` and turns away requests from web pages: it checks `Origin` and `Host`, and on the plugin's socket, that it is Figma's desktop app. A file's scripts go to the window that connected first, while it is open. Another plugin running in Figma, if its manifest lets it reach `localhost`, can still pose as Figaro's window and get a file's scripts when it is there first |
 | A&nbsp;token | Only programs that can read your files can run scripts: another user of the computer, or an app kept away from your files, can't send one. Each start of the bridge makes a new secret, readable by you alone, in `~/.figaro/token-<port>`; every request that runs code or changes a file must carry it. `figaro` reads it by itself |
 | A&nbsp;version&nbsp;on&nbsp;demand | `--checkpoint "before the grid"` saves one before a risky script |
-| Whose&nbsp;change | Figma doesn't say who changed a layer, so Figaro reads the script's code. What changes while code that only reads runs (Figma updating a page it just loaded, someone at work in the file) is reported, never rolled back. If an undo ever takes back a step that wasn't the script's, the answer says so: Cmd+Shift+Z in Figma brings it back |
+| Whose&nbsp;change | Figma doesn't say who changed a layer, so Figaro reads the script's code. What changes while code that only reads runs (Figma updating a page it just loaded, someone at work in the file) is never rolled back, and is reported if it came while the script ran. Such a script doesn't wait for Figma's report, so it answers about 150 ms sooner. If an undo ever takes back a step that wasn't the script's, the answer says so: Cmd+Shift+Z in Figma brings it back |
 
 Two things Figma itself doesn't report: changes to **variables** and
 **deleted components**. They are missing from the change report, `-R` can't

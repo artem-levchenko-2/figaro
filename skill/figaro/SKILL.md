@@ -120,7 +120,9 @@ JS
 - `-R` — the script only reads: if it changed anything, the change is rolled back and the call fails. Run
   every script that only looks with `-R`; several of them in a row can also take `--parallel` and skip the
   queue. What changes while code that only reads runs — Figma updating a page the script loaded for the
-  first time, the user at work — isn't the script's: a `⚠` line names it, and nothing is rolled back.
+  first time, the user at work — isn't the script's, and nothing is rolled back; a `⚠` line names what
+  came while the script ran. A script like that answers as soon as it ends and doesn't wait for Figma's
+  report; what Figma updates right after it is not reported at all.
   Importing by key (`h.importComp`, `h.importVar`, `import…ByKeyAsync`) counts as reading.
 - `--shot` — a picture right after the script: of the layer whose id the script returned (`return { id }`),
   or else of what it created; `--shot <layer>` — of that layer.

@@ -199,9 +199,13 @@ const kit = () => ({
     check("a quick read: no undo step, no change report", [r.value, env.figma.commits || 0, "changes" in r], [1, 0, false]);
     t0 = Date.now();
     r = await exec(env, "return 1", { quick: false });
+    const readMs = Date.now() - t0;
+    await new Promise((resolve) => setTimeout(resolve, 200));  // the window after that read
+    t0 = Date.now();
+    r = await exec(env, 'const n = await h.node("1:2"); if (n.name === "nope") n.name = "x"; return 1;', { quick: false });
     const fullMs = Date.now() - t0;
-    check("a normal exec waits for Figma's report, a quick one does not",
-      [quickMs < 60, fullMs >= 140, env.figma.commits >= 2], [true, true, true]);
+    check("a normal exec that may write waits for Figma's report; a quick one, or one that only reads, does not",
+      [quickMs < 60, readMs < 60, fullMs >= 140, env.figma.commits >= 4], [true, true, true, true]);
   }
 
   // ─── --lib ──────────────────────────────────────────────────────────────

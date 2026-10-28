@@ -1,8 +1,9 @@
 // The exec core in plugin/code.js against a stub of Figma that reports
 // edits the way Figma does — `documentchange` in a batch a moment after them —
 // and keeps an undo stack: what a script changed, one Cmd+Z step per script,
-// read-only rollback, whose change it was, `undo`, line numbers in errors,
-// the guarded `figma`.
+// read-only rollback, whose change it was, a script that only reads answering
+// at once and the window after it, `undo`, line numbers in errors, the guarded
+// `figma`.
 //
 //     node tests/exec.test.js
 const fs = require("fs");
@@ -458,6 +459,109 @@ function check(label, actual, expected) {
     const t = await third;
     check("…also when someone else changes the script's layer meanwhile",
       [t.type, /press Cmd\+Shift\+Z/.test(t.text)], ["error", true]);
+  }
+
+  // ─── a script that only reads answers at once ──────────────────────────
+  // It has no edits of its own to wait for. What Figma updates a moment after
+  // it (a page it loaded for the first time) is made in Figma itself, and a
+  // script that may write, started right after, must not take it as its own.
+  {
+    // The scripts call these to tell the test what Figma does meanwhile.
+    const hookLater = (env) => { globalThis.__later = (...specs) => env.figmaEdit(...specs); };
+    const readThenUpdate = 'const p = await figma.getNodeByIdAsync("0:1");' +
+      ' globalThis.__later("~1:1 Card width", "~1:1 Card height"); return 1;';
+
+    {
+      const env = load();
+      const t0 = Date.now();
+      const r = await exec(env, "return figma.root.name;");
+      check("a script that only reads answers before FLUSH_MS is over", [r.value, Date.now() - t0 < 100], ["Draft", true]);
+      const t1 = Date.now();
+      const again = await exec(env, "return figma.root.name;", { readOnly: true });
+      check("…and reads do not wait for each other", [again.value, Date.now() - t1 < 100], ["Draft", true]);
+    }
+    {
+      const env = load();
+      hookLater(env);
+      const r = await exec(env, readThenUpdate, { readOnly: true });
+      check("a read answers before Figma's update after it comes",
+        [r.type, r.value, r.notice, r.changes, env.api.OUTSIDE.local], ["result", 1, undefined, undefined, 0]);
+      await sleep(60);
+      check("…which is made in Figma itself: counted outside, in no run",
+        [env.api.OUTSIDE.local, env.api.RUNS.size, env.api.HISTORY.length, env.undo.log.includes("undo")],
+        [2, 0, 0, false]);
+      const u = await undoLast(env, {});
+      check("…and undo has no step of it", [u.type, /nothing to undo/.test(u.text)], ["error", true]);
+    }
+    {
+      // What Figma reports while the script still runs is told, as before.
+      const env = load();
+      hookLater(env);
+      const r = await exec(env, 'const p = await figma.getNodeByIdAsync("0:1");' +
+        ' globalThis.__later("~1:1 Card width"); await new Promise((r) => setTimeout(r, 60)); return 1;', { readOnly: true });
+      check("a batch that comes while a read still runs is told, not rolled back",
+        [r.type, r.rolledBack, r.changes, /^read-only: 1 changed in the file while the script ran \(Card\) — not by the script/.test(r.notice),
+         env.undo.log.includes("undo"), env.api.OUTSIDE.local], ["result", undefined, undefined, true, false, 1]);
+    }
+    {
+      // A script that may write, right after a read: it starts once Figma has reported what it updated.
+      const env = load();
+      hookLater(env);
+      let probe = null;
+      globalThis.__probe = () => { probe = { outside: env.api.OUTSIDE.local, runs: env.api.RUNS.size }; };
+      await exec(env, readThenUpdate);
+      const w = await exec(env, 'globalThis.__probe(); figma.edit("+9:1 Box"); return 1;', { agent: "anna" });
+      check("a writer after a read starts after Figma's update of it: counted outside, no run but its own open",
+        [probe.outside, probe.runs], [2, 1]);
+      check("…its report lists its own change alone",
+        [w.changes.created, w.changes.changed, w.changes.items.map((i) => i.op + i.id), w.notice],
+        [1, 0, ["+9:1"], undefined]);
+      check("…and so does its step for undo", [env.api.HISTORY.length, env.api.HISTORY[0].own, env.api.OUTSIDE.local], [1, 1, 2]);
+      const u = await undoLast(env, { agent: "anna" });
+      check("…which undo reverts, and only that",
+        [u.type, env.undo.reverted.slice(-1)[0], u.value && u.value.undone.changes], ["result", ["9:1"], "+1"]);
+    }
+    {
+      // The same with -R: the rollback must not take Figma's step for the script's.
+      const env = load();
+      hookLater(env);
+      await exec(env, 'const p = await figma.getNodeByIdAsync("0:1");' +
+        ' globalThis.__later("~2:2 Header width", "~3:3 Footer width"); return 1;');
+      const w = await exec(env, 'figma.edit("~1:1 Card fills"); return 1;', { readOnly: true });
+      check("a -R writer after a read rolls back its own change alone",
+        [w.type, w.text, w.rolledBack, env.undo.reverted.slice(-1)[0]],
+        ["error", "read-only: the script changed 1 — rolled back", true, ["1:1"]]);
+    }
+    {
+      // No update comes: the window ends with FLUSH_MS, and the writer starts then.
+      const env = load();
+      let startedAt = null;
+      globalThis.__probe = () => { startedAt = Date.now(); };
+      await exec(env, "return figma.root.name;");
+      const t0 = Date.now();
+      const w = await exec(env, 'globalThis.__probe(); figma.edit("~1:1 Card fills"); return 1;');
+      check("a writer after a read waits for the window, FLUSH_MS at most",
+        [w.type, startedAt - t0 >= 100, startedAt - t0 < 1000, w.changes.changed], ["result", true, true, 1]);
+      // …and a writer after a writer waits for nothing.
+      const t1 = Date.now();
+      await exec(env, 'globalThis.__probe(); figma.edit("~1:1 Card opacity"); return 1;');
+      check("…not one after a writer", startedAt - t1 < 100, true);
+    }
+    {
+      // Stop (the bridge's abort) while it waits: the script never starts.
+      const env = load();
+      await exec(env, "return figma.root.name;");
+      const w = env.figma.ui.onmessage({ type: "exec", id: "w-stop", timeout: 10,
+        code: 'figma.edit("~1:1 Card fills"); return 1;' });
+      await env.figma.ui.onmessage({ type: "abort", id: "w-stop" });
+      await w;
+      const ended = env.posted.find((m) => m.id === "w-stop" && (m.type === "result" || m.type === "error"));
+      check("a writer stopped while it waits never starts",
+        [ended.type, /^aborted/.test(ended.text), env.undo.pending.length, env.api.RUNS.size, env.api.GATES.size,
+         env.api.ABORTED.has("w-stop")], ["error", true, 0, 0, 0, false]);
+    }
+    delete globalThis.__later;
+    delete globalThis.__probe;
   }
 
   // ─── undo ───────────────────────────────────────────────────────────────

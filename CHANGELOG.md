@@ -9,6 +9,16 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+### Changed
+
+- **A script that only reads answers as soon as it ends.** The plugin already read the code to tell whether a
+  script can write, but still waited ~150 ms for Figma's report of changes. Now only a script that may write
+  waits for it. What Figma reports while a reading script runs is told as before, in the `⚠` line; what Figma
+  updates after it (in a large file, hundreds of instances on a page the script loaded) counts as made in
+  Figma itself and isn't in its answer. A script that may write, started right after a read, waits for that
+  report (at most 150 ms), so Figma's updates never end up in its change report, its `-R` rollback or its
+  `undo` step. Nothing changes for the bridge or the CLI.
+
 ## [1.8.1] — 2026-10-28
 
 ### Fixed

@@ -9,7 +9,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-28.1";
+const PLUGIN_VERSION = "2026-10-28.2";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -628,11 +628,24 @@ figma.ui.onmessage = async (msg) => {
   if (msg.type === "reload") { reloadPlugin(msg); return; }
   if (msg.type !== "exec") return;
   const { id, code } = msg;
+  // A script that may write starts only once what Figma updated after a read
+  // before it has been reported (afterRead), or FLUSH_MS have passed; its time
+  // (--timeout) starts then, and the bridge allows a second more for the reply.
+  const writes = msg.quick === true ? null : writesOf(code, msg.libs);
+  const budget = typeof msg.timeout === "number" ? msg.timeout * 1000 : Infinity;
+  if (writes && writes.any && AFTER_READ.timer !== null) {
+    await afterRead(id, budget);
+    if (ABORTED.has(id)) {  // the bridge's abort (Stop) came while it waited: the script never starts
+      ABORTED.delete(id);
+      figma.ui.postMessage({ type: "error", id, text: ABORTED_TEXT, stack: null });
+      return;
+    }
+  }
   // When the bridge gives up on this run. Checked by h.ck() against the
   // sandbox's own clock, because the bridge's `abort` message can't get in
   // while a loop only awaits Figma APIs: those promises settle as microtasks,
   // so the plugin never returns to its message queue until the loop ends.
-  const deadline = typeof msg.timeout === "number" ? Date.now() + msg.timeout * 1000 : Infinity;
+  const deadline = Date.now() + budget;
 
   const logs = [];
   // print() lines go to the bridge in batches, not one message per line: each
@@ -669,10 +682,11 @@ figma.ui.onmessage = async (msg) => {
   // Figma's reports about this run's edits are collected into `run`. A
   // writing script becomes one Cmd+Z step; a read-only one is rolled back if
   // it changed anything. A checkpoint is a version in the file's history. A
-  // quick run — the CLI's own readers, which change nothing — skips all that
-  // and the ~150 ms wait for Figma's report.
-  const run = msg.quick === true ? null
-    : startRun(id, { agent: msg.agent, readOnly: msg.readOnly === true, code, libs: msg.libs });
+  // script whose code only reads answers the moment it ends: it has no edits
+  // of its own to wait for, and what Figma reports meanwhile is not its doing.
+  // A script that may write waits for Figma's report (~150 ms). A quick run —
+  // the CLI's own readers, which change nothing — skips all that.
+  const run = writes ? startRun(id, { agent: msg.agent, readOnly: msg.readOnly === true, writes }) : null;
   if (run) figma.commitUndo();  // whatever came before is not this run's step
   const checkpoint = run && msg.checkpoint ? await saveCheckpoint(msg.checkpoint) : null;
 
@@ -718,7 +732,10 @@ figma.ui.onmessage = async (msg) => {
 // `undo` can tell whether anything else changed since. Figma sends
 // `documentchange` in a batch ~100 ms after an edit — but in a background
 // window Chromium slows that to about once a minute, which is why ui.html keeps
-// the window awake while agents work.
+// the window awake while agents work. A script that may write waits for its
+// batch (`settle`); one whose code only reads does not (`finishRun`), and the
+// next one that may write waits out what Figma reports after a read
+// (`afterRead`).
 
 const FLUSH_MS = 150;    // a batch comes ~100 ms after an edit while Figma is awake
 const ITEMS_MAX = 30;    // nodes listed by name in a reply
@@ -750,6 +767,9 @@ const VARIABLE_WRITES = /\b(setValueForMode|createVariable|createVariableCollect
 // roll back changes Figma made meanwhile as the script's.
 // Read wrong one way, a script keeps the rollback; the other way, a change it
 // did make stays, reported — so whatever is unclear counts as a write.
+// A script that only reads does not wait for Figma's report either: it answers
+// when it ends, and what Figma updates after that is counted as made in Figma
+// itself (OUTSIDE), never as the next script's change (afterRead).
 const FIGMA_READS = /^(?:get\w*|load\w*|import\w*ByKeyAsync|listAvailableFontsAsync|notify|on|once|off|base64Encode|base64Decode|setCurrentPageAsync|saveVersionHistoryAsync|commitUndo)$/;
 const HELPER_READS = /^(?:node|resolve|sel|find|findByName|findAllByName|dumpTree|link|inspect|shot|hex|solid|fonts|withFonts|fa|variantsOf|var_|importComp|importVar|annotations|audit|ck|aborted)$/;
 // Methods that change the file, called or bound on anything; a call by a
@@ -761,6 +781,15 @@ const NOT_THE_FILE = /^figma\.(?:currentPage|skipInvisibleInstanceChildren|viewp
 const OWN_CALL = /^\s*(?:new\s+(?:Map|Set|WeakMap|WeakSet|Array|Object)\b|(?:Object\s*\.\s*(?:create|fromEntries)|Array\s*\.\s*from|JSON\s*\.\s*parse|structuredClone)(?=\s*\())/;
 const KEYWORD_BEFORE = /(?:^|[^\w$])(?:const|let|var|return|typeof|void|delete|await|yield|in|of|new|case|throw|else|do)$/;
 const MEMBER = /[\w$)\]]\s*(?:\??\.\s*[A-Za-z_$]|\[)/;  // x.y or x[k] inside a pattern
+
+// What a script's code may do to the file, read once: `variables` (edits that
+// Figma doesn't report) and `any` (it may write at all). An undo has no code,
+// and does write.
+function writesOf(code, libs) {
+  if (code === undefined) return { variables: false, any: true };
+  const variables = VARIABLE_WRITES.test(codeOnly(code));
+  return { variables, any: variables || codeMayWrite(code, libs) };
+}
 
 function codeMayWrite(code, libs) {
   if (Array.isArray(libs) && libs.length) return true;
@@ -1089,13 +1118,13 @@ function bindings(src) {
 }
 
 function startRun(id, opts) {
-  // Read in the code alone: "addMode" in a comment or a string writes nothing.
-  const mayWriteVariables = VARIABLE_WRITES.test(codeOnly(opts.code));
+  // `writes` is what writesOf read in the code alone ("addMode" in a comment
+  // or a string writes nothing); an undo has no code.
+  const writes = opts.writes || writesOf(undefined);
   const run = {
     id, agent: opts.agent || null, readOnly: !!opts.readOnly, quiet: false,
-    mayWriteVariables,
-    // an undo has no code, and does write
-    mayWrite: opts.code === undefined || mayWriteVariables || codeMayWrite(opts.code, opts.libs),
+    mayWriteVariables: writes.variables,
+    mayWrite: writes.any,
     created: new Set(), createdNodes: new Map(), deleted: new Set(), changed: new Set(),
     styles: 0, props: {}, items: new Map(), itemsTotal: 0, remote: 0,
     overlap: RUNS.size > 0, settled: null, late: false,
@@ -1127,6 +1156,7 @@ function onDocumentChange(event) {
     }
     if (run.settled) run.settled();
   }
+  readWindowClosed();  // Figma has reported what it did after a read
 }
 
 function changeName(c) {
@@ -1257,7 +1287,8 @@ function topCreated(run) {
 // Wait for Figma's report on this run: the first batch after the script ended
 // holds every edit it made, and no batch within FLUSH_MS means there were none.
 // A timer that fires far too late means Figma was throttled after all, and the
-// report may still be on its way.
+// report may still be on its way. Only a run that may write waits: a script
+// whose code only reads has no edits to be reported.
 function settle(run) {
   return new Promise((resolve) => {
     const t0 = Date.now();
@@ -1271,9 +1302,52 @@ function settle(run) {
   });
 }
 
+// What Figma updates by itself after a script that reads — in a large file,
+// hundreds of instances on a page the script loaded for the first time — is
+// reported in a batch a moment after the script's answer. That script answers
+// without waiting for it, so the report is still on its way when the next
+// script starts; one that may write would take it for its own changes: in its
+// report, its -R rollback, its step for `undo`, the Reviewer's list. So the
+// read opens a window (`readEnded`) that closes with the first batch after it,
+// or FLUSH_MS later, and a script that may write starts after it (`afterRead`).
+// Reads never wait for it, nor for each other. A batch that comes after the
+// answer belongs to no run: it counts as made in Figma itself (OUTSIDE).
+const AFTER_READ = { timer: null, waiting: new Set() };  // open while `timer` is set
+
+function readEnded() {
+  if (AFTER_READ.timer !== null) clearTimeout(AFTER_READ.timer);
+  AFTER_READ.timer = setTimeout(readWindowClosed, FLUSH_MS);
+}
+
+function readWindowClosed() {
+  if (AFTER_READ.timer === null) return;
+  clearTimeout(AFTER_READ.timer);
+  AFTER_READ.timer = null;
+  const waiting = Array.from(AFTER_READ.waiting);
+  AFTER_READ.waiting.clear();
+  for (const wake of waiting) wake();
+}
+
+// Wait while the window after a read is open — at most FLUSH_MS, and not past
+// the script's time (`budget`, ms); the bridge's abort ends the wait at once.
+function afterRead(id, budget) {
+  return new Promise((resolve) => {
+    const wake = () => {
+      clearTimeout(cap);
+      AFTER_READ.waiting.delete(wake);
+      if (GATES.get(id) === wake) GATES.delete(id);
+      resolve();
+    };
+    const cap = setTimeout(wake, Math.min(FLUSH_MS, budget));
+    AFTER_READ.waiting.add(wake);
+    GATES.set(id, wake);  // `abort` calls it, as it does a script's gate
+  });
+}
+
 async function finishRun(run) {
   if (!run.readOnly) figma.commitUndo();  // the whole script is one Cmd+Z step
-  await settle(run);
+  if (run.mayWrite) await settle(run);
+  else readEnded();
   dropRemovedCreated(run);
   const out = { fields: {}, error: null };
   const elsewhere = run.mayWrite ? null : disown(run);

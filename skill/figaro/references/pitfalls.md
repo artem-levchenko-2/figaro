@@ -239,6 +239,8 @@ order. If you write it by hand:
 - **`⚠ N changed in the file while the script ran … not by the script`** — the code only reads, so Figma or
   someone in the file made those changes, and nothing was rolled back. In a large file Figma updates
   instances on a page the first time a script loads it; the same script once more gives a clean answer.
+  A script that only reads answers the moment it ends: what Figma updates right after it isn't in its
+  answer, so no `⚠` line shows it.
 
 ## Pictures
 
