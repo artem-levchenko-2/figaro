@@ -356,8 +356,9 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   made in Figma itself — no rollback, no step for `undo`. Such a script answers the moment it ends, with no
   wait for the batch: what Figma updates after it (in a large file, hundreds of instances, reported
   ~100 ms later) counts as outside any run. A script that may write, started inside that window (`afterRead`:
-  until the first batch after the read, `FLUSH_MS` at most), waits for it, or it would take that batch as its
-  own — in its report, `-R` rollback and step for `undo`. A first undo that touches none of the script's
+  until the first batch after the last read, or `FLUSH_MS` after it; `AFTER_READ_MAX` at most), waits for it,
+  or it would take that batch as its own — in its report, `-R` rollback and step for `undo`. A `--parallel`
+  read that ends while it waits makes its report `shared`, as scripts that overlap do. A first undo that touches none of the script's
   layers took back someone else's step: the answer asks for Cmd+Shift+Z.
 - **`documentchange` doesn't see variables:** `-R` can't roll their changes back, and `undo` refuses after a
   script that may have changed them.

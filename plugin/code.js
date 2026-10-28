@@ -9,7 +9,7 @@ figma.showUI(__html__, { width: UI_WIDTH, height: 70, title: "Figaro Relay", the
 // disk and asks for a re-Run when they differ, because a running plugin keeps
 // the code it started with. Bump it on every change to plugin/ —
 // tests/test_plugin_version.py fails until you do.
-const PLUGIN_VERSION = "2026-10-28.2";
+const PLUGIN_VERSION = "2026-10-28.3";
 
 // What this build can do beyond a plain exec, so the bridge knows which
 // requests it may send (an older build gets `figaro reload` first).
@@ -629,17 +629,24 @@ figma.ui.onmessage = async (msg) => {
   if (msg.type !== "exec") return;
   const { id, code } = msg;
   // A script that may write starts only once what Figma updated after a read
-  // before it has been reported (afterRead), or FLUSH_MS have passed; its time
-  // (--timeout) starts then, and the bridge allows a second more for the reply.
+  // before it has been reported (afterRead), or FLUSH_MS after the last read;
+  // its time (--timeout) starts then, and the bridge allows a second more for
+  // the reply.
   const writes = msg.quick === true ? null : writesOf(code, msg.libs);
   const budget = typeof msg.timeout === "number" ? msg.timeout * 1000 : Infinity;
+  let shared = false;
   if (writes && writes.any && AFTER_READ.timer !== null) {
+    const reads = AFTER_READ.ended;
     await afterRead(id, budget);
     if (ABORTED.has(id)) {  // the bridge's abort (Stop) came while it waited: the script never starts
       ABORTED.delete(id);
       figma.ui.postMessage({ type: "error", id, text: ABORTED_TEXT, stack: null });
       return;
     }
+    // A --parallel read ended while it waited, or reads kept the window open
+    // past AFTER_READ_MAX: what Figma reports next may be their doing, so its
+    // report is shared, as with scripts that ran at the same time.
+    shared = AFTER_READ.ended !== reads || AFTER_READ.timer !== null;
   }
   // When the bridge gives up on this run. Checked by h.ck() against the
   // sandbox's own clock, because the bridge's `abort` message can't get in
@@ -686,7 +693,7 @@ figma.ui.onmessage = async (msg) => {
   // of its own to wait for, and what Figma reports meanwhile is not its doing.
   // A script that may write waits for Figma's report (~150 ms). A quick run —
   // the CLI's own readers, which change nothing — skips all that.
-  const run = writes ? startRun(id, { agent: msg.agent, readOnly: msg.readOnly === true, writes }) : null;
+  const run = writes ? startRun(id, { agent: msg.agent, readOnly: msg.readOnly === true, writes, shared }) : null;
   if (run) figma.commitUndo();  // whatever came before is not this run's step
   const checkpoint = run && msg.checkpoint ? await saveCheckpoint(msg.checkpoint) : null;
 
@@ -1127,7 +1134,7 @@ function startRun(id, opts) {
     mayWrite: writes.any,
     created: new Set(), createdNodes: new Map(), deleted: new Set(), changed: new Set(),
     styles: 0, props: {}, items: new Map(), itemsTotal: 0, remote: 0,
-    overlap: RUNS.size > 0, settled: null, late: false,
+    overlap: RUNS.size > 0 || opts.shared === true, settled: null, late: false,
   };
   for (const other of RUNS.values()) other.overlap = true;
   RUNS.set(id, run);
@@ -1309,12 +1316,17 @@ function settle(run) {
 // script starts; one that may write would take it for its own changes: in its
 // report, its -R rollback, its step for `undo`, the Reviewer's list. So the
 // read opens a window (`readEnded`) that closes with the first batch after it,
-// or FLUSH_MS later, and a script that may write starts after it (`afterRead`).
-// Reads never wait for it, nor for each other. A batch that comes after the
-// answer belongs to no run: it counts as made in Figma itself (OUTSIDE).
-const AFTER_READ = { timer: null, waiting: new Set() };  // open while `timer` is set
+// or FLUSH_MS after the last read, and a script that may write starts after it
+// (`afterRead`). Reads never wait for it, nor for each other. A batch that
+// comes after the answer belongs to no run: it counts as made in Figma itself
+// (OUTSIDE).
+const AFTER_READ = { timer: null, waiting: new Set(), ended: 0 };  // open while `timer` is set
+// --parallel reads, one after another, keep the window open: a script that
+// may write waits no longer than this for them (the bridge allows it a second).
+const AFTER_READ_MAX = 3 * FLUSH_MS;
 
 function readEnded() {
+  AFTER_READ.ended++;  // reads so far: a writer that waits sees whether one ended meanwhile
   if (AFTER_READ.timer !== null) clearTimeout(AFTER_READ.timer);
   AFTER_READ.timer = setTimeout(readWindowClosed, FLUSH_MS);
 }
@@ -1328,8 +1340,8 @@ function readWindowClosed() {
   for (const wake of waiting) wake();
 }
 
-// Wait while the window after a read is open — at most FLUSH_MS, and not past
-// the script's time (`budget`, ms); the bridge's abort ends the wait at once.
+// Wait while the window after a read is open — at most AFTER_READ_MAX, and not
+// past the script's time (`budget`, ms); the bridge's abort ends the wait at once.
 function afterRead(id, budget) {
   return new Promise((resolve) => {
     const wake = () => {
@@ -1338,7 +1350,7 @@ function afterRead(id, budget) {
       if (GATES.get(id) === wake) GATES.delete(id);
       resolve();
     };
-    const cap = setTimeout(wake, Math.min(FLUSH_MS, budget));
+    const cap = setTimeout(wake, Math.min(AFTER_READ_MAX, budget));
     AFTER_READ.waiting.add(wake);
     GATES.set(id, wake);  // `abort` calls it, as it does a script's gate
   });

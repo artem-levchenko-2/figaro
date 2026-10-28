@@ -16,8 +16,9 @@ file; the release notes say when it has to be imported again.
   waits for it. What Figma reports while a reading script runs is told as before, in the `⚠` line; what Figma
   updates after it (in a large file, hundreds of instances on a page the script loaded) counts as made in
   Figma itself and isn't in its answer. A script that may write, started right after a read, waits for that
-  report (at most 150 ms), so Figma's updates never end up in its change report, its `-R` rollback or its
-  `undo` step. Nothing changes for the bridge or the CLI.
+  report (150 ms after the read at most), so Figma's updates never end up in its change report, its `-R`
+  rollback or its `undo` step. If a `--parallel` read ends while it waits, its report says that other scripts
+  ran meanwhile, as when scripts overlap. Nothing changes for the bridge or the CLI.
 - **Every `figaro` call starts 10 to 20 ms sooner** (a call took about 90 ms). The CLI loads only the modules
   its command needs, and asks the bridge with `http.client` instead of `urllib`. The output and the errors are
   the same, and the token still goes only to what answered `GET /` as the bridge, never through a proxy.

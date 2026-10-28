@@ -508,11 +508,13 @@ function check(label, actual, expected) {
       const env = load();
       hookLater(env);
       let probe = null;
-      globalThis.__probe = () => { probe = { outside: env.api.OUTSIDE.local, runs: env.api.RUNS.size }; };
+      globalThis.__probe = () => { probe = { outside: env.api.OUTSIDE.local, runs: env.api.RUNS.size, at: Date.now() }; };
       await exec(env, readThenUpdate);
+      const read = Date.now();
       const w = await exec(env, 'globalThis.__probe(); figma.edit("+9:1 Box"); return 1;', { agent: "anna" });
       check("a writer after a read starts after Figma's update of it: counted outside, no run but its own open",
         [probe.outside, probe.runs], [2, 1]);
+      check("…as soon as the update is reported, not FLUSH_MS later", probe.at - read < 100, true);
       check("…its report lists its own change alone",
         [w.changes.created, w.changes.changed, w.changes.items.map((i) => i.op + i.id), w.notice],
         [1, 0, ["+9:1"], undefined]);
@@ -553,12 +555,29 @@ function check(label, actual, expected) {
       await exec(env, "return figma.root.name;");
       const w = env.figma.ui.onmessage({ type: "exec", id: "w-stop", timeout: 10,
         code: 'figma.edit("~1:1 Card fills"); return 1;' });
+      const t0 = Date.now();
       await env.figma.ui.onmessage({ type: "abort", id: "w-stop" });
       await w;
       const ended = env.posted.find((m) => m.id === "w-stop" && (m.type === "result" || m.type === "error"));
       check("a writer stopped while it waits never starts",
         [ended.type, /^aborted/.test(ended.text), env.undo.pending.length, env.api.RUNS.size, env.api.GATES.size,
          env.api.ABORTED.has("w-stop")], ["error", true, 0, 0, 0, false]);
+      check("…and stops at once, not when the wait runs out", Date.now() - t0 < 100, true);
+    }
+    {
+      // A --parallel read that ends while a writer waits: Figma's update after
+      // it comes later than the writer's FLUSH_MS from its own start. The
+      // writer waits for it, and its report says another script ran meanwhile.
+      const env = load();
+      hookLater(env);
+      await exec(env, "return figma.root.name;");
+      const w = exec(env, 'figma.edit("+9:1 Box"); return 1;', { agent: "anna" });
+      await sleep(90);
+      await exec(env, 'setTimeout(() => globalThis.__later("~1:1 Card width"), 60); return 1;', { readOnly: true });
+      const r = await w;
+      check("a read that ends while a writer waits: its update stays out of the writer's report",
+        [r.type, r.changes.items.map((i) => i.op + i.id), r.changes.shared, env.api.HISTORY[0].own, env.api.OUTSIDE.local],
+        ["result", ["+9:1"], true, 1, 1]);
     }
     delete globalThis.__later;
     delete globalThis.__probe;
