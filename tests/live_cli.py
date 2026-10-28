@@ -234,9 +234,13 @@ return [f.width, f.layoutSizingHorizontal, f.layoutSizingVertical, r.layoutSizin
         m = re.search(r"\((\d+)ms\)", err)
         return int(m.group(1)) if m else None
     quick = [elapsed("sel", "-T", DRAFT) for _ in range(3)]
-    full = [elapsed("exec", "-T", DRAFT, "-R", "return h.sel();") for _ in range(3)]
-    check(f"a quick read is faster: sel {quick} ms, exec -R {full} ms",
-          None not in quick + full and max(quick) < 100 and min(full) >= 150, [quick, full])
+    read = [elapsed("exec", "-T", DRAFT, "-R", "return h.sel();") for _ in range(3)]
+    # Code that may write waits for Figma's report even when it changes nothing.
+    write = [elapsed("exec", "-T", DRAFT, "-R", "if (false) figma.createFrame(); return 1;")
+             for _ in range(3)]
+    check(f"only code that may write waits: sel {quick} ms, a read {read} ms, a write {write} ms",
+          None not in quick + read + write and max(quick + read) < 100 and min(write) >= 150,
+          [quick, read, write])
 
     # ── clean up ──────────────────────────────────────────────────────────
     rc, out, err = cli("rm", frame, ids["looseChild"], "-T", DRAFT, "--no-checkpoint")
