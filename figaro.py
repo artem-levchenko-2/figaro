@@ -197,7 +197,8 @@ def _answer(body, status):
     return value
 
 
-def _exec(code, timeout=60, read_only=False, quick=False, libs=None, probe=False, images=None):
+def _exec(code, timeout=60, read_only=False, quick=False, libs=None, probe=False, images=None,
+          print_result=False):
     payload = {"code": code, "timeout": timeout}
     if TARGET:
         payload["target"] = TARGET
@@ -217,6 +218,8 @@ def _exec(code, timeout=60, read_only=False, quick=False, libs=None, probe=False
         payload["libs"] = libs
     if images:  # files for h.image, as base64 in the body: a command line would be too short
         payload["images"] = images
+    if print_result:  # this call prints `result` itself: the bridge need not send it with `value`
+        payload["value_only"] = True
     queue = timeout if QUEUE_TIMEOUT is None else QUEUE_TIMEOUT
     payload["queue_timeout"] = queue
     # The socket deadline has to outlast the bridge's own: time in the file's
@@ -225,7 +228,17 @@ def _exec(code, timeout=60, read_only=False, quick=False, libs=None, probe=False
     status, resp = _request("POST", "/exec", payload, timeout=queue + timeout + 5)
     if resp.get("queued_ms", 0) >= 1000:
         print(f"  (waited {resp['queued_ms'] / 1000:.1f}s in the file's queue)", file=sys.stderr)
+    if print_result and resp.get("ok") and "result" not in resp:
+        # The bridge left it out: the same text, made from the value. An older bridge always
+        # sends it, so this is never reached there, and nothing is loaded for it.
+        import result_text
+        resp["result"] = result_text.render(resp.get("value"))
     return status, resp
+
+
+def _run(args, code, **kwargs):
+    """_exec, then print its reply: what a command that shows the script's value does."""
+    return _emit(_exec(code, args.timeout, print_result=not args.raw, **kwargs)[1], raw=args.raw)
 
 
 def _emit(resp, raw=False):
@@ -340,7 +353,7 @@ def cmd_clear(args):
 
 
 def cmd_sel(args):
-    return _emit(_exec("return h.sel();", args.timeout, quick=True)[1], raw=args.raw)
+    return _run(args, "return h.sel();", quick=True)
 
 
 def cmd_undo(args):
@@ -659,9 +672,10 @@ def cmd_exec(args):
         return 2
     libs = cli_extras.read_libs(args.lib)
     images = cli_extras.read_images(args.image)
-    resp = _exec(code, args.timeout, libs=libs, images=images)[1]
+    text = not args.raw  # --raw prints the whole reply, `result` included: the bridge sends it
+    resp = _exec(code, args.timeout, libs=libs, images=images, print_result=text)[1]
     if resp.get("lib_missing"):  # the plugin lost a --lib before the script ran; now the code goes
-        resp = _exec(code, args.timeout, libs=libs, images=images)[1]
+        resp = _exec(code, args.timeout, libs=libs, images=images, print_result=text)[1]
     rc = _emit(resp, raw=args.raw)
     if rc == 0 and args.shot is not None:
         rc = cli_extras.shot_after(args, resp)
@@ -680,7 +694,7 @@ def cmd_tree(args):
         f"if (!n) throw new Error('node not found: ' + {json.dumps(args.node_id)});"
         f"return h.dumpTree(n, {opts});"
     )
-    return _emit(_exec(code, args.timeout, quick=True)[1], raw=args.raw)
+    return _run(args, code, quick=True)
 
 
 def cmd_find(args):
@@ -717,7 +731,7 @@ def cmd_find(args):
         f"if (!root) throw new Error('node not found: ' + {json.dumps(args.node_id)});"
         f"return h.find(root, {json.dumps(query, ensure_ascii=False)});"
     )
-    return _emit(_exec(code, args.timeout, quick=True)[1], raw=args.raw)
+    return _run(args, code, quick=True)
 
 
 def cmd_text(args):
@@ -729,7 +743,7 @@ def cmd_text(args):
         f"await h.setText(n, {json.dumps(args.text)});"
         f"return {{id: n.id, before, after: n.characters}};"
     )
-    return _emit(_exec(code, args.timeout)[1], raw=args.raw)
+    return _run(args, code)
 
 
 def cmd_variant(args):
@@ -751,7 +765,7 @@ def cmd_variant(args):
         f"for (const k in n.componentProperties) out[k] = n.componentProperties[k].value;"
         f"return {{id: n.id, applied: {json.dumps(props)}, current: out}};"
     )
-    return _emit(_exec(code, args.timeout)[1], raw=args.raw)
+    return _run(args, code)
 
 
 def cmd_clone(args):
@@ -771,7 +785,7 @@ def cmd_clone(args):
         + ("figma.viewport.scrollAndZoomIntoView([n, c]);" if args.focus else "")
         + f"return {{clone_id: c.id, x: c.x, y: c.y, name: c.name}};"
     )
-    return _emit(_exec(code, args.timeout)[1], raw=args.raw)
+    return _run(args, code)
 
 
 def cmd_rm(args):
@@ -798,7 +812,7 @@ def cmd_rm(args):
         f"if (skipped.length) print('already removed with a parent or listed twice: ' + skipped.join(', '));"
         f"return removed;"
     )
-    return _emit(_exec(code, args.timeout)[1], raw=args.raw)
+    return _run(args, code)
 
 
 def cmd_import_component(args):
@@ -809,7 +823,7 @@ def cmd_import_component(args):
         + ("figma.viewport.scrollAndZoomIntoView([inst]);" if args.focus else "")
         + f"return {{component: comp.name, instance_id: inst.id, w: inst.width, h: inst.height}};"
     )
-    return _emit(_exec(code, args.timeout)[1], raw=args.raw)
+    return _run(args, code)
 
 
 # ─── argparse / dispatch ───────────────────────────────────────────────────

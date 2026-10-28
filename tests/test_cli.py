@@ -17,6 +17,7 @@ import http.server
 import io
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -35,6 +36,8 @@ import cli_extras
 from conftest import FIGMA_UA
 import bridge_idle
 import inspect_text
+import result_text
+from test_bridge import FakePlugin, make_client, run
 
 ROOT = Path(__file__).resolve().parent.parent
 KEY = "AbCdEfGhIjKlMnOpQrStUv"
@@ -1633,3 +1636,133 @@ def test_a_bracketed_ipv6_host_counts_as_local_for_autostart(tmp_path, monkeypat
     runs = fake_start(tmp_path, monkeypatch)
     assert cli_extras.autostart("[::1]", free_port()) is True
     assert runs.read_text() == "started\n"
+
+
+# ─── exec's text: made here when the bridge leaves it out ────────────────
+
+def wire(capsys, msg):
+    """The bridge's own answers, as they go over HTTP, to an exec whose plugin replies `msg`: first to a
+    client that does not say value_only (every CLI so far), then to one that does."""
+    async def go():
+        c = await make_client()
+        bodies = []
+        async with FakePlugin(c, reply=lambda code: dict(msg)):
+            for extra in ({}, {"value_only": True}):
+                r = await c.post("/exec", json={"code": "x", "timeout": 20, **extra})
+                bodies.append(await r.read())
+        await c.close()
+        return bodies
+    bodies = run(go())
+    capsys.readouterr()  # the bridge's own log lines
+    return bodies
+
+
+def shown(monkeypatch, capsys, body, *argv):
+    """What `figaro exec` prints and sends, given the bridge's answer `body` (bytes)."""
+    rc, out, err, calls = cli(monkeypatch, capsys, "exec", *argv, "return x",
+                              bridge_reply=figaro._answer(body, 200))
+    return rc, out, re.sub(r"\(\d+ms\)", "(Nms)", err), calls[0]
+
+
+VALUE_KINDS = [
+    ("a string", {"value": "plain text"}),
+    ("an empty string", {"value": ""}),
+    ("a number", {"value": 42}),
+    ("a float", {"value": 0.1 + 0.2}),
+    ("true", {"value": True}),
+    ("false", {"value": False}),
+    ("null", {"value": None}),
+    ("no return", {"value": None, "text": "Done"}),
+    ("logs only", {"value": None, "text": "first\nsecond"}),
+    ("NaN", {"value": None, "text": "NaN"}),
+    ("an older plugin", {"value": {"a": 1}, "text": '{"a": 1}'}),
+    ("non-ASCII", {"value": {"名前": "ボタン ✓", "emoji": "🎨", "ü": ["é", "—"]}}),
+    ("non-ASCII text", {"value": "Done — ✓ 🎨"}),
+    ("an empty array", {"value": []}),
+    ("an empty object", {"value": {}}),
+    ("an array", {"value": [{"id": "1:2", "name": "Card"}, {"id": "1:3", "name": "Row"}]}),
+    ("a mid array", {"value": [{"id": f"1:{i}", "name": f"Layer {i}"} for i in range(15_000)]}),
+    ("an object", {"value": {"id": "1:2", "children": [{"id": "1:3", "w": 10.5, "ok": True, "x": None}]}}),
+    ("a big array", {"value": [{"id": f"1:{i}", "name": f"Layer {i}"} for i in range(60_000)]}),
+    ("a big string", {"value": "line of text\n" * 100_000}),
+]
+
+
+@pytest.mark.parametrize("what, msg", VALUE_KINDS, ids=[k for k, _ in VALUE_KINDS])
+def test_exec_prints_the_same_text_whatever_the_bridge_leaves_out(monkeypatch, capsys, what, msg):
+    """The text the bridge made (`result` of today's reply) is what `figaro exec` printed until now. It
+    has to be what is printed from the reply that has no `result`, and from one that has both."""
+    full_body, lean_body = wire(capsys, msg)
+    full = figaro._answer(full_body, 200)
+    text = full["result"]
+    assert isinstance(text, str)
+    if what in ("a big array", "a big string"):
+        assert len(text) > 1_000_000
+    elif "text" not in msg:
+        assert "result" not in figaro._answer(lean_body, 200)  # the bridge did leave it out
+    expected = text + "\n" if text else ""
+
+    # a bridge that has the field, and one that does not
+    old, new = (shown(monkeypatch, capsys, body) for body in (full_body, lean_body))
+    assert old == new and old[:2] == (0, expected) and old[3]["value_only"] is True
+
+
+def test_an_error_prints_the_same_with_the_field(monkeypatch, capsys):
+    full_body, lean_body = wire(capsys, {"type": "error", "text": "boom", "stack": "at x", "line": 1,
+                                         "source": "x"})
+    full = shown(monkeypatch, capsys, full_body)
+    lean = shown(monkeypatch, capsys, lean_body)
+    assert full[:3] == lean[:3] and full[0] == 1 and "figaro: boom" in full[2]
+
+
+def test_raw_and_json_replies_are_the_whole_answer_with_result(monkeypatch, capsys):
+    msg = {"value": {"a": [1, "é"]}}
+    full_body, _ = wire(capsys, msg)
+    full = figaro._answer(full_body, 200)
+    rc, out, err, payload = shown(monkeypatch, capsys, full_body, "--raw")
+    assert "value_only" not in payload  # the bridge sends `result`: --raw prints the reply as it came
+    assert (rc, out) == (0, json.dumps(full, indent=2, ensure_ascii=False) + "\n")
+    assert "result" in json.loads(out)
+
+
+@pytest.mark.parametrize("argv", [
+    ["sel"], ["tree", "1:2"], ["find", "1:2", "name=x"], ["text", "1:2", "hi"], ["variant", "1:2", "A=B"],
+    ["clone", "1:2"], ["rm", "1:2"], ["icomp", "abc"], ["exec", "return 1"],
+])
+def test_a_command_that_prints_the_text_asks_for_the_value_only(monkeypatch, capsys, argv):
+    reply = {"ok": True, "value": {"id": "1:2"}}
+    rc, out, err, calls = cli(monkeypatch, capsys, *argv, bridge_reply=reply)
+    assert rc == 0 and calls[0]["value_only"] is True
+    assert '"id": "1:2"' in out  # made here: the reply had no result
+    rc, out, err, calls = cli(monkeypatch, capsys, *argv, "--raw", bridge_reply=reply)
+    assert "value_only" not in calls[0]
+
+
+def test_image_asks_for_the_value_only_unless_raw(monkeypatch, capsys, tmp_path):
+    pic = tmp_path / "photo.png"
+    pic.write_bytes(png(6, 4))
+    reply = {"ok": True, "value": {"id": "1:2", "mode": "fit"}}
+    rc, out, err, calls = cli(monkeypatch, capsys, "image", "1:2", str(pic), bridge_reply=reply)
+    assert calls[0]["value_only"] is True and '"mode": "fit"' in out
+    rc, out, err, calls = cli(monkeypatch, capsys, "image", "1:2", str(pic), "--raw", bridge_reply=reply)
+    assert "value_only" not in calls[0]
+
+
+@pytest.mark.parametrize("argv, value", [
+    (["inspect", "1:2"], {"node": {"id": "1:2", "type": "FRAME", "name": "x"}}),
+    (["inspect", "1:2", "--json"], {"node": {"id": "1:2", "type": "FRAME", "name": "x"}}),
+    (["link", "1:2"], [{"id": "1:2", "name": "x", "url": "u"}]),
+    (["shot", "1:2"], [shot(data=png(4, 4))]),
+])
+def test_a_reader_of_the_value_does_not_ask_for_it_alone(monkeypatch, capsys, argv, value):
+    """inspect, link and shot print their own text from `value`: nothing for the bridge to leave out."""
+    rc, out, err, calls = cli(monkeypatch, capsys, *argv, bridge_reply={"ok": True, "value": value})
+    assert rc == 0 and all("value_only" not in payload for payload in calls)
+
+
+def test_exec_shot_asks_for_the_value_only_but_the_picture_read_does_not(monkeypatch, capsys):
+    fake = FakeBridge({"ok": True, "value": "5:6"}, {"ok": True, "value": [shot(node="5:6", data=png(10, 10))]})
+    rc, out, err, calls = cli(monkeypatch, capsys, "exec", "--shot", "return 1", bridge_reply=fake)
+    assert rc == 0 and out.startswith("5:6\n")  # the text of the script's value, made here
+    first, second = calls
+    assert first["value_only"] is True and "value_only" not in second and second["quick"] is True

@@ -21,6 +21,13 @@ file; the release notes say when it has to be imported again.
 - **Every `figaro` call starts 10 to 20 ms sooner** (a call took about 90 ms). The CLI loads only the modules
   its command needs, and asks the bridge with `http.client` instead of `urllib`. The output and the errors are
   the same, and the token still goes only to what answered `GET /` as the bridge, never through a proxy.
+- **The bridge sends a script's value once to `figaro exec` and the commands that print it.** A reply held the
+  value twice: as `value`, and as `result`, the same value as text. The CLI now asks with `"value_only": true`
+  where it prints the text itself, the bridge leaves `result` out, and the CLI makes the same text from
+  `value`: what it prints does not change. The reply is about half the size (a 5 MB string: 10.5 MB, now
+  5.2 MB). Without the field the reply is as it was, `result` included, so scripts that read the HTTP API
+  see no change, and `--raw` still prints the whole reply. An older bridge ignores the field and sends
+  `result`, which the new CLI prints.
 - **The skill sends agents to `exec --shot` for the picture** after a script that builds or fixes, instead of
   a separate `figaro shot`: one step less. `figaro shot` stays for looking without changing anything and for
   several layers, `--width`, `--format` and `--absolute`.

@@ -1,6 +1,6 @@
 """The bridge's side of exec: change reports, read-only, checkpoints, undo.
 
-    POST /exec    {..., read_only?, checkpoint?, quick?, libs?, images?}
+    POST /exec    {..., read_only?, checkpoint?, quick?, libs?, images?, value_only?}
                   -> {..., changes?, line?, source?, lib?, lib_missing?, rolled_back?, checkpoint?}
     POST /undo    {target?, agent?, force?}      -> revert the file's last script
     POST /reload  {target?}                      -> run plugin/code.js from disk in
@@ -53,6 +53,8 @@ class Options(NamedTuple):
     quick: bool                    # the CLI's own readers: no change report, undo step or code reading
     libs: list                     # [{"name", "code"}] — the agent's --lib files
     images: tuple = ()             # [{"name", "data"}] — files for `figaro image`, `exec --image`
+    value_only: bool = False       # no `result` in the reply when `value` says it: the client
+                                   # renders the text (result_text.render); the plugin never sees this
 
 
 IMAGES_MAX = 20            # files in one request
@@ -79,8 +81,11 @@ def exec_options(body):
     quick = body.get("quick", False)
     if not isinstance(quick, bool):
         raise ValueError("'quick' must be true or false")
+    value_only = body.get("value_only", False)
+    if not isinstance(value_only, bool):
+        raise ValueError("'value_only' must be true or false")
     return Options(read_only or quick, checkpoint, quick, _libs(body.get("libs")),
-                   _images(body.get("images")))
+                   _images(body.get("images")), value_only)
 
 
 def _libs(value):

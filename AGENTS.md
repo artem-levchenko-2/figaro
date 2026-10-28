@@ -141,7 +141,11 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - `bridge_exec.py` — the bridge's side of exec: the fields it sends (`readOnly`, `checkpoint`, `quick`,
   `libs` — a library's code goes once, then its hash; `images` — base64 of the files `h.image` fills a layer
   with, in the body and the socket, never in an argument), when checkpoints are due, links as targets,
-  `POST /undo`, `POST /reload`.
+  `POST /undo`, `POST /reload`. `value_only` is the request's own and never goes to the plugin: the reply
+  leaves out `result` when it only repeats `value` as text (a text the plugin sent itself, as for a script
+  with no `return`, stays). The CLI sends it where it prints the text itself, never with `--raw`, and makes
+  the text with `result_text.render`; an older bridge ignores the field and sends `result`, which the CLI
+  then prints. Keep both ways working.
 - `bridge_comments.py` — Figma comments and the designer's Figma token. The token is in `figma-token` next to
   the API token (`figaro_token.figma_token_path`, mode 0600): never in `settings.json`, the board, a log or a
   reply — the board's `figma` has only its masked form and how a check goes. The window's Save sends it
@@ -172,6 +176,9 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - `bridge_idle.py` — the bridge exits after `--idle-exit` with no plugins and no requests; on any exit it
   closes the plugins' connections at once.
 - `figma_links.py` — Figma links: the file key and node id in a link, links to layers for reports.
+- `result_text.py` — the text of a script's value, `render`: a string as it is, a boolean as true or false,
+  anything else as JSON, indented up to 1 MB and compact past it. The bridge's `result` and the CLI's print
+  come from it; it imports only `json`, so the CLI loads it without the bridge.
 - `plugin/` — `manifest.json`, `code.js` (the `HELPERS` object behind `h.*`, running scripts with a deadline,
   a guard in every loop's head that ends it there (`guardLoops`), change tracking and whose change it was
   (`codeMayWrite`), undo, selecting a layer from the window, the window's size and place (`fitWindow`), and

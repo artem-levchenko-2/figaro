@@ -3,6 +3,7 @@
 
 HTTP API (clients like curl / figaro CLI talk here):
     POST /exec     {"code": "...", "timeout": 60} -> {ok, result, value, logs, elapsed_ms}
+                   "value_only": true leaves `result` out when it only repeats `value` as text
     GET  /status                                  -> {plugin_connected, pending}
 
 WebSocket (the Figma plugin connects here once it's opened in Figma Desktop):
@@ -46,6 +47,7 @@ import bridge_review  # noqa: E402
 import bridge_settings  # noqa: E402
 import bridge_update  # noqa: E402
 import figaro_token  # noqa: E402
+import result_text  # noqa: E402
 
 
 PENDING: dict = {}        # rid -> {"future", "logs", "t0", "conn"}
@@ -91,7 +93,7 @@ def _file_digest(path: Path):
 _BRIDGE_CODE = [Path(__file__).resolve()] + [
     HERE / n for n in ("bridge_board.py", "bridge_comments.py", "bridge_exec.py", "bridge_idle.py", "bridge_review.py",
                        "bridge_settings.py",
-                       "bridge_update.py", "figma_links.py", "figaro_token.py")]
+                       "bridge_update.py", "figma_links.py", "figaro_token.py", "result_text.py")]
 BRIDGE_DIGEST = [_file_digest(p) for p in _BRIDGE_CODE]
 
 
@@ -854,12 +856,13 @@ async def exec_handler(request: web.Request) -> web.Response:
                 return held
             bridge_board.started(_doc_key(conn_id), agent, read=True)
         return await _dispatch(target_ws, conn_id, code, timeout, force, board=not probe,
-                               fields=bridge_exec.exec_fields(conn_id, agent, opts, parallel=True))
+                               fields=bridge_exec.exec_fields(conn_id, agent, opts, parallel=True),
+                               value_only=opts.value_only)
 
     # The fields are made inside the lock, where the checkpoint is decided.
     return await _queued(request, conn_id, agent, queue_timeout, lambda meta: _dispatch(
         target_ws, conn_id, code, timeout, force, meta=meta, board=not probe,
-        fields=bridge_exec.exec_fields(conn_id, agent, opts)),
+        fields=bridge_exec.exec_fields(conn_id, agent, opts), value_only=opts.value_only),
         script=not probe, read=opts.read_only)
 
 
@@ -1011,12 +1014,13 @@ def _abandon(rid, conn_id, timeout, target_ws):
 
 
 async def _dispatch(target_ws, conn_id, code, timeout, force, meta=None,
-                    fields=None, mtype="exec", board=True) -> web.Response:
+                    fields=None, mtype="exec", board=True, value_only=False) -> web.Response:
     """Send one exec to a plugin and await its reply. Caller holds the lock.
 
     `fields` ride along in the message (agent, readOnly, checkpoint), and
     `mtype` "undo" sends an undo the same way. `board`: False for figaro
-    doctor's checks, which the plugin's window doesn't show.
+    doctor's checks, which the plugin's window doesn't show. `value_only`
+    shapes the reply only (see _reply): it never goes to the plugin.
     """
     # Per document, not per connection: a timed-out script in one tab still
     # runs in the document a caller routed through another tab would write to.
@@ -1043,7 +1047,7 @@ async def _dispatch(target_ws, conn_id, code, timeout, force, meta=None,
     # doc, mtype and agent: the window's Stop finds an agent's running script by them
     PENDING[rid] = {"future": fut, "logs": [], "t0": time.time(), "conn": conn_id,
                     "doc": doc, "mtype": mtype, "agent": (fields or {}).get("agent"),
-                    "board": board}
+                    "board": board, "value_only": value_only}
 
     try:
         try:
@@ -1116,17 +1120,7 @@ def _result_text(result) -> str:
     text = result.get("text")
     if text is not None:
         return text
-    value = result.get("value")
-    if isinstance(value, str):
-        return value
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    compact = json.dumps(value, ensure_ascii=False)
-    # Indented output uses Python's pure-Python encoder (~6x slower than the C
-    # one): ~120 ms on a 3 MB result. Past 1 MB nobody reads it by eye anyway.
-    if len(compact) > 1_000_000:
-        return compact
-    return json.dumps(value, indent=2, ensure_ascii=False)
+    return result_text.render(result.get("value"))
 
 
 def _reply(entry, result, meta=None) -> web.Response:
@@ -1150,13 +1144,14 @@ def _reply(entry, result, meta=None) -> web.Response:
         }
         status = 500
     else:
-        body = {
-            "ok": True,
-            "result": _result_text(result),
-            "value": result.get("value"),
-            "logs": entry["logs"],
-            "elapsed_ms": elapsed_ms,
-        }
+        body = {"ok": True}
+        # value_only: the client makes the text from `value` (result_text.render), unless
+        # the plugin sent a text of its own, which `value` can't say: that goes as it is.
+        if not (entry.get("value_only") and result.get("text") is None):
+            body["result"] = _result_text(result)
+        body["value"] = result.get("value")
+        body["logs"] = entry["logs"]
+        body["elapsed_ms"] = elapsed_ms
         status = 200
 
     # Agents read responses, not the plugin bar — so say it here too.
@@ -1277,8 +1272,9 @@ async def root_handler(request: web.Request) -> web.Response:
         "version": VERSION,
         "endpoints": {
             "POST /exec": ("{code, target?, agent?, timeout?, queue_timeout?, parallel?, force?, "
-                           "read_only?, checkpoint?, quick?, libs?, images?, probe?} -> "
-                           "{ok, result, value, logs, elapsed_ms}. Serialized per file "
+                           "read_only?, checkpoint?, quick?, libs?, images?, probe?, value_only?} -> "
+                           "{ok, result, value, logs, elapsed_ms}; value_only:true leaves `result` "
+                           "out when it only repeats `value` as text. Serialized per file "
                            "unless parallel:true (reads only)."),
             "GET /status": "{plugin_connected, files, pending, abandoned, lost}",
             "GET /targets": "{files: [{name, fileKey, conn}]}",

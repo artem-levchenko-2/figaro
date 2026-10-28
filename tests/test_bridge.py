@@ -667,6 +667,35 @@ def test_huge_results_skip_the_slow_pretty_printer():
     assert "\n" not in text and json.loads(text) == big
 
 
+# What a client that asks with value_only prints is made from the value it was sent, which went
+# through the bridge's JSON: it has to be the text the bridge would have made from its own copy.
+TRICKY_VALUES = [
+    "plain", "", "Done — ✓ 🎨 \u2028 \x00", True, False, None, 0, -3, 2.5, 1.0, 1e21, 1e-7, -0.0,
+    2 ** 53 + 1, [], {}, [[]], {"a": {}}, {"é": "ü", "": None, "a b": [1, 2.25, "x"]},
+    [{"id": f"1:{i}", "name": "Card ✓", "w": i / 7} for i in range(50)],
+    {"k": "v" * 2000, "n": list(range(300))},
+    [{"id": i} for i in range(200_000)],          # past the size where it goes compact
+]
+
+
+@pytest.mark.parametrize("value", TRICKY_VALUES, ids=lambda v: type(v).__name__ + str(len(str(v))))
+def test_the_text_of_a_value_survives_the_trip_to_the_client(value):
+    import result_text
+    sent = json.loads(json.dumps({"value": value}))["value"]  # the reply's JSON, both ways
+    assert result_text.render(sent) == result_text.render(value) == bridge._result_text({"value": value})
+
+
+def test_result_text_loads_without_the_bridge():
+    """The CLI imports it: no aiohttp, no bridge."""
+    import subprocess
+    root = Path(__file__).resolve().parent.parent
+    code = ("import sys; sys.path.insert(0, sys.argv[1]); import result_text; "
+            "bad = [m for m in ('aiohttp', 'bridge') if m in sys.modules]; "
+            "assert not bad, bad")
+    done = subprocess.run([sys.executable, "-I", "-c", code, str(root)], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+
+
 def test_batched_log_lines_arrive_in_order():
     async def go():
         c = await make_client()

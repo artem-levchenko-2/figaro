@@ -815,7 +815,7 @@ def cmd_image(args):
     code = (f"const n = {CLI.node_expr(args.node_id)};"
             f"if (!n) throw new Error('node not found: ' + {json.dumps(args.node_id)});"
             f"return h.image(n, 'image', {json.dumps(args.mode)});")
-    return CLI._emit(CLI._exec(code, args.timeout, images=images)[1], raw=args.raw)
+    return CLI._run(args, code, images=images)
 
 
 # ─── argparse ────────────────────────────────────────────────────────────

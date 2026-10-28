@@ -19,6 +19,7 @@ import pytest
 import bridge
 import bridge_exec
 import bridge_settings
+import result_text
 from bridge_exec import Options
 from test_bridge import make_client, run, until
 
@@ -104,11 +105,14 @@ def test_exec_options():
     assert bridge_exec.exec_options({"checkpoint": "   "}).checkpoint is None
     assert bridge_exec.exec_options({"checkpoint": False}).checkpoint is False
     assert bridge_exec.exec_options({"quick": True}) == Options(True, None, True, [])
+    assert bridge_exec.exec_options({}).value_only is False
+    assert bridge_exec.exec_options({"value_only": True}) == Options(False, None, False, [], (), True)
     libs = [{"name": "grid.js", "code": "const a = 1"}, {"code": "const b = 2"}]
     assert bridge_exec.exec_options({"libs": libs}).libs == \
         [{"name": "grid.js", "code": "const a = 1"}, {"name": "lib2", "code": "const b = 2"}]
     for bad in ({"read_only": "yes"}, {"read_only": 1}, {"checkpoint": True},
                 {"checkpoint": 5}, {"checkpoint": ["x"]}, {"quick": "yes"},
+                {"value_only": "yes"}, {"value_only": 1},
                 {"libs": "const a = 1"}, {"libs": [{"name": "x"}]}, {"libs": ["const a"]},
                 {"libs": [{"code": "x" * (bridge_exec.LIBS_SIZE + 1)}]}):
         with pytest.raises(ValueError):
@@ -123,6 +127,8 @@ def test_malformed_options_are_a_400():
             assert r.status == 400 and "read_only" in (await r.json())["error"]
             r = await post(c, checkpoint=True)
             assert r.status == 400 and "checkpoint" in (await r.json())["error"]
+            r = await post(c, value_only="yes")
+            assert r.status == 400 and "value_only" in (await r.json())["error"]
             assert p.of("exec") == []
         await c.close()
     run(go())
@@ -245,6 +251,8 @@ def test_the_plugin_window_passes_every_exec_field_on(monkeypatch):
     monkeypatch.setitem(bridge.PLUGINS, "conn", {"docSig": "D1"})
     fields = set(bridge_exec.exec_fields("conn", "anna", Options(True, "label", False, [LIB])))
     fields |= set(bridge_exec.exec_fields("conn", "anna", Options(True, None, True, [LIB], [IMAGE])))
+    # value_only shapes the reply: it is not one of the plugin's fields
+    fields |= set(bridge_exec.exec_fields("conn", "anna", Options(True, None, True, [LIB], [IMAGE], True)))
     assert fields == {"readOnly", "quick", "agent", "checkpoint", "libs", "images"}
     monkeypatch.setitem(bridge_settings.SETTINGS, "reviewer", False)  # the switch adds no field
     fields |= set(bridge_exec.exec_fields("conn", "anna", Options(True, None, False, [LIB])))
@@ -442,6 +450,95 @@ def test_a_shot_is_not_printed_twice():
             assert body["value"][0]["data"] == "AAAA"
             assert body["result"] == "shot 1:2 PNG 3 B; shot 1:3 PNG 3 B"
         await c.close()
+    run(go())
+
+
+# ─── value_only: a client that makes the text itself ──────────────────────
+
+def without_times(body):
+    return {k: v for k, v in body.items() if k not in ("elapsed_ms", "queued_ms")}
+
+
+def test_value_only_leaves_result_out_and_changes_nothing_else():
+    value = {"a": [1, "Done — ✓"], "n": 2.5}
+
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, reply=lambda m: {"value": value}):
+            full = await (await post(c)).json()
+            lean = await (await post(c, value_only=True)).json()
+            parallel = await (await post(c, value_only=True, parallel=True)).json()
+        await c.close()
+        # without the field the reply is what it always was: these keys, in this order
+        assert list(full)[:5] == ["ok", "result", "value", "logs", "elapsed_ms"]
+        assert full["result"] == result_text.render(value)
+        for body in (lean, parallel):
+            assert "result" not in body and body["value"] == value and body["ok"] is True
+            assert without_times({**body, "result": full["result"]}) == without_times(full)
+    run(go())
+
+
+@pytest.mark.parametrize("msg, left_out", [
+    ({"value": "plain"}, True),
+    ({"value": ""}, True),
+    ({"value": 42}, True),
+    ({"value": False}, True),
+    ({"value": None}, True),                              # `return null`
+    ({"value": [{"id": "1:2"}]}, True),
+    ({"value": None, "text": "Done"}, False),             # no return value: the plugin's own text
+    ({"value": None, "text": "NaN"}, False),              # a value JSON can't say
+    ({"value": 1, "text": "from an older plugin"}, False),
+])
+def test_value_only_keeps_a_text_the_value_cannot_say(msg, left_out):
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, reply=lambda m: dict(msg)):
+            full = await (await post(c)).json()
+            lean = await (await post(c, value_only=True)).json()
+        await c.close()
+        assert ("result" not in lean) is left_out
+        assert left_out or lean["result"] == full["result"] == msg["text"]
+        assert lean["value"] == full["value"] == msg["value"]
+    run(go())
+
+
+def test_value_only_never_reaches_the_plugin():
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c) as p:
+            await post(c)
+            await post(c, value_only=True)
+            await post(c, value_only=True, parallel=True)
+            plain, lean, lean_parallel = p.of("exec")
+            assert "value_only" not in lean and "valueOnly" not in lean
+            fields = lambda m: set(m) - {"checkpoint", "id"}  # noqa: E731  the first writer's checkpoint
+            assert fields(lean) == fields(plain) == fields(lean_parallel)
+        await c.close()
+    run(go())
+
+
+def test_a_field_the_bridge_does_not_know_is_ignored():
+    """What an older bridge does with value_only: it answers as ever, with `result`. The code
+    to blame, if this one fails: exec_handler must not refuse a field it has no use for."""
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, reply=lambda m: {"value": [1, 2]}):
+            r = await post(c, frobnicate=True)
+            body = await r.json()
+        await c.close()
+        assert r.status == 200 and body["result"] == "[\n  1,\n  2\n]" and body["value"] == [1, 2]
+    run(go())
+
+
+def test_a_shot_keeps_its_text_with_value_only():
+    shot = {"kind": "shot", "id": "1:2", "format": "PNG", "size": 3, "data": "AAAA"}
+
+    async def go():
+        c = await make_client()
+        async with FakePlugin(c, reply=lambda m: {"value": [shot]}):
+            body = await (await post(c, value_only=True)).json()
+        await c.close()
+        assert body["result"] == "shot 1:2 PNG 3 B" and body["value"][0]["data"] == "AAAA"
     run(go())
 
 
