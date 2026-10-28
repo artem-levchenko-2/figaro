@@ -350,6 +350,25 @@ def test_all_fine_sends_nothing():
     run(go())
 
 
+def test_recent_names_the_agent_the_answer_went_to():
+    async def go():
+        c = await make_client()
+        async with plugin(c) as p:
+            await turn_on(p)
+            for send, said, got in ((["n1"], "Sent 1 note to copywriter", "sent"),
+                                    ([], "All fine, nothing sent to copywriter", "fine")):
+                await write(c, agent="copywriter")
+                await done(c, agent="copywriter")
+                assert await until(lambda: row(p)["state"] == "notes")
+                await answer(p, send)
+                assert await until(lambda: row(p)["state"] == "sent")
+                recent = island(p, "Draft")["recent"][0]
+                assert (recent["agent"], recent["summary"]) == ("you", said)
+                assert (await notes(c, agent="copywriter"))["state"] == got
+        await c.close()
+    run(go())
+
+
 def test_the_agent_waits_for_the_answer_and_stops_after_ten_minutes(monkeypatch):
     monkeypatch.setattr(bridge_review, "HOLD", 0.4)
     monkeypatch.setattr(bridge_review, "EXPIRE", 1.0)

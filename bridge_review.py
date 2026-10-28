@@ -562,11 +562,11 @@ def answer(doc, send, at=None):
     if sent:
         ANSWERS.setdefault(doc, {})[agent] = {"kind": "sent", "notes": sent, "total": len(notes),
                                               "left": left}
-        _recent(doc, {"agent": "you", "summary": f"Sent {_n(len(sent), 'note')} to designer",
+        _recent(doc, {"agent": "you", "summary": f"Sent {_n(len(sent), 'note')} to {agent}",
                       "note": f"{left} left as is" if left else None})
     else:
         ANSWERS.setdefault(doc, {})[agent] = {"kind": "fine", "total": len(notes)}
-        _recent(doc, {"agent": "you", "summary": "All fine, nothing sent to designer"})
+        _recent(doc, {"agent": "you", "summary": f"All fine, nothing sent to {agent}"})
     row = _row(doc)
     row.update(state="sent", at=time.time(), since=None, sent=len(sent), left=left)
     bridge_board.changed()

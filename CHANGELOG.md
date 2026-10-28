@@ -9,6 +9,11 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Recent names the agent the designer's answer went to.** "Sent 2 notes to designer" and "All fine, nothing
+  sent to designer" said "designer" whatever the agent was called; now they say "to copywriter" for copywriter.
+
 ## [1.8.0] — 2026-10-27
 
 ### Added
