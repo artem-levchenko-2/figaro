@@ -500,8 +500,7 @@ def test_the_answer_links_every_layer_a_detail_names():
     doc = "doc:links"
     note = {"id": "n1", "title": "T", "text": "s", "more": 0, "layers": [{"id": "1:1", "name": "A", "type": "FRAME"}],
             "details": [{"text": "a", "layers": ["1:1", "1:2"]}]}
-    bridge_review.ANSWERS.setdefault(doc, {})["designer"] = {"kind": "sent", "notes": [note], "total": 1, "left": 0}
-    plain = {"id": "n2", "title": "T", "text": "s", "more": 0, "layers": [{"id": "1:3", "name": "B", "type": "TEXT"}]}
+    plain ={"id": "n2", "title": "T", "text": "s", "more": 0, "layers": [{"id": "1:3", "name": "B", "type": "TEXT"}]}
     bridge_review.ANSWERS.setdefault(doc, {})["designer"] = {"kind": "sent", "notes": [note, plain], "total": 2, "left": 0}
     state, extra = bridge_review._result(doc, "designer", {"fileKey": "KEY1", "name": "Dash"})
     got, other = extra["notes"]
@@ -570,6 +569,15 @@ def test_notes_with_details_print_each_original_line_with_its_layers():
         '   "Frame 1" (FRAME) 3:1  https://x/3',
         "",
         "Fix these two, then run figaro done again."]
+
+
+def test_notes_print_the_bare_id_for_names_of_an_odd_shape():
+    import review_text
+    for names in ({"1:2": "Title"}, [["1:2", {"name": "Title"}]], None):
+        note = {"title": "T", "text": "s", "more": 0, "layers": [],
+                "details": [{"text": "a", "layers": ["1:2"]}], "names": names}
+        lines = review_text.render({"state": "sent", "notes": [note], "total": 1, "left": 0}, "designer")
+        assert lines[4] == "     1:2", names
 
 
 def test_notes_prints_what_the_designer_sent(monkeypatch, capsys):

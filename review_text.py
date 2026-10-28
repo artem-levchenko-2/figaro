@@ -27,7 +27,8 @@ def render(resp, agent):
             pad = " " * len(head)
             lines.append(f"{head}{note.get('title')}: {note.get('text')}")
             known = {l.get("id"): l for l in note.get("layers") or []}
-            known.update(note.get("names") or {})  # a 1.8.0 bridge names only the note's layers
+            names = note.get("names")  # a 1.8.0 bridge names only the note's layers
+            known.update({k: v for k, v in names.items() if isinstance(v, dict)} if isinstance(names, dict) else {})
             links = note.get("links") or {}
             if note.get("details"):
                 # one line per distinct text, each with its own layers
