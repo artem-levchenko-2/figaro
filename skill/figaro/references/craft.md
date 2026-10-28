@@ -73,8 +73,8 @@ names, ids and keys. Library variables can also be listed through `figma.teamLib
 - Text that wraps — `h.wrapText(text)`; a one-line label — HUG.
 - Neighbours of one size: cards in a row — FILL with the same gap, or GRID (`layoutMode = "GRID"`,
   `gridColumnCount`). Stickers between 220 and 270 px wide look scattered; four columns of 280 px don't.
-- After building — `shot`, and look at the picture: cut-off text, spacing that collapsed and layers that stick
-  out of their frame show only in a picture.
+- After building — look at the picture (`exec --shot` gives it in the same call as the script): cut-off text,
+  spacing that collapsed and layers that stick out of their frame show only in a picture.
 
 ## A component with properties
 

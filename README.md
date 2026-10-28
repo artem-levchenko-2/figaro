@@ -368,7 +368,8 @@ JS
 - `-R` runs a script read-only: if it changes anything, the change is rolled
   back and the call fails. What Figma or a person changes while code that
   only reads runs is left alone, and reported if it came while the script ran.
-- `--shot` takes a picture of what the script returned or created.
+- `--shot` takes a picture of what the script returned or created, in the same
+  call.
 - An error comes back with the line of your script that threw and, for known
   problems, a `hint:`.
 - The helpers are described in

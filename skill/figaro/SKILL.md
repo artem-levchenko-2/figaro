@@ -43,9 +43,13 @@ The references next to this file — read each one when you reach its step:
 2. **Change it in one script** (`exec`, section 4). One script is one action on the file and one Cmd+Z step.
 3. **Check the report.** After a script the CLI prints `changed: +3 −1 ~14 (fills, characters)` and
    `created: "Card" <link>` — is that what you meant to change?
-4. **Look at the picture.** `figaro shot <layer>` after building and after every fix, then open the PNG it
-   prints: spacing, alignment, cut-off text and fonts show only in a picture. Numbers (sizes, spacing) come
-   from `inspect` or an `-R` script. If you can't open images, say so and ask the user to look.
+4. **Look at the picture.** Get it from the script that builds or fixes: add `--shot` to that `exec`, and
+   the same call prints the path of a picture of the layer the script returns (`return { id }`) or else of
+   the first layer it created. A fix of a layer that already exists creates nothing, so return its id or
+   pass `--shot <layer>`. Open the PNG: spacing, alignment, cut-off text and fonts show only in a picture.
+   A separate `figaro shot` costs a whole extra step; keep it for looking without changing anything.
+   Numbers (sizes, spacing) come from `inspect` or an `-R` script. If you can't open images, say so and
+   ask the user to look.
 5. **Fix in place.** Don't rebuild what is already right.
 6. **Stop for review** after the first component or block, not after the whole screen: a link, a shot, what
    was done. Say it in Figma too, `figaro done "Check the card, then answer in the chat"`: the user may be
@@ -58,7 +62,7 @@ The references next to this file — read each one when you reach its step:
 | Command | What it does |
 |---|---|
 | `figaro inspect <layer> [--depth N]` | everything about a layer: auto-layout, sizes, padding, radii, fills with style and variable names, texts with their styles and segments, instances with their component and properties; at the end, the keys of the components, styles and variables it uses. `--json` or `-o file.json` for data. **Of a component set** it prints the variant axes, one variant in full (the base: the one with every property's default) and, for the others, only what differs from it, each change with the variants that have it (`Size=S`, `Kind=failed; Kind=alarm`); it does not compare a vector's path, only its size and paints, and says what was not read (`--depth`); see `references/craft.md`, "Reading a component set". `--json` adds a `variants` key |
-| `figaro shot <layer>… [--width N] [--format svg] [--absolute]` | a picture in `/tmp/figaro/shots/<file key>/`; prints the path — open the PNG to see it. A tall layer comes in parts `-p1`, `-p2`…; SVG turns text into outlines, `--svg-text` keeps it text; `--absolute` exports exactly the layer's size when children or effects overflow it, for a picture reused in another mockup |
+| `figaro shot <layer>… [--width N] [--format svg] [--absolute]` | a picture in `/tmp/figaro/shots/<file key>/`; prints the path — open the PNG to see it. For looking without changing anything, and for what `exec --shot` doesn't do (several layers, `--width`, `--format`, `--absolute`); the picture of what a script just built or fixed comes from `exec --shot`, in the same call (section 4). A tall layer comes in parts `-p1`, `-p2`…; SVG turns text into outlines, `--svg-text` keeps it text; `--absolute` exports exactly the layer's size when children or effects overflow it, for a picture reused in another mockup |
 | `figaro tree <layer> [--depth 2] [--layout]` | the layer tree: name, type, id, size; `--layout` adds auto-layout |
 | `figaro find <layer> name=X` · `name~X` · `type=INSTANCE` · `text~X` | search inside a layer; `--hidden` includes layers hidden in instances |
 | `figaro sel` | what the user has selected, with links |
@@ -92,7 +96,7 @@ on PATH: `<Figaro folder>/venv/bin/python <Figaro folder>/figaro.py …` (on Win
 ## 4. The script
 
 ```sh
-figaro exec -T "<link>" --stdin <<'JS'
+figaro exec -T "<link>" --shot --stdin <<'JS'
 const parent = await h.node("12:34");
 const card = h.frame(parent, { layout: "V", spacing: 16, padding: 24, name: "Card" });
 const title = figma.createText();
@@ -124,8 +128,11 @@ JS
   came while the script ran. A script like that answers as soon as it ends and doesn't wait for Figma's
   report; what Figma updates right after it is not reported at all.
   Importing by key (`h.importComp`, `h.importVar`, `import…ByKeyAsync`) counts as reading.
-- `--shot` — a picture right after the script: of the layer whose id the script returned (`return { id }`),
-  or else of what it created; `--shot <layer>` — of that layer.
+- `--shot` — a picture right after the script, in the same call, so you don't spend a step on `figaro shot`:
+  of the layer whose id the script returned (`return { id }`), or else of the first layer it created;
+  `--shot <layer>` — of that layer. A script that fixes an existing layer creates nothing: return its id or
+  pass `--shot <layer>`, or the CLI warns `⚠ --shot: nothing to shoot`. It is one PNG of one layer; for several
+  layers, `--width`, `--format svg` or `--absolute` use `figaro shot`.
 - `--image NAME=FILE` — a picture for the script to fill a layer with (repeatable): `h.image(node, "NAME",
   "fit")` (`helpers.md`). The same checks as `figaro image`. Without it a script has no way to read a file
   from your disk: it runs in Figma, not on your machine.

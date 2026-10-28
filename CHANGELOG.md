@@ -18,6 +18,9 @@ file; the release notes say when it has to be imported again.
   Figma itself and isn't in its answer. A script that may write, started right after a read, waits for that
   report (at most 150 ms), so Figma's updates never end up in its change report, its `-R` rollback or its
   `undo` step. Nothing changes for the bridge or the CLI.
+- **The skill sends agents to `exec --shot` for the picture** after a script that builds or fixes, instead of
+  a separate `figaro shot`: one step less. `figaro shot` stays for looking without changing anything and for
+  several layers, `--width`, `--format` and `--absolute`.
 
 ## [1.8.1] — 2026-10-28
 
