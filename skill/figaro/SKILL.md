@@ -131,8 +131,10 @@ JS
 - `--shot` — a picture right after the script, in the same call, so you don't spend a step on `figaro shot`:
   of the layer whose id the script returned (`return { id }`), or else of the first layer it created;
   `--shot <layer>` — of that layer. A script that fixes an existing layer creates nothing: return its id or
-  pass `--shot <layer>`, or the CLI warns `⚠ --shot: nothing to shoot`. It is one PNG of one layer; for several
-  layers, `--width`, `--format svg` or `--absolute` use `figaro shot`.
+  pass `--shot <layer>`, or the CLI warns `⚠ --shot: nothing to shoot`. A `⚠ --shot` line and exit code 1
+  mean only the picture failed: the script has already run and its report is above, so don't run it again;
+  take the picture with `figaro shot <layer>`. It is one PNG of one layer; for several layers, `--width`,
+  `--format svg` or `--absolute` use `figaro shot`.
 - `--image NAME=FILE` — a picture for the script to fill a layer with (repeatable): `h.image(node, "NAME",
   "fit")` (`helpers.md`). The same checks as `figaro image`. Without it a script has no way to read a file
   from your disk: it runs in Figma, not on your machine.

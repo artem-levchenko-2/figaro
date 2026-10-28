@@ -194,7 +194,7 @@ Allow `figaro` once, for good:
 
 | Agent | What to do |
 | :-- | :-- |
-| Claude&nbsp;Code | When it asks, choose *Yes, and don't ask again* for `figaro`.<br>In auto mode it also checks every call with a classifier (0.4 to 0.7 s). To skip that for `figaro`, add the rule `Bash(figaro *)` to `permissions.allow` in `~/.claude/settings.json`; heredoc calls match it too. The price: the classifier no longer checks `figaro` commands |
+| Claude&nbsp;Code | When it asks, choose *Yes, and don't ask again* for `figaro`.<br>In auto mode it also checks every call with a classifier (0.4 to 0.9 s). To skip that for `figaro`, add the rule `Bash(figaro *)` to `permissions.allow` in `~/.claude/settings.json`; heredoc calls match it too. The price: the classifier no longer checks `figaro` commands |
 | Codex | Its sandbox blocks `127.0.0.1`, so it asks to run `figaro` outside. Allow that for good, or add `prefix_rule(pattern = ["figaro"])` to `~/.codex/rules/default.rules` |
 | Cursor | Add `figaro` to the allowlist in **Settings → Agents → Approvals & Execution**: allowlisted commands run outside the sandbox |
 | Others | Approve `figaro` when asked, for the session or for good |
