@@ -14,33 +14,36 @@ from __future__ import annotations
 
 import argparse
 import base64
-import http.client
 import io
 import json
 import math
 import os
 import re
 import socket
-import subprocess
 import sys
-import tempfile
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
-import comments_text
-import inspect_text
-import review_text
 import figma_links
-import variant_diff
+
+# This module loads on every call of the CLI, so what only some commands need is imported
+# where it is used: subprocess, tempfile (starting the bridge), http.client (`fetch`; email
+# and ssl come with it) and the text of `inspect`, `comments` and `notes`.
 
 HERE = Path(__file__).resolve().parent
 START = HERE / "start-bridge.sh"
 START_PS1 = HERE / "start-bridge.ps1"  # Windows has no bash
-# /tmp/figaro/shots; Windows has no /tmp, so there it is %TEMP%\figaro\shots.
-SHOTS = Path(os.environ.get("FIGARO_SHOTS")
-             or (Path(tempfile.gettempdir(), "figaro", "shots") if os.name == "nt" else "/tmp/figaro/shots"))
+
+
+def _shots_folder():
+    # /tmp/figaro/shots; Windows has no /tmp, so there it is %TEMP%\figaro\shots.
+    if os.name != "nt":
+        return "/tmp/figaro/shots"
+    import tempfile
+    return Path(tempfile.gettempdir(), "figaro", "shots")
+
+
+SHOTS = Path(os.environ.get("FIGARO_SHOTS") or _shots_folder())
 TILE = 1600          # px: taller pictures are cut into parts about this high
 # After starting the bridge: how long to wait for the open plugin windows (each
 # retries every 2 s), and how long no new one has to come before we go on.
@@ -50,10 +53,6 @@ LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 EXT = {"PNG": "png", "JPG": "jpg", "SVG": "svg", "PDF": "pdf"}
 
 START_LOCK_STALE = 60  # s: a start lock this old was left by a call that died
-# Straight to the bridge, never through a proxy: urllib takes http_proxy from
-# the environment for 127.0.0.1 too, and would hand the proxy the token and the
-# script, or fail and have autostart restart a bridge that is fine.
-LOCAL = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 CLI = None           # the figaro module, set by attach()
 _started = False
@@ -159,6 +158,7 @@ def _start_lock(port):
     one: the second start-bridge.sh stops the first one's bridge, and its pid
     file names a bridge that never got the port. The lock's path, or None
     when there is none to be had."""
+    import tempfile
     path = Path(tempfile.gettempdir()) / f"figaro-start-{port}.lock"
     deadline = time.time() + 45
     while time.time() < deadline:
@@ -185,8 +185,31 @@ def hostport(host, port):
     return f"{host}:{port}"
 
 
-def base_url(host, port):
-    return f"http://{hostport(host, port)}"
+class Unreached(Exception):
+    """The connect or the send failed, so nothing was asked; `reason` is the OSError. A failure
+    after the request went out (no answer in time, a hang-up) comes out of fetch() as it is."""
+
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
+def fetch(host, port, method, path, body=None, headers=None, timeout=None, limit=None):
+    """One request straight to the bridge: (status, body) for any status, the body up to `limit`
+    bytes. Never through a proxy: http.client takes none from the environment, where urllib would
+    send http_proxy the token and the script even for 127.0.0.1, or fail and have autostart
+    restart a bridge that is fine. And urllib on top of it loads ~10 ms of modules more."""
+    import http.client
+    conn = http.client.HTTPConnection(host, port, timeout=timeout)
+    try:
+        try:
+            conn.request(method, path, body, dict(headers or {}, Connection="close"))
+        except OSError as e:
+            raise Unreached(e)
+        r = conn.getresponse()
+        return r.status, r.read(limit)
+    finally:
+        conn.close()
 
 
 def probe(host, port, fresh=False):
@@ -225,16 +248,10 @@ def forget(host, port):
 
 
 def _look(host, port):
+    import http.client
     try:
-        with LOCAL.open(base_url(host, port) + "/", timeout=PROBE_TIMEOUT) as r:
-            raw = r.read(65536)
-            status = r.status
-    except urllib.error.HTTPError as e:
-        body = _json(e.read(65536))
-        if e.code == 403 and "Host header" in str(body.get("error")):
-            return {"state": "refused", "status": 403, "body": body}
-        return {"state": "foreign", "why": f"GET / answered HTTP {e.code}, not the bridge's JSON"}
-    except urllib.error.URLError as e:
+        status, raw = fetch(host, port, "GET", "/", timeout=PROBE_TIMEOUT, limit=65536)
+    except Unreached as e:
         if isinstance(e.reason, (TimeoutError, socket.timeout)):
             return {"state": "unsure", "why": f"GET / got no answer in {PROBE_TIMEOUT} s"}
         if isinstance(e.reason, ConnectionResetError):
@@ -246,6 +263,11 @@ def _look(host, port):
         return {"state": "unsure", "why": f"GET / failed: {e or type(e).__name__}"}
     except OSError:
         return {"state": "none"}
+    if not 200 <= status < 300:
+        body = _json(raw)
+        if status == 403 and "Host header" in str(body.get("error")):
+            return {"state": "refused", "status": 403, "body": body}
+        return {"state": "foreign", "why": f"GET / answered HTTP {status}, not the bridge's JSON"}
     if _json(raw).get("service") == SERVICE:
         return {"state": "ours"}
     return {"state": "foreign", "why": f"GET / answered HTTP {status}, not the bridge's JSON"}
@@ -276,6 +298,8 @@ def _answers(host, port):
 
 
 def _start(cmd, port):
+    import subprocess
+    import tempfile
     say(f"  no bridge answered on {port} — starting it: {' '.join(cmd)}")
     try:
         # A session of its own: the bridge must outlive this call and whatever
@@ -337,9 +361,11 @@ def _wait_for_plugins(host, port):
 
 def _connected(host, port):
     try:
-        with LOCAL.open(f"{base_url(host, port)}/status", timeout=2) as r:
-            return sorted(f.get("name") or "?" for f in json.load(r).get("files") or [])
-    except (OSError, ValueError):
+        status, raw = fetch(host, port, "GET", "/status", timeout=2)
+        if not 200 <= status < 300:
+            return []
+        return sorted(f.get("name") or "?" for f in json.loads(raw).get("files") or [])
+    except (Unreached, OSError, ValueError):
         return []
 
 
@@ -382,6 +408,7 @@ def _variants(args, value):
     another is a difference), or None. Returns (analysis, base, warning). A
     failed second read is not a failure of the command: the first read is
     compared, without the hidden layers, and the warning says so."""
+    import variant_diff
     node = value.get("node") or {}
     if node.get("type") != "COMPONENT_SET" or not node.get("children"):
         return None, None, None
@@ -404,6 +431,8 @@ def _variants(args, value):
 
 
 def cmd_inspect(args):
+    import inspect_text
+    import variant_diff
     opts = {"depth": args.depth, "hidden": args.hidden}
     code = f"return await h.inspect({CLI.node_expr(args.node_id)}, {json.dumps(opts)});"
     status, resp = CLI._exec(code, args.timeout, quick=True)
@@ -617,6 +646,7 @@ def cmd_link(args):
 def cmd_comments(args):
     """Open comments of the file: the bridge reads them with the designer's token, and one quick
     read in the file says what each pin is on."""
+    import comments_text
     if args.file and not CLI.TARGET:
         CLI.TARGET = args.file
     payload = {k: v for k, v in (("target", CLI.TARGET), ("agent", CLI.AGENT)) if v}
@@ -660,6 +690,7 @@ NOTES_WAIT = 600   # s: --wait asks again for this long; the bridge stops the no
 def cmd_notes(args):
     """The designer's answer to the reviewer's notes on what this agent changed: once, then it is
     gone. --wait holds until they answer; one call to the bridge holds up to a minute."""
+    import review_text
     agent = CLI.AGENT or "agent"
     payload = {k: v for k, v in (("target", CLI.TARGET), ("agent", CLI.AGENT)) if v}
     payload["wait"] = bool(args.wait)

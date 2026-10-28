@@ -68,15 +68,11 @@ Helpers available inside exec'd code (as `h.*`):
 """
 
 import argparse
-import http.client
 import json
-import locale
 import os
 import socket
 import sys
 import time
-import urllib.error
-import urllib.request
 
 # On Windows `figaro` is the figaro.exe from tools/install.ps1, which starts
 # Python outside this folder: the modules next to this file are found anyway.
@@ -136,6 +132,7 @@ def read_stdin():
     try:
         return data.decode("utf-8-sig")
     except UnicodeDecodeError:
+        import locale
         return data.decode(locale.getpreferredencoding(False), errors="replace")
 
 
@@ -145,6 +142,7 @@ def node_expr(id_or_alias):
 
 
 def _request(method, path, payload=None, timeout=65):
+    import http.client  # here, not at the top: `-h` and a wrong flag never ask the bridge
     # The token goes only to what said it is the bridge (one `GET /` per process): any other
     # program on the port would get a secret that runs code in the user's Figma file.
     found = cli_extras.probe(HOST, PORT)
@@ -155,24 +153,14 @@ def _request(method, path, payload=None, timeout=65):
     if found["state"] == "unsure":  # hung up or silent, maybe a bridge that restarts: no token
         return 0, {"ok": False, "error": f"connection: port {PORT} did not answer as the bridge "
                                          f"({found['why']}); nothing was sent to it"}
-    url = f"{cli_extras.base_url(HOST, PORT)}{path}"
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Content-Type": "application/json"} if data else {}
     token = figaro_token.read_token(PORT) if found["state"] == "ours" else None
     if token:  # read each time: a restarted bridge has a new one
         headers["X-Figaro-Token"] = token
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with cli_extras.LOCAL.open(req, timeout=timeout) as r:
-            return r.status, _answer(r.read(), r.status)
-    except urllib.error.HTTPError as e:
-        # A 401 to a call that went without the token: the look found the port empty, and a
-        # bridge started since (another call did it). Look again and ask with the token.
-        if (e.code == 401 and found["state"] == "none"
-                and cli_extras.probe(HOST, PORT, fresh=True)["state"] == "ours"):
-            return _request(method, path, payload, timeout)
-        return e.code, _answer(e.read(), e.code)
-    except urllib.error.URLError as e:
+        status, body = cli_extras.fetch(HOST, PORT, method, path, data, headers, timeout)
+    except cli_extras.Unreached as e:
         cli_extras.forget(HOST, PORT)
         # Nothing listens — start our bridge once and ask again.
         if isinstance(e.reason, ConnectionRefusedError) and cli_extras.autostart(HOST, PORT):
@@ -189,6 +177,12 @@ def _request(method, path, payload=None, timeout=65):
         cli_extras.forget(HOST, PORT)
         # The bridge hung up without an answer: it stopped or restarted meanwhile.
         return 0, {"ok": False, "error": f"connection: {e or type(e).__name__}"}
+    # A 401 to a call that went without the token: the look found the port empty, and a
+    # bridge started since (another call did it). Look again and ask with the token.
+    if (status == 401 and found["state"] == "none"
+            and cli_extras.probe(HOST, PORT, fresh=True)["state"] == "ours"):
+        return _request(method, path, payload, timeout)
+    return status, _answer(body, status)
 
 
 def _answer(body, status):

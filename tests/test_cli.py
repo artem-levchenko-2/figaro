@@ -12,6 +12,7 @@ with SIGTERM.
 """
 import asyncio
 import base64
+import http.client
 import http.server
 import io
 import json
@@ -21,7 +22,6 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -711,11 +711,10 @@ def test_windows_starts_the_bridge_with_powershell(monkeypatch):
 
 def test_a_sandbox_that_blocks_localhost_is_named(monkeypatch, capsys):
     """Codex's and Cursor's sandboxes refuse the connect itself: no autostart, a hint."""
-    class Blocked:
-        def open(self, *a, **k):
-            raise urllib.error.URLError(PermissionError(1, "Operation not permitted"))
+    def blocked(*a, **k):
+        raise cli_extras.Unreached(PermissionError(1, "Operation not permitted"))
 
-    monkeypatch.setattr(cli_extras, "LOCAL", Blocked())
+    monkeypatch.setattr(cli_extras, "fetch", blocked)
     monkeypatch.setattr(cli_extras, "autostart", lambda *a: pytest.fail("no autostart"))
     status, resp = figaro._request("GET", "/status")
     assert status == 0 and resp["hint"] == figaro.SANDBOXED
@@ -1317,26 +1316,114 @@ def test_a_start_goes_on_when_the_port_answers_as_the_bridge(tmp_path, monkeypat
 
 
 def test_an_ipv6_host_goes_into_the_url_in_brackets(monkeypatch):
-    assert cli_extras.base_url("::1", 8788) == "http://[::1]:8788"
-    assert cli_extras.base_url("[::1]", 8788) == "http://[::1]:8788"
-    assert cli_extras.base_url("127.0.0.1", 8788) == "http://127.0.0.1:8788"
-    assert cli_extras.base_url("localhost", 1) == "http://localhost:1"
+    assert cli_extras.hostport("::1", 8788) == "[::1]:8788"
+    assert cli_extras.hostport("[::1]", 8788) == "[::1]:8788"
+    assert cli_extras.hostport("127.0.0.1", 8788) == "127.0.0.1:8788"
+    assert cli_extras.hostport("localhost", 1) == "localhost:1"
     assert cli_extras.hostport("fe80::1", 2) == "[fe80::1]:2"
     seen = []
 
-    class Opener:
-        def open(self, req, timeout=None):
-            seen.append(req if isinstance(req, str) else req.full_url)
-            raise urllib.error.URLError(ConnectionRefusedError(61, "refused"))
+    class Connection:  # http.client's, which only notes where it is asked to go
+        def __init__(self, host, port, timeout=None):
+            seen.append((host, port))
 
-    monkeypatch.setattr(cli_extras, "LOCAL", Opener())
+        def request(self, method, path, body=None, headers=None):
+            seen.append((method, path))
+            raise ConnectionRefusedError(61, "refused")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(http.client, "HTTPConnection", Connection)
     monkeypatch.setattr(cli_extras, "autostart", lambda *a: False)
     monkeypatch.setattr(figaro, "HOST", "::1")
     monkeypatch.setattr(figaro, "PORT", 8788)
     figaro._request("GET", "/status")
-    assert seen == ["http://[::1]:8788/", "http://[::1]:8788/status"]
+    assert seen == [("::1", 8788), ("GET", "/"), ("::1", 8788), ("GET", "/status")]
     cli_extras._connected("::1", 8788)
-    assert seen[-1] == "http://[::1]:8788/status"
+    assert seen[-2:] == [("::1", 8788), ("GET", "/status")]
+
+
+def test_an_ipv6_bridge_is_asked_with_the_host_in_brackets(monkeypatch):
+    hosts = []
+
+    class V6(http.server.HTTPServer):
+        address_family = socket.AF_INET6
+
+    class Handler(Status):
+        def do_GET(self):
+            hosts.append(self.headers["Host"])
+            super().do_GET()
+
+    try:
+        server = V6(("::1", 0), Handler)
+    except OSError:
+        pytest.skip("no IPv6 loopback here")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    port = server.server_address[1]
+    monkeypatch.setattr(figaro, "HOST", "::1")
+    monkeypatch.setattr(figaro, "PORT", port)
+    try:
+        status, resp = figaro._request("GET", "/status")
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert status == 200 and resp["files"] == [{"name": "Draft"}]
+    assert hosts == [f"[::1]:{port}"] * 2  # the look at the port, then the call
+
+
+# What the CLI loads on every call costs time on every call (tens of ms together); a command that
+# needs more imports it where it is used.
+HEAVY = ("http.client", "urllib.request", "urllib.error", "subprocess", "tempfile", "ssl")
+LOADED = ("import sys; sys.path.insert(0, %r); sys.argv = ['figaro'] + %r\n"
+          "import figaro\n"
+          "try:\n"
+          "    figaro.main()\n"
+          "except SystemExit:\n"
+          "    pass\n"
+          "print('LOADED', *sorted(m for m in %r if m in sys.modules), file=sys.stderr)\n")
+
+
+def loaded_by(args, **env):
+    code = LOADED % (str(ROOT), args, HEAVY)
+    r = subprocess.run([sys.executable, "-I", "-S", "-c", code], capture_output=True, text=True,
+                       timeout=60, env=dict(os.environ, FIGARO_AUTOSTART="0", **env))
+    return r.stderr.strip().splitlines()[-1].split()[1:]
+
+
+def test_help_loads_none_of_the_heavy_modules():
+    got = loaded_by(["-h"])
+    # Windows has no /tmp: there the folder of the pictures asks tempfile for its place.
+    assert [m for m in got if not (os.name == "nt" and m == "tempfile")] == []
+
+
+def test_a_call_to_the_bridge_loads_only_http_client_of_them():
+    port, stop = serve(Status)
+    try:
+        got = loaded_by(["status"], FIGARO_PORT=str(port), FIGARO_HOST="127.0.0.1")
+    finally:
+        stop()
+    assert [m for m in got if m not in ("http.client", "ssl")] == []  # ssl: http.client loads it
+    assert "http.client" in got
+
+
+def test_a_proxy_in_the_environment_is_never_used(monkeypatch):
+    """The token and the script of a call must not go to http_proxy, 127.0.0.1 included."""
+    as_proxy = recorder((200, "application/json", b'{"service": "figaro-bridge"}'))
+    proxy, stop_proxy = serve(as_proxy)
+    for name in ("http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"):
+        monkeypatch.setenv(name, f"http://127.0.0.1:{proxy}")
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    port, stop = serve(Status)
+    try:
+        assert cli_extras.probe("127.0.0.1", port)["state"] == "ours"
+        status, body = cli_extras.fetch("127.0.0.1", port, "GET", "/status")
+        assert status == 200 and json.loads(body)["files"] == [{"name": "Draft"}]
+        assert as_proxy.seen == []
+    finally:
+        stop()
+        stop_proxy()
 
 
 def test_a_real_bridge_is_recognised(monkeypatch):

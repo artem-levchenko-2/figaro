@@ -108,7 +108,8 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
   `--lib`, `exec --shot`, `exec --image` (a file is checked here: format by its bytes, 4096 px, 30 MB), and
   `probe`: before the token goes anywhere, `GET /` must answer as the bridge (`"service": "figaro-bridge"`).
   Only a sure verdict is kept (`_verdicts`, which `tests/conftest.py` clears for every test): a port that
-  hangs up or stays silent is asked again. `inspect_text.py` — the text `inspect` prints.
+  hangs up or stays silent is asked again. `fetch` is the CLI's one HTTP call (http.client, which takes no
+  proxy; `Unreached` is a connect or a send that failed). `inspect_text.py` — the text `inspect` prints.
   `variant_diff.py` — `inspect` of a component set: from the data `h.inspect` returns, the base variant, the
   axes and what the other variants change (the `variants` key of `--json`, and the text); the CLI makes a
   second read with the hidden layers when there are any.
@@ -232,6 +233,10 @@ Then read `run.jsonl` (commands, errors, the final report) and clean up what it 
 - **`quick` is for the CLI's built-in readers only.** The plugin doesn't track what a quick script changes,
   so code from outside must never run as `quick`. A normal exec, with or without `-R`, is safe: when its code
   only reads it answers as soon as it ends, and only a script that may write waits ~150 ms for Figma's report.
+- **The CLI loads on every call, so keep its imports light.** A module that only some command needs
+  (`subprocess`, `tempfile`, `http.client`, the text of `inspect`, `comments`, `notes`) is imported inside the
+  function that uses it, not at the top of `figaro.py` or `cli_extras.py`; `tests/test_cli.py` checks that `-h`
+  and a call to the bridge load no `subprocess`, `tempfile` or `urllib`.
 - **Python 3.9** — the `python3` of Apple's Command Line Tools, what a Mac without Homebrew runs. No `match`,
   no `zip(strict=…)`, no nested same-kind quotes inside f-strings (3.12+); `X | None` only in annotations of
   modules with `from __future__ import annotations`. The 3.9 run in Commands checks it.

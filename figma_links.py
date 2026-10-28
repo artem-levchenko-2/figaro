@@ -15,7 +15,7 @@ library: the CLI loads this on every call.
 from __future__ import annotations
 
 import re
-from typing import NamedTuple
+from collections import namedtuple
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 _HOST = re.compile(r"^(?:https?://)?(?:[\w-]+\.)?figma\.com/", re.I)
@@ -28,10 +28,10 @@ _NODE = re.compile(r"I?\d+[:-]\d+(?:;\d+[:-]\d+)*")
 FILE_KEY = re.compile(r"^[A-Za-z0-9]{22}\Z")  # \Z: "$" would let a "\n" after it through
 
 
-class Link(NamedTuple):
-    key: str            # the file's key: what figma.fileKey says in that file
-    node: str | None    # the layer in API form ("1:11"), if the link has one
-    url: str            # the link as given
+# key: the file's key, what figma.fileKey says in that file; node: the layer in API form
+# ("1:11"), if the link has one, else None; url: the link as given. Not a typing.NamedTuple:
+# the CLI loads this module on every call, and typing alone costs it ~1.7 ms.
+Link = namedtuple("Link", "key node url")
 
 
 def node_id(text):

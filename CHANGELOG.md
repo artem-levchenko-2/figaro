@@ -18,6 +18,9 @@ file; the release notes say when it has to be imported again.
   Figma itself and isn't in its answer. A script that may write, started right after a read, waits for that
   report (at most 150 ms), so Figma's updates never end up in its change report, its `-R` rollback or its
   `undo` step. Nothing changes for the bridge or the CLI.
+- **Every `figaro` call starts 10 to 20 ms sooner** (a call took about 90 ms). The CLI loads only the modules
+  its command needs, and asks the bridge with `http.client` instead of `urllib`. The output and the errors are
+  the same, and the token still goes only to what answered `GET /` as the bridge, never through a proxy.
 - **The skill sends agents to `exec --shot` for the picture** after a script that builds or fixes, instead of
   a separate `figaro shot`: one step less. `figaro shot` stays for looking without changing anything and for
   several layers, `--width`, `--format` and `--absolute`.

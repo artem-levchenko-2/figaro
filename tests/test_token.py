@@ -193,35 +193,19 @@ def test_the_cli_sends_the_token_from_the_file(monkeypatch, tmp_path):
     monkeypatch.setenv("FIGARO_TOKEN_FILE", str(f))
     seen = []
 
-    class Resp:
-        status = 200
+    def fetch(host, port, method, path, body=None, headers=None, timeout=None, limit=None):
+        if path == "/":  # the look at the port, which carries nothing
+            assert not headers
+            return 200, b'{"service": "figaro-bridge"}'
+        seen.append(headers)
+        return 200, b"{}"
 
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def read(self, n=-1):
-            return b"{}"
-
-    class Root(Resp):
-        def read(self, n=-1):
-            return b'{"service": "figaro-bridge"}'
-
-    class Local:
-        def open(self, req, timeout):
-            if isinstance(req, str):  # the look at the port, which carries nothing
-                return Root()
-            seen.append(req)
-            return Resp()
-
-    monkeypatch.setattr(cli_extras, "LOCAL", Local())
+    monkeypatch.setattr(cli_extras, "fetch", fetch)
     figaro._request("POST", "/clear", {})
-    assert seen[0].get_header("X-figaro-token") == "abc"
+    assert seen[0]["X-Figaro-Token"] == "abc"
     f.unlink()
     figaro._request("POST", "/clear", {})
-    assert seen[1].get_header("X-figaro-token") is None
+    assert "X-Figaro-Token" not in seen[1]
 
 
 def test_doctor_says_when_the_token_file_is_missing(monkeypatch, capsys, tmp_path):
