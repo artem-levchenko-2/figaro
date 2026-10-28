@@ -9,6 +9,8 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-10-28
+
 ### Changed
 
 - **A script that only reads answers as soon as it ends.** The plugin already read the code to tell whether a
@@ -18,10 +20,12 @@ file; the release notes say when it has to be imported again.
   Figma itself and isn't in its answer. A script that may write, started right after a read, waits for that
   report (150 ms after the read at most), so Figma's updates never end up in its change report, its `-R`
   rollback or its `undo` step. If a `--parallel` read ends while it waits, its report says that other scripts
-  ran meanwhile, as when scripts overlap. Nothing changes for the bridge or the CLI.
-- **Every `figaro` call starts 10 to 20 ms sooner** (a call took about 90 ms). The CLI loads only the modules
-  its command needs, and asks the bridge with `http.client` instead of `urllib`. The output and the errors are
-  the same, and the token still goes only to what answered `GET /` as the bridge, never through a proxy.
+  ran meanwhile, as when scripts overlap. Nothing changes for the bridge or the CLI. An `exec` of a script
+  that only reads now takes about 90 ms instead of about 260.
+- **Every `figaro` call starts about 20 ms sooner** (the CLI's own part of a call took about 100 ms). The CLI
+  loads only the modules its command needs, and asks the bridge with `http.client` instead of `urllib`. The
+  output and the errors are the same, and the token still goes only to what answered `GET /` as the bridge,
+  never through a proxy.
 - **The bridge sends a script's value once to `figaro exec` and the commands that print it.** A reply held the
   value twice: as `value`, and as `result`, the same value as text. The CLI now asks with `"value_only": true`
   where it prints the text itself, the bridge leaves `result` out, and the CLI makes the same text from
@@ -34,6 +38,22 @@ file; the release notes say when it has to be imported again.
   several layers, `--width`, `--format` and `--absolute`.
 - **The README tells how to skip Claude Code's auto-mode check for `figaro` commands:** the rule
   `Bash(figaro *)` in `permissions.allow` of `~/.claude/settings.json`.
+
+### Speed
+
+One `figaro exec` from the command line, in ms (the median of 9 calls, the same Mac and test file):
+
+| Script | 1.8.1 | 1.9.0 |
+| :-- | --: | --: |
+| `return 1` | 259 | 86 |
+| `return 1` with `-R` | 265 | 92 |
+| Read 1,000 layers and return them (0.19 MB) | 306 | 124 |
+| Read 1,000 layers and return their count | 299 | 109 |
+| Return 50,000 objects (4 MB) | 491 | 297 |
+| Return a 5 MB string | 592 | 438 |
+| `print` 20,000 lines | 360 | 185 |
+| A script that writes: waits for Figma's report, as before | 221 | 223 |
+| `figaro -h` | 105 | 64 |
 
 ## [1.8.1] — 2026-10-28
 
