@@ -1408,7 +1408,8 @@ def test_a_call_to_the_bridge_loads_only_http_client_of_them():
         got = loaded_by(["status"], FIGARO_PORT=str(port), FIGARO_HOST="127.0.0.1")
     finally:
         stop()
-    assert [m for m in got if m not in ("http.client", "ssl")] == []  # ssl: http.client loads it
+    # ssl: http.client loads it; tempfile on Windows, as for -h
+    assert [m for m in got if m not in ("http.client", "ssl") and not (os.name == "nt" and m == "tempfile")] == []
     assert "http.client" in got
 
 
