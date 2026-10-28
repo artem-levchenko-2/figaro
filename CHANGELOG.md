@@ -21,6 +21,8 @@ file; the release notes say when it has to be imported again.
 - **The skill sends agents to `exec --shot` for the picture** after a script that builds or fixes, instead of
   a separate `figaro shot`: one step less. `figaro shot` stays for looking without changing anything and for
   several layers, `--width`, `--format` and `--absolute`.
+- **The README tells how to skip Claude Code's auto-mode check for `figaro` commands:** the rule
+  `Bash(figaro *)` in `permissions.allow` of `~/.claude/settings.json`.
 
 ## [1.8.1] — 2026-10-28
 
