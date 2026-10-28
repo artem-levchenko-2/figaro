@@ -9,6 +9,8 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+## [1.8.1] — 2026-10-28
+
 ### Fixed
 
 - **The Reviewer's notes name every layer in `figaro notes` and Copy for chat.** A note that sums up several
