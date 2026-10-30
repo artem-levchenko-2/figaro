@@ -85,6 +85,7 @@ function load({ calm = false, layout = null, figma = null } = {}) {
   Object.assign(WebSocket, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 });
   // A sound's layers, as `heard()` lists them: "sine 660", "noise", …
   const voices = [];
+  const audio = { lag: 0 };
   const param = () => ({ setValueAtTime() {}, linearRampToValueAtTime() {}, setTargetAtTime() {}, exponentialRampToValueAtTime() {} });
   class AudioContext {
     constructor() { this.state = "suspended"; this.destination = {}; this.currentTime = 0; this.sampleRate = 48000; this.oscs = []; contexts.push(this); }
@@ -98,7 +99,11 @@ function load({ calm = false, layout = null, figma = null } = {}) {
     createBuffer(channels, length) { const data = new Float32Array(length); return { getChannelData: () => data }; }
     createBiquadFilter() { return { frequency: param(), Q: {}, connect() {} }; }
     createGain() { return { gain: param(), connect() {} }; }
-    resume() { this.state = "running"; return Promise.resolve(); }
+    // `audio.lag`: how long the system takes to wake a context, as on Windows
+    resume() {
+      if (!audio.lag) { this.state = "running"; return Promise.resolve(); }
+      return new Promise((r) => clock.setTimeout(() => { this.state = "running"; r(); }, audio.lag));
+    }
     suspend() { this.state = "suspended"; return Promise.resolve(); }
   }
   const elements = {};
@@ -141,6 +146,10 @@ function load({ calm = false, layout = null, figma = null } = {}) {
     ws: () => sockets[sockets.length - 1],
     tone: () => { const c = contexts.find((x) => x.oscs.some((o) => o.frequency.value === 20)); return c ? c.state : "none"; },
     heard: () => voices.splice(0),  // the sounds' layers since the last look
+    audio,
+    // The pointer moves over the window, or presses somewhere in it.
+    move: () => { for (const fn of listeners.pointermove || []) fn({}); },
+    down: () => { for (const fn of listeners.pointerdown || []) fn({ button: 0, target: { closest: () => null } }); },
     cues: () => { const c = contexts.find((x) => !x.oscs.some((o) => o.frequency.value === 20)); return c ? c.state : "none"; },
     exec: (id, timeout) => env.ws().receive({ type: "exec", id, code: "return 1", timeout }),
     // The sandbox's answer to a request, on its way to the bridge.
@@ -1355,6 +1364,48 @@ const RELEASE = "https://github.com/artem-levchenko-2/figaro/releases/tag/v1.2.0
     env.click("toggle", "here");
     await env.clock.advance(50);
     check("…and turned on again, they do", env.heard(), ["sine 660"]);
+  }
+  {
+    // A system slow to wake the sounds' AudioContext (Windows: up to a few hundred ms):
+    // the pointer in the window wakes it before the click, so the click's cue plays at once.
+    const env = load();
+    env.identity("Dashboard", "KEY1");
+    env.ws().open();
+    env.board([file("KEY1", "Dashboard")]);
+    await env.clock.advance(1000);
+    check("asleep before the pointer comes", env.cues(), "suspended");
+    env.audio.lag = 200;
+    env.move();
+    await env.clock.advance(250);
+    check("the pointer moves in the window: the cues' AudioContext wakes", env.cues(), "running");
+    env.click("toggle", "here");
+    await flush();
+    check("…and the click's cue plays at once", env.heard(), ["sine 440"]);
+    await env.clock.advance(2000);
+    env.move();
+    await env.clock.advance(2000);
+    check("…kept awake while the pointer moves", env.cues(), "running");
+    await env.clock.advance(1100);
+    check("…and asleep a moment after it goes still", env.cues(), "suspended");
+    env.down();
+    await env.clock.advance(250);
+    check("a press wakes it too", env.cues(), "running");
+    await env.clock.advance(4000);
+    env.click("toggle", "here");
+    await env.clock.advance(300);
+    check("a cue that waits for the wake longer than CUE_LATE_MS is dropped, not played with the opening", env.heard(), []);
+    await env.clock.advance(4000);
+    check("…and the context it woke sleeps again", env.cues(), "suspended");
+    env.audio.lag = 80;
+    await env.clock.advance(4000);
+    env.click("toggle", "here");
+    await env.clock.advance(100);
+    check("…one that waits less still plays", env.heard(), ["sine 440"]);
+    env.board([file("KEY1", "Dashboard")], { sounds: false });
+    await env.clock.advance(4000);
+    env.move();
+    await env.clock.advance(250);
+    check("with the sounds off, the pointer wakes nothing", env.cues(), "suspended");
   }
   {
     const env = load();

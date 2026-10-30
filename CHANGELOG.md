@@ -9,6 +9,13 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The window's sounds play as you click, not a moment later.** The sounds' audio sleeps 3 s after the last
+  one, and waking it took the system up to a few hundred ms — on Windows most of all — so a cue came as the
+  island it opened was opening. Now the pointer moving or pressing in the window wakes it before the click,
+  and a cue that would still come more than 120 ms late is left out rather than played late.
+
 ## [1.9.0] — 2026-10-28
 
 ### Changed

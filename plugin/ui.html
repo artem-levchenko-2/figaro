@@ -665,7 +665,7 @@ const CUES = {
 };
 const HOLD_MS = 500;       // how long Minimize is held to nanomize (the ring's CSS takes as long)
 const CUE_VOLUME = 0.30;   // how loud the cues are: set by ear
-const CUE_LATE_MS = 300;   // a cue that couldn't play by then is dropped, not played late
+const CUE_LATE_MS = 120;   // a cue that couldn't play by then is dropped, not played late: past that it lags the click
 const CUE_HUSH_MS = 3000;  // the cues' own AudioContext, apart from the tone's, sleeps after that
 const CUE_WARM_MS = 500;   // after the first board, the cues' AudioContext is made (warmCues)
 let cueAudio = null;
@@ -699,18 +699,33 @@ function warmCues() {
   }, CUE_WARM_MS);
 }
 
+// The pointer moves in the window or presses: the cues' AudioContext wakes now,
+// and sleeps CUE_HUSH_MS after the pointer goes still. Asleep, it wakes only as
+// a click's cue asks it to, and that takes the system from tens of ms to a few
+// hundred (Windows the longest), while the click's island is drawn and starts
+// to open: the cue came with the opening, not the click.
+function wakeCues() {
+  if (!cueAudio || (board && !board.sounds)) return;
+  try {
+    if (cueAudio.state !== "running") cueAudio.resume().then(null, () => {});
+    clearTimeout(cueHush);
+    cueHush = setTimeout(() => cueAudio.suspend(), CUE_HUSH_MS);
+  } catch (e) {
+    log("[sound] " + e.message);
+  }
+}
+
 function cue(name) {
   const layers = CUES[name];
   if (!layers || (board && !board.sounds) || typeof AudioContext !== "function") return;
   try {
     const ctx = cueContext(), asked = Date.now();
     const play = () => {
-      if (Date.now() - asked > CUE_LATE_MS) return;
       try {
         const t = ctx.currentTime + 0.005;
         let end = t;
-        for (const l of layers) end = Math.max(end, voice(ctx, l, t + (l.at || 0)));
-        clearTimeout(cueHush);
+        if (Date.now() - asked <= CUE_LATE_MS) for (const l of layers) end = Math.max(end, voice(ctx, l, t + (l.at || 0)));
+        clearTimeout(cueHush);  // played or dropped, the context it woke sleeps again
         cueHush = setTimeout(() => ctx.suspend(), (end - ctx.currentTime) * 1000 + CUE_HUSH_MS);
       } catch (e) {
         log("[sound] " + e.message);
@@ -2203,6 +2218,8 @@ document.addEventListener("pointerdown", () => {
 });
 document.addEventListener("pointerup", release);
 document.addEventListener("pointercancel", release);
+document.addEventListener("pointermove", wakeCues, { passive: true });
+document.addEventListener("pointerdown", wakeCues);
 
 // Minimize: let go at once and the window minimizes; held for HOLD_MS (a ring
 // runs round the button meanwhile, and a sound rises), it nanomizes. Moved off

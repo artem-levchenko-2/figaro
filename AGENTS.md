@@ -331,7 +331,10 @@ sends it as `release` instead of `update`, and the bridge refuses `update-now` (
   (a script whose answer never comes, after its `--timeout` and those 3 minutes) or ~2 s after the bridge
   goes away — that is why the bridge closes the plugins' connections on exit (`bridge_idle.close_plugins`).
 - **The window's sounds** (`CUES` in `ui.html`) play in an AudioContext of their own, apart from the tone's,
-  and it sleeps 3 s after the last one. The Sounds switch (`FIGARO_SOUNDS` until it is switched) reaches the
+  and it sleeps 3 s after the last one, or after the pointer goes still. Waking it takes the system tens of ms
+  to a few hundred (Windows the longest), and the click that asks for it goes on drawing meanwhile: a cue that
+  waited for it came as the island opened, not as it was clicked. So the pointer moving or pressing in the
+  window wakes it (`wakeCues`), and a cue later than `CUE_LATE_MS` is dropped. The Sounds switch (`FIGARO_SOUNDS` until it is switched) reaches the
   window as the board's `settings.sounds` and silences them, never the tone.
 - **A script runs on Figma's main thread.** A loop that never yields freezes Figma, and nothing gets in while
   it runs: not the bridge's abort, not Stop in the window. So `compileScript` and `compileLib` put a guard in
