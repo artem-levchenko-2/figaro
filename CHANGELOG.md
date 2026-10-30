@@ -9,6 +9,8 @@ file; the release notes say when it has to be imported again.
 
 ## [Unreleased]
 
+## [1.9.1] — 2026-10-30
+
 ### Fixed
 
 - **The window's sounds play as you click, not a moment later.** The sounds' audio sleeps 3 s after the last
